@@ -1,11 +1,14 @@
 # PokerSense
 
-The [two local model screen](docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md)
-now has actual Windows/GPU evidence: both frozen candidates returned legal actions
-on 24 synthetic four-street queries each. The 0.8B model has more timing margin in
-this small sample, but full-hand poker strength and live suitability remain
-unassessed. Earlier slower results are retained; the runtime is separate from
-the desktop app, and no live action advice is enabled.
+The [bounded full-hand evaluation](docs/AA-LOCAL-FULLHAND-20260928.zh-CN.md)
+is closed with **NO_GO for both local models**. Both failed public-information
+decision checks, and several complete groups deteriorated against fixed synthetic
+opponents. Of 3,780 planned pairs, 3,297 completed, 3 were blocked at batch deadlines,
+and 480 remain unexecuted; incomplete groups have no EV estimate. Independent
+review verified the full denominator and recorded actions. The earlier
+[loading/timing screen](docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md) remains
+engineering evidence only. No model is admitted to live advice; the two-batch
+budget is exhausted and no third batch or training has started.
 
 The AA observation page now shows a **table-settings summary and an Edit button**.
 An unconfigured table opens the form automatically. Enter blinds, ante, straddle,
