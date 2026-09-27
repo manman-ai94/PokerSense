@@ -43,10 +43,14 @@ def _tuples(value):
 class ExternalSamplingMCCFR:
     def __init__(self, players, *, seed=0, budget=None, encoder=information_key,
                  menu=action_ids, clock=time.monotonic, binding=None,
-                 encoder_id="aa_rank_texture_v1"):
+                 encoder_id="aa_rank_texture_v1", update_regrets=True):
         self.players = tuple(players)
         if len(self.players) < 2 or len(set(self.players)) != len(self.players):
             raise ValueError("invalid_training_players")
+        if type(update_regrets) is not bool:
+            raise ValueError("update_regrets_must_be_boolean")
+        self.update_regrets = update_regrets
+        self.visits = {}
         self.seed = seed
         self.binding, self.encoder_id = deepcopy(binding), encoder_id
         self.budget = budget or TrainingBudget()
@@ -69,12 +73,12 @@ class ExternalSamplingMCCFR:
         """factory(deal_seed) returns a fresh full-hand arena; one all-seat sweep."""
         deadline = self.clock() + self.budget.seconds
         rng_before = self.rng.getstate()
-        regrets, average = {}, {}
+        regrets, average, visits = {}, {}, {}
         self.last_attempt_nodes = 0
         try:
             for traverser in self.players:
                 arena = arena_factory(self.rng.randrange(2 ** 63))
-                self._walk(arena, traverser, regrets, average, deadline, 0)
+                self._walk(arena, traverser, regrets, average, visits, deadline, 0)
             self._check(deadline, 0)
             merged_regrets = self._merge(self.regrets, regrets)
             merged_average = self._merge(self.average, average)
@@ -83,6 +87,8 @@ class ExternalSamplingMCCFR:
             self.rng.setstate(rng_before)
             raise
         self.regrets, self.average = merged_regrets, merged_average
+        for key, count in visits.items():
+            self.visits[key] = self.visits.get(key, 0) + count
         self.iterations += 1
         self.total_nodes += self.last_attempt_nodes
         return {"iteration": self.iterations, "nodes": self.last_attempt_nodes,
@@ -107,7 +113,7 @@ class ExternalSamplingMCCFR:
                 or self.last_attempt_nodes > self.budget.max_nodes):
             raise TrainingBudgetExceeded("whole_sweep_budget_exceeded")
 
-    def _walk(self, arena, traverser, deltas, sums, deadline, depth):
+    def _walk(self, arena, traverser, deltas, sums, visits, deadline, depth):
         self.last_attempt_nodes += 1
         self._check(deadline, depth)
         if arena.terminal:
@@ -129,6 +135,7 @@ class ExternalSamplingMCCFR:
             new_keys = sum(item not in self.regrets for item in deltas)
             if len(self.regrets) + new_keys >= self.budget.max_infosets:
                 raise TrainingBudgetExceeded("information_set_budget_exceeded")
+        visits[key] = visits.get(key, 0) + 1
         pending = deltas.setdefault(key, {a: 0.0 for a in actions})
         strategy = self._strategy(base)
         if actor != traverser:
@@ -139,18 +146,20 @@ class ExternalSamplingMCCFR:
                 for option in actions:
                     total[option] += (self.iterations + 1) * strategy[option]
             arena.step(action)
-            return self._walk(arena, traverser, deltas, sums, deadline, depth + 1)
+            return self._walk(
+                arena, traverser, deltas, sums, visits, deadline, depth + 1)
         utilities = {}
         for action in actions:
             self._check(deadline, depth)
             child = arena.clone()
             child.step(action)
             utilities[action] = self._walk(
-                child, traverser, deltas, sums, deadline, depth + 1,
+                child, traverser, deltas, sums, visits, deadline, depth + 1,
             )
         expected = sum(strategy[a] * utilities[a] for a in actions)
-        for action in actions:
-            pending[action] += utilities[action] - expected
+        if self.update_regrets:
+            for action in actions:
+                pending[action] += utilities[action] - expected
         return expected
 
     def average_policy(self):
@@ -170,6 +179,8 @@ class ExternalSamplingMCCFR:
             "rng_state": self.rng.getstate(), "status": "research_only",
             "algorithm": "external_sampling_simple_linear_v1",
             "binding": deepcopy(self.binding), "encoder_id": self.encoder_id,
+            "update_regrets": self.update_regrets,
+            "committed_visits": dict(self.visits),
         }
         document["sha256"] = canonical_hash(document)
         return document
@@ -189,7 +200,11 @@ class ExternalSamplingMCCFR:
         if (data.get("binding") != expected_binding
                 or data.get("encoder_id") != expected_encoder):
             raise ValueError("checkpoint_binding_or_encoder_mismatch")
+        mode = data.get("update_regrets", True)
+        if kwargs.pop("update_regrets", mode) != mode:
+            raise ValueError("checkpoint_learning_mode_mismatch")
         result = cls(data["players"], seed=data["seed"], binding=expected_binding,
+                     update_regrets=mode,
                      encoder_id=expected_encoder, **kwargs)
         for table in (data["regrets"], data["average"]):
             if not isinstance(table, dict):
@@ -208,6 +223,12 @@ class ExternalSamplingMCCFR:
         if any(value < 0 for values in data["average"].values()
                for value in values.values()):
             raise ValueError("negative_average_weight")
+        visits = data.get("committed_visits", {})
+        if (not isinstance(visits, dict) or not set(visits) <= set(data["regrets"])
+                or any(type(count) is not int or count <= 0
+                       for count in visits.values())):
+            raise ValueError("invalid_checkpoint_visits")
+        result.visits = dict(visits)
         result.regrets, result.average = data["regrets"], data["average"]
         result.iterations, result.total_nodes = data["iterations"], data["total_nodes"]
         if any(type(x) is not int or x < 0 for x in
@@ -216,19 +237,24 @@ class ExternalSamplingMCCFR:
         result.rng.setstate(_tuples(data["rng_state"]))
         return result
 
-    def export(self, *, rules_fingerprint, table_size, stack_depth_bb):
+    def export(self, *, rules_fingerprint, table_size, stack_depth_bb,
+               policy_factory=make_policy):
         if self.binding is not None and (
                 self.binding.get("rules_fingerprint") != rules_fingerprint
                 or self.binding.get("rules", {}).get("table_size") != table_size
                 or self.binding.get("stack_depth_bb") != str(stack_depth_bb)):
             raise ValueError("export_training_scope_mismatch")
-        return make_policy(
+        document = policy_factory(
             rules_fingerprint=rules_fingerprint, table_size=table_size,
             stack_depth_bb=stack_depth_bb, policy=self.average_policy(),
             training={"algorithm": "external_sampling_simple_linear_v1",
                       "multiplayer_averaging": "SIMPLE_APPROXIMATION",
                       "seed": self.seed, "iterations": self.iterations,
                       "nodes": self.total_nodes,
+                      "update_regrets": self.update_regrets,
                       "checkpoint_sha256": self.checkpoint()["sha256"],
                       "empirical_strength": "NOT_ASSESSED"},
         )
+        if document.get("encoder") != self.encoder_id:
+            raise ValueError("export_encoder_factory_mismatch")
+        return document
