@@ -9,6 +9,7 @@ import pytest
 from poker_engine.strategy.aa_frozen_policy import canonical_hash
 from poker_engine.strategy.aa_learning_diagnostics import learning_summary, memory_usage
 from poker_engine.strategy.aa_mccfr import ExternalSamplingMCCFR, TrainingBudget
+from poker_engine.strategy import aa_mccfr as mccfr_module
 from tools import aa_policy_readiness_study as study
 
 
@@ -46,6 +47,14 @@ def learner(**kwargs):
     return ExternalSamplingMCCFR((0, 1), seed=42,
                                  encoder=lambda obs: obs["key"],
                                  menu=lambda obs: obs["actions"], **kwargs)
+
+
+def naive_left_to_right_sum(values, start=0):
+    """CPython 3.11-style accumulation, even when tests run on newer Python."""
+    total = start
+    for value in values:
+        total += value
+    return total
 
 
 @pytest.fixture
@@ -153,6 +162,7 @@ def test_legacy_checkpoint_without_telemetry_remains_restorable():
     old.pop("sha256")
     old.pop("update_regrets")
     old.pop("committed_visits")
+    old.pop("numerical_semantics")
     old["sha256"] = canonical_hash(old)
     restored = ExternalSamplingMCCFR.restore(old)
     assert restored.regrets == trainer.regrets
@@ -553,7 +563,13 @@ def test_query_gate_rejects_consistently_rehashed_truncated_suffixes(frozen):
 
 
 @pytest.mark.parametrize("variant", ["V1_FIXED", "V2"])
-def test_sorted_json_full_aa_resume_matches_uninterrupted_development_deal(variant):
+@pytest.mark.parametrize("accumulator", ["native", "naive"])
+def test_sorted_json_full_aa_resume_matches_uninterrupted_development_deal(
+        variant, accumulator, monkeypatch):
+    # Newer CPython sum() is more accurate and can mask insertion-order bugs.
+    # Exercise the older naive accumulator explicitly on every supported runtime.
+    if accumulator == "naive":
+        monkeypatch.setattr(mccfr_module, "sum", naive_left_to_right_sum, raising=False)
     encoder_id, encoder, _, _ = study._components(variant)
     rules = study.rules_for(study.DEFAULT_RULES, 6)
     budget = TrainingBudget(max_nodes=10000, max_infosets=10000, seconds=30)
@@ -574,4 +590,32 @@ def test_sorted_json_full_aa_resume_matches_uninterrupted_development_deal(varia
         trainer.iterate(factory)
         resumed.iterate(factory)
     assert trainer.checkpoint() == resumed.checkpoint()
+    assert json.dumps(trainer.checkpoint(), sort_keys=True) == json.dumps(
+        resumed.checkpoint(), sort_keys=True)
     assert learning_summary(trainer, elapsed_seconds=1)["nonuniform_infosets"] > 0
+
+
+def test_normalization_is_json_order_independent_with_naive_float_sum(monkeypatch):
+    monkeypatch.setattr(mccfr_module, "sum", naive_left_to_right_sum, raising=False)
+    original = {"z": 1e16, "a": 1.0, "b": 1.0}
+    restored = json.loads(json.dumps(original, sort_keys=True))
+    # Demonstrates this test would catch the previous order-sensitive implementation.
+    assert naive_left_to_right_sum(original.values()) != naive_left_to_right_sum(
+        restored.values())
+    assert ExternalSamplingMCCFR._strategy(original) == ExternalSamplingMCCFR._strategy(
+        restored)
+    first, second = learner(), learner()
+    first.average, second.average = {"state": original}, {"state": restored}
+    assert json.dumps(first.average_policy(), sort_keys=True) == json.dumps(
+        second.average_policy(), sort_keys=True)
+
+
+def test_numerical_semantics_are_declared_and_unknown_future_semantics_rejected():
+    trainer = learner()
+    checkpoint = trainer.checkpoint()
+    assert checkpoint["numerical_semantics"] == mccfr_module.NUMERICAL_SEMANTICS
+    checkpoint.pop("sha256")
+    checkpoint["numerical_semantics"] = "unknown_future_numerics"
+    checkpoint["sha256"] = canonical_hash(checkpoint)
+    with pytest.raises(ValueError, match="numerical_semantics"):
+        ExternalSamplingMCCFR.restore(checkpoint)

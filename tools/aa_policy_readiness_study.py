@@ -27,7 +27,7 @@ from poker_engine.strategy.aa_frozen_policy import (
 )
 from poker_engine.strategy.aa_learning_diagnostics import learning_summary, memory_usage
 from poker_engine.strategy.aa_mccfr import (
-    ExternalSamplingMCCFR, TrainingBudget, TrainingBudgetExceeded,
+    ExternalSamplingMCCFR, NUMERICAL_SEMANTICS, TrainingBudget, TrainingBudgetExceeded,
 )
 from tools.aa_full_hand_lab import (
     ROOT, DEFAULT_RULES, AAFullHandArena, read_json, rules_for, write_new,
@@ -150,6 +150,7 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
     protocol = {
         "kind": "AA_POLICY_READINESS_V2", "player_counts": [6, 7, 8],
         "versions": list(VERSIONS), "training_seeds": list(TRAINING_SEEDS),
+        "numerical_semantics": NUMERICAL_SEMANTICS,
         "encoders": {"V1_FIXED": ENCODER_VERSION, "V2": ENCODER_VERSION_V2},
         "v2_abstraction_disclosure": ABSTRACTION_DISCLOSURE,
         "street_query_spec": deepcopy(CHALLENGE_SPEC),
@@ -590,6 +591,8 @@ def _verified_learning(output, manifest, case, operation):
     trainer = ExternalSamplingMCCFR.restore(
         saved["trainer"], expected_binding=binding, expected_encoder=encoder_id,
         update_regrets=operation == "train")
+    if saved["trainer"].get("numerical_semantics") != NUMERICAL_SEMANTICS:
+        raise ValueError("gate_checkpoint_numerical_semantics_mismatch")
     if (trainer.players != tuple(range(case["players"]))
             or trainer.seed != case["training_seed"]):
         raise ValueError("gate_training_seed_or_players_mismatch")
@@ -612,6 +615,7 @@ def _verified_learning(output, manifest, case, operation):
             or document["training"].get("seed") != trainer.seed
             or document["training"].get("nodes") != trainer.total_nodes
             or document["training"].get("update_regrets") is not trainer.update_regrets
+            or document["training"].get("numerical_semantics") != NUMERICAL_SEMANTICS
             or frozen.frozen_map() != trainer.average_policy()):
         raise ValueError("gate_export_does_not_match_committed_training_state")
     diagnostics = learning_summary(trainer, elapsed_seconds=saved["elapsed_seconds"],

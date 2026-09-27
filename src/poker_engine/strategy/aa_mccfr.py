@@ -4,6 +4,10 @@ Uses SIMPLE multiplayer averaging (sampled next-player updates) with linear
 iteration weights. For N>2 it is an empirical approximation, not an unbiased
 full-tree average or a multiplayer Nash-convergence guarantee. Each whole sweep
 is transactional: budget failure commits no partial regret or policy updates.
+
+Normalization sums use sorted action IDs so JSON object ordering cannot alter
+continuation. Floating arithmetic remains bound to the frozen Python runtime;
+this is not a cross-version or cross-platform numerical identity guarantee.
 """
 from __future__ import annotations
 
@@ -14,6 +18,9 @@ import random
 import time
 
 from .aa_frozen_policy import action_ids, canonical_hash, information_key, make_policy
+
+
+NUMERICAL_SEMANTICS = "canonical_action_sum_v1_runtime_bound"
 
 
 class TrainingBudgetExceeded(RuntimeError):
@@ -65,7 +72,7 @@ class ExternalSamplingMCCFR:
     @staticmethod
     def _strategy(values):
         positive = {action: max(0.0, value) for action, value in values.items()}
-        total = sum(positive.values())
+        total = sum(positive[action] for action in sorted(positive))
         return ({action: value / total for action, value in positive.items()}
                 if total else {action: 1 / len(values) for action in values})
 
@@ -165,7 +172,7 @@ class ExternalSamplingMCCFR:
     def average_policy(self):
         result = {}
         for key, values in self.average.items():
-            total = sum(values.values())
+            total = sum(values[action] for action in sorted(values))
             if total:
                 result[key] = {a: value / total for a, value in values.items()}
         return result
@@ -178,6 +185,7 @@ class ExternalSamplingMCCFR:
             "regrets": deepcopy(self.regrets), "average": deepcopy(self.average),
             "rng_state": self.rng.getstate(), "status": "research_only",
             "algorithm": "external_sampling_simple_linear_v1",
+            "numerical_semantics": NUMERICAL_SEMANTICS,
             "binding": deepcopy(self.binding), "encoder_id": self.encoder_id,
             "update_regrets": self.update_regrets,
             "committed_visits": dict(self.visits),
@@ -195,6 +203,8 @@ class ExternalSamplingMCCFR:
                 or data.get("algorithm") != "external_sampling_simple_linear_v1"
                 or data.get("status") != "research_only"):
             raise ValueError("unsupported_checkpoint")
+        if data.get("numerical_semantics") not in (None, NUMERICAL_SEMANTICS):
+            raise ValueError("unsupported_checkpoint_numerical_semantics")
         expected_binding = kwargs.pop("expected_binding", None)
         expected_encoder = kwargs.pop("expected_encoder", "aa_rank_texture_v1")
         if (data.get("binding") != expected_binding
@@ -248,6 +258,7 @@ class ExternalSamplingMCCFR:
             rules_fingerprint=rules_fingerprint, table_size=table_size,
             stack_depth_bb=stack_depth_bb, policy=self.average_policy(),
             training={"algorithm": "external_sampling_simple_linear_v1",
+                      "numerical_semantics": NUMERICAL_SEMANTICS,
                       "multiplayer_averaging": "SIMPLE_APPROXIMATION",
                       "seed": self.seed, "iterations": self.iterations,
                       "nodes": self.total_nodes,
