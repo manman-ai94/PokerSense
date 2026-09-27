@@ -241,9 +241,9 @@ def test_actual_owned_process_is_terminated_on_external_timeout():
     client = screen.WorkerClient({}, {}, target=hanging_fake_worker)
     try:
         assert client.receive(10)["status"] == "READY"
-        started = time.monotonic()
+        started = time.perf_counter()
         assert client.query({"synthetic": True}, 0.05)["status"] == "TIMEOUT"
-        assert time.monotonic() - started < 3
+        assert time.perf_counter() - started < 3
         assert not client.process.is_alive()
     finally:
         client.close()
@@ -448,7 +448,7 @@ def test_actual_worker_constructor_and_ready_chain_use_upstream_map_semantics(
         module = ModuleType(module_name)
         module.__file__ = str(path)
         monkeypatch.setitem(sys.modules, module_name, module)
-    runtime = {"packages": {}}
+    runtime = {"packages": {}, "clock": screen.clock_identity()}
     for name in ("torch", "transformers"):
         path = tmp_path / (name + "-stub.py")
         path.write_text("# Stub runtime identity only.\n")
@@ -505,3 +505,107 @@ def test_actual_worker_constructor_and_ready_chain_use_upstream_map_semantics(
         assert responses[0]["status"] == "ERROR"
         assert responses[0]["reason"] == "loaded_model_configuration_mismatch"
         assert calls == ["construct"]
+
+
+@pytest.mark.parametrize("finish,expected", [(0.2999, "VALID"), (0.3001, "TIMEOUT")])
+def test_deadline_uses_high_resolution_clock_for_transport_and_parent(
+        monkeypatch, finish, expected):
+    # Both real times quantize to 296.875ms on a 15.625ms coarse timer. They
+    # must nevertheless fall on opposite sides of the fixed 300ms deadline.
+    assert int(0.2999 * 64) / 64 == int(0.3001 * 64) / 64 == 0.296875
+    clock = {"now": 0.0, "phase": "parent", "reads": [], "coarse_reads": 0}
+
+    def high_resolution():
+        clock["reads"].append(clock["phase"])
+        return clock["now"]
+
+    def coarse():
+        clock["coarse_reads"] += 1
+        return int(clock["now"] * 64) / 64
+
+    class ImmediateThread:
+        def __init__(self, target, daemon):
+            assert daemon
+            self.target = target
+
+        def start(self):
+            clock["phase"] = "transport"
+            self.target()
+            clock["phase"] = "parent"
+
+        def join(self, timeout):
+            pass
+
+        def is_alive(self):
+            return False
+
+    def receive():
+        clock["now"] = finish
+        return {"status": "VALID"}
+
+    def cleanup():
+        clock["now"] += 0.005
+
+    monkeypatch.setattr(screen.time, "perf_counter", high_resolution)
+    monkeypatch.setattr(screen.time, "monotonic", coarse)
+    monkeypatch.setattr(screen.threading, "Thread", ImmediateThread)
+    client = screen.WorkerClient.__new__(screen.WorkerClient)
+    client.connection = SimpleNamespace(send=lambda value: None, recv=receive)
+    client.process = SimpleNamespace(is_alive=lambda: False)
+    client.close = cleanup
+    response = client.query({"synthetic": True}, 0.3)
+    assert response["status"] == expected
+    assert "transport" in clock["reads"] and "parent" in clock["reads"]
+    assert clock["coarse_reads"] == 0
+    if expected == "TIMEOUT":
+        assert response["acceptance_stopped_ms"] == pytest.approx(300.1)
+        assert response["cleanup_ms"] == pytest.approx(5.0)
+        assert response["elapsed_ms"] == pytest.approx(305.1)
+    else:
+        assert response["elapsed_ms"] == pytest.approx(299.9)
+
+
+def test_frozen_and_ready_clock_identity_refuse_clock_drift(frozen):
+    manifest = screen.load_manifest(frozen)
+    assert manifest["clock"] == manifest["runtime_identity"]["clock"]
+    assert manifest["clock"] == screen.clock_identity()
+    model, upstream, runtime = (manifest["models"][0], manifest["upstream"],
+                                manifest["runtime_identity"])
+    ready = screen.expected_ready(model, upstream, runtime)
+    ready["clock"] = {**ready["clock"], "implementation": "coarse_clock"}
+    with pytest.raises(ValueError, match="worker_identity"):
+        screen.validate_ready(ready, model, upstream, runtime)
+    manifest["clock"]["resolution"] = 0.015625
+    manifest.pop("sha256")
+    manifest["sha256"] = canonical_hash(manifest)
+    write(frozen / "manifest.json", manifest)
+    with pytest.raises(ValueError, match="protocol_mismatch"):
+        screen.load_manifest(frozen)
+
+
+def test_coarse_or_adjustable_perf_counter_is_refused(monkeypatch):
+    cases = ((0.015625, True, False), (0.0000001, False, False),
+             (0.0000001, True, True))
+    for resolution, monotonic, adjustable in cases:
+        monkeypatch.setattr(screen.time, "get_clock_info", lambda name: SimpleNamespace(
+            implementation="fake", resolution=resolution,
+            monotonic=monotonic, adjustable=adjustable))
+        with pytest.raises(ValueError, match="high_resolution_monotonic_clock"):
+            screen.clock_identity()
+
+
+def test_supervisor_reports_high_resolution_elapsed_and_labels_helper_clock(
+        tmp_path, monkeypatch):
+    ticks = iter((10.0, 10.1234))
+    monkeypatch.setattr(screen.time, "perf_counter", lambda: next(ticks))
+
+    def fake_bounded(command, *, seconds, cwd, log_path):
+        assert seconds == 590
+        return {"status": "EXITED", "returncode": 0, "elapsed_seconds": 0.109375}
+
+    monkeypatch.setattr(screen, "run_bounded", fake_bounded)
+    result = screen.supervised_run(tmp_path, 600)
+    assert result["elapsed_seconds"] == pytest.approx(0.1234)
+    assert result["helper_elapsed_seconds"] == 0.109375
+    assert result["clock"]["name"] == "perf_counter"
+    assert result["helper_elapsed_clock"] == "monotonic_in_reused_run_bounded"

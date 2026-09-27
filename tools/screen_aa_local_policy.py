@@ -148,6 +148,16 @@ def _file_receipt(path):
     return {"path": str(path), "sha256": _sha(path)}
 
 
+def clock_identity():
+    """Use the same monotonic high-resolution clock for all measured intervals."""
+    info = time.get_clock_info("perf_counter")
+    if not info.monotonic or info.adjustable or not 0 < info.resolution <= 0.001:
+        raise ValueError("high_resolution_monotonic_clock_required")
+    return {"name": "perf_counter", "implementation": info.implementation,
+            "resolution": info.resolution, "monotonic": info.monotonic,
+            "adjustable": info.adjustable}
+
+
 def runtime_identity():
     """Interpreter and dependency metadata identities, without importing ML packages."""
     packages = {}
@@ -171,6 +181,7 @@ def runtime_identity():
     base = getattr(sys, "_base_executable", sys.executable)
     return {"python_version": sys.version,
             "implementation": platform.python_implementation(),
+            "clock": clock_identity(),
             "cache_tag": sys.implementation.cache_tag,
             "executable": _file_receipt(sys.executable),
             "base_executable": _file_receipt(base),
@@ -282,6 +293,7 @@ def freeze(output, model_08b, model_2b, upstream_package):
         "source_sha256": _source_hashes(), "expected_queries": 48,
         "pokerkit_version": importlib.metadata.version("pokerkit"),
         "runtime_identity": runtime_identity(),
+        "clock": clock_identity(),
         "strategy_eligible": False, "advice_emitted": False,
     }
     manifest["sha256"] = canonical_hash(manifest)
@@ -301,6 +313,7 @@ def load_manifest(output):
                      "batch_cap_seconds": MAX_BATCH_SECONDS,
                      "hard_deadline_query_id": "n8-min_raise_first-river"}
     if (manifest["source_sha256"] != _source_hashes()
+            or manifest.get("clock") != clock_identity()
             or manifest.get("runtime_identity") != runtime_identity()
             or manifest.get("pokerkit_version")
             != importlib.metadata.version("pokerkit")
@@ -346,6 +359,7 @@ def expected_ready(model, upstream, runtime):
     directory = str(Path(model["directory"]).resolve())
     return {
         "runtime_identity": runtime,
+        "clock": runtime["clock"],
         "upstream_modules": {
             ("decider" if name == "decider/__init__.py" else
              name[:-3].replace("/", ".")):
@@ -379,6 +393,7 @@ def loaded_ready(decider, model, upstream, runtime):
     """Receipts are measured from imported modules and the actual loaded objects."""
     result = {
         "runtime_identity": _require_runtime(runtime),
+        "clock": clock_identity(),
         "upstream_modules": {
             name: _file_receipt(sys.modules[name].__file__)
             for name in expected_ready(model, upstream, runtime)["upstream_modules"]},
@@ -547,7 +562,7 @@ class WorkerClient:
 
     def _exchange(self, seconds, query=None, send=False):
         """Bound serialization, blocked writes and partial reads by one deadline."""
-        started = time.monotonic()
+        started = time.perf_counter()
         deadline = started + max(0, seconds)
         done = threading.Event()
         box = {}
@@ -563,20 +578,20 @@ class WorkerClient:
             except BaseException as exc:
                 box["value"] = _error(exc)
             finally:
-                box["finished"] = time.monotonic()
+                box["finished"] = time.perf_counter()
                 done.set()
 
         thread = threading.Thread(target=transport, daemon=True)
         thread.start()
-        done.wait(max(0, deadline - time.monotonic()))
-        accepted_at = time.monotonic()
+        done.wait(max(0, deadline - time.perf_counter()))
+        accepted_at = time.perf_counter()
         if (not done.is_set() or box.get("finished", accepted_at) > deadline
                 or accepted_at > deadline):
             # Stop accepting now, regardless of whether a thread is in pickle,
             # send, or a partially delivered recv. Cleanup is separately timed.
             self.close()
             thread.join(timeout=0.1)
-            finished = time.monotonic()
+            finished = time.perf_counter()
             return {"status": "TIMEOUT", "reason": "owned_worker_deadline",
                     "deadline_ms": max(0, seconds) * 1000,
                     "acceptance_stopped_ms": (accepted_at - started) * 1000,
@@ -627,7 +642,7 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
                asset_verifier=verify_assets):
     if type(batch_seconds) is not int or not 1 <= batch_seconds <= MAX_BATCH_SECONDS:
         raise ValueError("invalid_batch_budget")
-    started = time.monotonic()
+    started = time.perf_counter()
     # Leave time for owned-worker teardown and final atomic report persistence.
     deadline = started + batch_seconds - min(15, batch_seconds / 5)
     output = Path(output)
@@ -638,13 +653,13 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
     report["started"] = True
 
     def save():
-        report["elapsed_seconds"] = time.monotonic() - started
+        report["elapsed_seconds"] = time.perf_counter() - started
         _summary(report)
         _atomic(output / "results.json", report)
 
     save()
     for spec, result in zip(manifest["models"], report["models"]):
-        if time.monotonic() >= deadline:
+        if time.perf_counter() >= deadline:
             result["load"] = {"status": "NOT_RUN", "reason": "batch_budget"}
             save()
             continue
@@ -658,11 +673,11 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
                     row.update(status="MODEL_NOT_READY", reason=str(exc))
                 save()
                 continue
-            load_started = time.monotonic()
+            load_started = time.perf_counter()
             client = client_factory(spec, manifest["upstream"],
                                     runtime=manifest["runtime_identity"])
-            result["load"] = client.receive(min(120, deadline - time.monotonic()))
-            result["load"]["elapsed_ms"] = (time.monotonic() - load_started) * 1000
+            result["load"] = client.receive(min(120, deadline - time.perf_counter()))
+            result["load"]["elapsed_ms"] = (time.perf_counter() - load_started) * 1000
             save()
             if result["load"]["status"] != "READY":
                 for row in result["queries"]:
@@ -672,23 +687,23 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
             validate_ready(result["load"], spec, manifest["upstream"],
                            manifest["runtime_identity"])
             result["warmup"] = client.query(
-                manifest["queries"][0], min(10, deadline - time.monotonic()))
+                manifest["queries"][0], min(10, deadline - time.perf_counter()))
             result["warmup"]["included_in_denominator"] = False
             save()
             alive = result["warmup"]["status"] != "TIMEOUT"
             for query, row in zip(manifest["queries"], result["queries"]):
-                if not alive or time.monotonic() >= deadline:
+                if not alive or time.perf_counter() >= deadline:
                     row["reason"] = "worker_unavailable_or_batch_budget"
                     continue
-                response = client.query(query, min(10, deadline - time.monotonic()))
+                response = client.query(query, min(10, deadline - time.perf_counter()))
                 if response["status"] == "VALID" and response["elapsed_ms"] > 300:
                     response["status"] = "LATE_VALID"
                 row.update(response)
                 alive = response["status"] != "TIMEOUT"
                 save()
-            if alive and time.monotonic() < deadline:
+            if alive and time.perf_counter() < deadline:
                 result["hard_deadline"] = client.query(
-                    manifest["queries"][-1], min(0.3, deadline - time.monotonic()))
+                    manifest["queries"][-1], min(0.3, deadline - time.perf_counter()))
                 result["hard_deadline"].update(
                     budget_ms=300, included_in_denominator=False,
                     query_id=manifest["hard_deadline_query_id"])
@@ -711,6 +726,7 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
 
 
 def supervised_run(output, batch_seconds=600):
+    started = time.perf_counter()
     if type(batch_seconds) is not int or not 1 <= batch_seconds <= MAX_BATCH_SECONDS:
         raise ValueError("invalid_batch_budget")
     output = Path(output).resolve()
@@ -719,6 +735,10 @@ def supervised_run(output, batch_seconds=600):
     result = run_bounded(command, seconds=batch_seconds - min(10, batch_seconds / 5),
                          cwd=ROOT,
                          log_path=output / "screen.log")
+    result["helper_elapsed_seconds"] = result["elapsed_seconds"]
+    result["helper_elapsed_clock"] = "monotonic_in_reused_run_bounded"
+    result["elapsed_seconds"] = time.perf_counter() - started
+    result["clock"] = clock_identity()
     _atomic(output / "supervisor.json", result)
     return result
 
