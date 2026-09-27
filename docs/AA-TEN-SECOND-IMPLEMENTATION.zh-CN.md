@@ -35,6 +35,16 @@ python -m tools.aa_full_hand_lab train --players 8 --seed 1103 --iterations 10 -
 python -m tools.aa_full_hand_lab evaluate --players 8 --candidate outputs/train-n8/policy.json --blocks 2 --output outputs/eval-smoke
 ```
 
+自动串联九个配置的工程批次使用：
+
+```powershell
+python tools/aa_self_play_study.py --smoke --output outputs/study-new --training-seconds 1 --iterations 1 --max-nodes 1000 --max-infosets 1000 --max-actions 100
+```
+
+它在首次训练前冻结全部计划、协议和代码摘要，随后训练、保存策略、重新加载评估、
+保留全部结果。详细预算、分母、中断和源码漂移合同见
+[单命令研究说明](AA-SELF-PLAY-STUDY.zh-CN.md)。
+
 输出目录必须不存在，避免覆盖旧研究。训练每完成一个完整 sweep 原子更新
 `latest-checkpoint.json`；`checkpoint.json` 是本次结束状态。续训使用新的输出目录
 和 `--resume <旧checkpoint>`，规则、深度、协议、种子、编码器必须完全一致。
@@ -56,8 +66,8 @@ python -m tools.aa_full_hand_lab evaluate --players 8 --candidate outputs/train-
 不把环境发牌 seed 发送给策略。规则中的 1/2、ante2、straddle4、3%／2BB 均为
 既有明确模拟配置，不能解释真实 AA 费用。
 
-- 全部 6/7/8 人、三个训练种子、固定对手池与样本量均须保留。当前 CLI 支持逐配置
-  执行，不提供无人值守长期调参或自动晋升；运行完成不自动选择“最好种子”。
+- 全部 6/7/8 人、三个训练种子、固定对手池与样本量均须保留。CLI 支持逐配置与
+  有界自动批次，不提供无人值守长期调参或自动晋升；不自动选择“最好种子”。
 - 全套预定 2000 块评估、未见风格／针对性对手、混合桌、50/200BB／不等码压力测试、
   独立确认与 5BB/100 非劣门槛仍需完成。当前基础脚本对手不足以证明策略稳定。
 - 不足额强制盲注／straddle 开局被拒绝，避免 PokerKit 低于名义盲注的语义偏差。
@@ -82,6 +92,11 @@ python -m tools.aa_full_hand_lab evaluate --players 8 --candidate outputs/train-
 **不能用于实战**，并验证了覆盖缺失会被正确阻断。不得用训练成功或 Kuhn 小游戏通过
 掩盖这个结果。
 
+新增单命令 smoke 另完整执行九个一-sweep 配置：全部训练调用完成，预定 378 个
+配对机会全部因策略覆盖不足 BLOCKED，完成 0；原 manifest、九个策略及全部失败保留。
+这证明编排链能执行并如实阻断，仍不证明学习收益。批处理新增 15 项聚焦测试通过，
+独立复审修复了声明训练 seed 域与学习器实际域不一致的反例。
+
 原 3 项独立 P1（续训绑定、嵌套隐藏信息、异常 checkpoint 部分更新）均已修复并
 独立复验。详细运行和打包证据保留在实施目录的 `outputs/`，不包含真实媒体。
 
@@ -92,3 +107,7 @@ flake8 和 diff 检查通过。旧 30 场景基线摘要仍为
 冻结 EXE 的观察页和拒答状态卡。冻结 EXE 在无源码工作目录／无 PYTHONPATH 下
 通过自检、13 个端点及独立子进程计算，并拒绝默认采集请求。当地没有 Inno Setup，
 因此安装器编译和实际安装未由本地检查覆盖。
+
+初始工程 head `5ce06ca` 的 GitHub CI `36301773529`（Windows/macOS/hygiene）
+与构建 `36301786735` 已通过，后者已编译 AA Windows 安装器并跳过 Release。
+新增独立批处理工具之后的最新 head 另行核对 CI，不能继承旧提交绿灯。

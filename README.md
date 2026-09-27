@@ -10,6 +10,9 @@ end-to-end latency and empirical strategy strength remain unverified. Capture an
 model APIs are off by default; private recognition models remain external.
 See the [implementation and acceptance checklist](docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md),
 including the failed coverage result of this increment's short training probe.
+The [bounded study command](docs/AA-SELF-PLAY-STUDY.zh-CN.md) freezes and executes
+all nine player-count/seed configurations, retaining failures without automatic
+tuning, best-seed selection, paid calls, or live promotion.
 
 ## AA eight-seat development monitor
 

@@ -54,6 +54,13 @@ changing desktop capture, recognition, packaging, or project documentation.
   Inno compiler absent. No capture, paid inference/cloud, merge/tag/release.
   Old dirty primary and rejected experiments preserved. Start with
   docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md; do not call this live readiness.
+  Follow-up adds one-command frozen nine-case study orchestration, with 15
+  focused tests and independent seed-domain counterexample review. Actual
+  one-sweep smoke retains all 9 cases and 378/378 blocked paired opportunities;
+  no EV/strategy promotion. Draft PR #37; initial head 5ce06ca CI36301773529
+  passed Windows/macOS/hygiene, build36301786735 produced AA Windows installer
+  and legacy macOS artifacts with release skipped. Later study-only changes
+  require their own latest-head checks; these runs are not relabeled.
 - **2026-09-23 INDEPENDENT PR #34 EVALUATION GATE:** independently audited
   original head `4f59d723f20fab760b50c0f2de1ec88a5b9b1b8f` against exact main
   `d98084aba96eac6ff3bc0cf07dad99b00e36ff31`. Recompiled all six V1 books from
