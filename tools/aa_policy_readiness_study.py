@@ -104,7 +104,7 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
     from poker_engine.strategy.aa_policy_encoding_v2 import (
         ABSTRACTION_DISCLOSURE, ENCODER_VERSION_V2,
     )
-    from tools.aa_policy_street_challenges import CHALLENGE_SPEC
+    from tools.aa_policy_street_challenges import CHALLENGE_SPEC, challenge_observations
     _validate_number(training_seconds, "training_seconds", 60)
     for name, value in (("requested_sweeps", requested_sweeps),
                         ("max_nodes", max_nodes),
@@ -112,9 +112,23 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
         if type(value) is not int or value <= 0:
             raise ValueError("invalid_count_budget:" + name)
     rules = {str(n): rules_for(rules_path, n).to_dict() for n in (6, 7, 8)}
+    query_schedules = {}
+    for n in (6, 7, 8):
+        profile = rules_for(rules_path, n)
+        query_schedules[str(n)] = {}
+        for kind in CHALLENGE_SPEC["kinds"]:
+            schedules = [[{"actor": obs["actor"], "street": obs["street"]}
+                          for obs in challenge_observations(profile, kind, seed)]
+                         for seed in (4441, 4442)]
+            if schedules[0] != schedules[1]:
+                raise ValueError("query_schedule_depends_on_development_deal")
+            query_schedules[str(n)][kind] = schedules[0]
     cases = [{"id": f"{variant.lower()}-n{n}-seed{seed}", "version": variant,
               "players": n, "training_seed": seed,
-              "expected_pairs": n * len(EVALUATION_SEEDS) * len(OPPONENT_NAMES)}
+              "expected_pairs": n * len(EVALUATION_SEEDS) * len(OPPONENT_NAMES),
+              "expected_queries": (len(CHALLENGE_SPEC["seeds"]) * sum(
+                  len(rows) for rows in query_schedules[str(n)].values())
+                  if variant == "V2" else 0)}
              for variant in VERSIONS for n in (6, 7, 8) for seed in TRAINING_SEEDS]
     jobs = []
     for case in cases:
@@ -131,7 +145,8 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
                          "expected_pairs": case["players"] * len(EVALUATION_SEEDS)})
         if case["version"] == "V2":
             jobs.append({"id": case["id"] + "-query", "case_id": case["id"],
-                         "operation": "query", "expected_pairs": 0})
+                         "operation": "query", "expected_pairs": 0,
+                         "expected_queries": case["expected_queries"]})
     protocol = {
         "kind": "AA_POLICY_READINESS_V2", "player_counts": [6, 7, 8],
         "versions": list(VERSIONS), "training_seeds": list(TRAINING_SEEDS),
@@ -139,6 +154,8 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
         "v2_abstraction_disclosure": ABSTRACTION_DISCLOSURE,
         "street_query_spec": deepcopy(CHALLENGE_SPEC),
         "street_query_spec_sha256": canonical_hash(CHALLENGE_SPEC),
+        "street_query_schedules": query_schedules,
+        "query_schedule_provenance": "POLICY_FREE_SCRIPTS_ON_DEVELOPMENT_4441_4442",
         "training_deal_domain": [2 ** 62, 2 ** 63],
         "evaluation_seeds": list(EVALUATION_SEEDS),
         "confirmation_seed_domain_reserved": [4000000, 4000030],
@@ -165,6 +182,8 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
         "batch_deadline_includes": ["identity", "train", "evaluate", "save"],
         "max_batch_seconds": MAX_BATCH_SECONDS,
         "training_budget_includes": "whole_case_fit_and_checkpoint_save",
+        "final_serialization_reserve": {"seconds_cap": 5.0, "slot_fraction": 0.2,
+                                        "within_frozen_case_budget": True},
         "evaluation_shard": "candidate_style; atomic_one_seed_all_hero_rotations",
     }
     manifest = _bound_document({
@@ -172,6 +191,7 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
         "rules": rules, "rules_source_sha256": _hash_file(rules_path),
         "cases": cases, "jobs": jobs, "expected_cases": 18,
         "expected_pairs": sum(case["expected_pairs"] for case in cases),
+        "expected_queries": sum(case["expected_queries"] for case in cases),
         "strategy_eligible": False, "advice_emitted": False,
     })
     output = Path(output)
@@ -296,7 +316,8 @@ def train_job(output, job_id, seconds):
     deadline = started + seconds
     reason = "REQUESTED_SWEEPS_COMPLETE"
     # Reserve bounded final serialization time within the externally enforced slot.
-    reserve = min(1.0, seconds * 0.1)
+    reserve_spec = protocol["final_serialization_reserve"]
+    reserve = min(reserve_spec["seconds_cap"], seconds * reserve_spec["slot_fraction"])
     while trainer.iterations < requested:
         remaining = deadline - time.monotonic() - reserve
         if remaining <= 0:
@@ -470,10 +491,11 @@ def _control_comparison(output, case):
             "scope": "fixed_two_sweep_negative_control_not_equal_budget"}
 
 
-def _query_success(query, spec):
+def _query_success(query, spec, schedule):
     """Check row/counter consistency; development queries cannot pass admission."""
     report = query["query_report"]
-    if (report.get("development_only") is not False or report.get("spec") != spec
+    if (spec.get("version") != "AA_STREET_QUERY_CHALLENGES_V1"
+            or report.get("development_only") is not False or report.get("spec") != spec
             or report.get("spec_sha256") != canonical_hash(spec)):
         return False
     counts = {street: {"opportunities": 0, "hit": 0, "illegal": 0}
@@ -483,6 +505,12 @@ def _query_success(query, spec):
     for row in report["rows"]:
         group = (row["kind"], row["seed"])
         groups.setdefault(group, []).append(row["index"])
+        expected = schedule.get(row["kind"], [])
+        if (type(row["index"]) is not int or row["index"] < 0
+                or row["index"] >= len(expected)
+                or expected[row["index"]] != {
+                    "actor": row["actor"], "street": row["street"]}):
+            return False
         scoped = row["kind"] != "side_pot_scope"
         if row["scope_expected"] is not scoped:
             return False
@@ -497,7 +525,8 @@ def _query_success(query, spec):
             return False
     expected_groups = {(kind, seed) for kind in spec["kinds"] for seed in spec["seeds"]}
     if (set(groups) != expected_groups
-            or any(indices != list(range(len(indices))) for indices in groups.values())
+            or any(indices != list(range(len(schedule[kind])))
+                   for (kind, _), indices in groups.items())
             or counts != report["by_street"]
             or scope_failures != report["side_pot_scope_failures"]):
         return False
@@ -633,6 +662,10 @@ def summarize(output, manifest, state):
                     or query["binding"].get("query_spec_sha256")
                     != manifest["protocol"]["street_query_spec_sha256"]):
                 raise ValueError("query_artifact_binding_mismatch")
+        executed_queries = (len(query["query_report"]["rows"])
+                            if query is not None else 0)
+        if executed_queries > case["expected_queries"]:
+            raise ValueError("query_denominator_mismatch")
         coverage = summarize_opportunities(branches)
         latencies = sorted(op["policy_latency_ms"] for branch in branches
                            for op in branch.get("hero_opportunities", [])
@@ -658,7 +691,9 @@ def summarize(output, manifest, state):
                 and query["query_report"]["status"] == "COMPLETE_QUERY_DIAGNOSTIC"):
             gate3_pass = (
                 complete / case["expected_pairs"] >= 0.8
-                and _query_success(query, manifest["protocol"]["street_query_spec"])
+                and _query_success(query, manifest["protocol"]["street_query_spec"],
+                                   manifest["protocol"]["street_query_schedules"][
+                                       str(case["players"])])
                 and not any(coverage["failure_counts"].get(name, 0)
                             for name in ("ILLEGAL_ACTION", "INVALID_MENU",
                                          "ADAPTER_ERROR", "SCOPE_MISMATCH")))
@@ -672,6 +707,8 @@ def summarize(output, manifest, state):
                          output, case["id"] + "-control", manifest)),
                      "control_comparison": _control_comparison(output, case),
                      "street_query": query, "gate3": gate3_status,
+                     "executed_queries": executed_queries,
+                     "unexecuted_queries": case["expected_queries"] - executed_queries,
                      "complete_pairs": complete, "blocked_pairs": blocked,
                      "unexecuted_pairs": case["expected_pairs"] - evaluated,
                      "complete_hand_fraction": complete / case["expected_pairs"],
@@ -692,6 +729,9 @@ def summarize(output, manifest, state):
             "complete_pairs": sum(row["complete_pairs"] for row in rows),
             "blocked_pairs": sum(row["blocked_pairs"] for row in rows),
             "unexecuted_pairs": sum(row["unexecuted_pairs"] for row in rows),
+            "expected_queries": manifest["expected_queries"],
+            "executed_queries": sum(row["executed_queries"] for row in rows),
+            "unexecuted_queries": sum(row["unexecuted_queries"] for row in rows),
             "gate2": (gate2(output, manifest) if current else {
                 "status": "BLOCKED", "reasons": [{"reason": "SOURCE_DRIFT"}]}),
             "jobs": deepcopy(state["jobs"]),

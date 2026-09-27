@@ -91,6 +91,9 @@ def test_manifest_has_all_version_seed_cases_and_unexecuted_denominator(frozen):
     assert protocol["evaluation_seeds"] == list(range(700, 730))
     assert protocol["control"]["requested_sweeps"] == 2
     assert protocol["max_batch_seconds"] == 3600
+    assert protocol["final_serialization_reserve"] == {
+        "seconds_cap": 5.0, "slot_fraction": 0.2, "within_frozen_case_budget": True}
+    assert manifest["expected_queries"] == 1260  # only development two-seed fixtures
     with pytest.raises(FileExistsError):
         study.freeze(output)
 
@@ -493,7 +496,8 @@ def test_actual_development_query_job_is_bound_and_cannot_pass_admission(frozen)
     assert report["hidden_input_probe"]["passed"]
     assert report["binding"]["query_spec_sha256"] == manifest["protocol"][
         "street_query_spec_sha256"]
-    assert not study._query_success(report, manifest["protocol"]["street_query_spec"])
+    assert not study._query_success(report, manifest["protocol"]["street_query_spec"],
+                                    manifest["protocol"]["street_query_schedules"]["6"])
     before = (directory / "result.json").read_bytes()
     study.query_job(output, job_id, deadline=time.monotonic() + 20)
     assert (directory / "result.json").read_bytes() == before
@@ -510,3 +514,64 @@ def test_rehashed_manifest_cannot_remove_failed_cases_from_denominator(frozen):
     with pytest.raises(ValueError, match="denominator"):
         study.load_frozen(output)
     assert study.gate2(output, {"cases": []})["status"] == "BLOCKED"
+
+
+def test_query_gate_rejects_consistently_rehashed_truncated_suffixes(frozen):
+    _, manifest = frozen
+    spec = deepcopy(manifest["protocol"]["street_query_spec"])
+    spec["version"] = "AA_STREET_QUERY_CHALLENGES_V1"
+    schedule = manifest["protocol"]["street_query_schedules"]["6"]
+    rows = []
+    for kind in spec["kinds"]:
+        for seed in spec["seeds"]:
+            for index, expected in enumerate(schedule[kind]):
+                scoped = kind != "side_pot_scope"
+                rows.append({**expected, "kind": kind, "seed": seed, "index": index,
+                             "scope_expected": scoped,
+                             "legal": True if scoped else None,
+                             "lookup_status": "HIT" if scoped else "SCOPE_MISMATCH"})
+
+    def result(query_rows):
+        counts = {street: {"opportunities": 0, "hit": 0, "illegal": 0}
+                  for street in ("preflop", "flop", "turn", "river")}
+        for row in query_rows:
+            if row["scope_expected"]:
+                counts[row["street"]]["opportunities"] += 1
+                counts[row["street"]]["hit"] += 1
+        return {"query_report": {
+            "spec": spec, "spec_sha256": canonical_hash(spec),
+            "development_only": False,
+            "rows": query_rows, "by_street": counts, "side_pot_scope_failures": 0,
+            "all_streets_have_positive": True},
+            "hidden_input_probe": {"passed": True, "cases": [
+                {"container": name, "rejected": True}
+                for name in (None, "public_history", "rules")]}}
+
+    assert study._query_success(result(rows), spec, schedule)
+    truncated = [row for row in rows if row["index"] < len(schedule[row["kind"]]) - 1]
+    assert not study._query_success(result(truncated), spec, schedule)
+
+
+@pytest.mark.parametrize("variant", ["V1_FIXED", "V2"])
+def test_sorted_json_full_aa_resume_matches_uninterrupted_development_deal(variant):
+    encoder_id, encoder, _, _ = study._components(variant)
+    rules = study.rules_for(study.DEFAULT_RULES, 6)
+    budget = TrainingBudget(max_nodes=10000, max_infosets=10000, seconds=30)
+    trainer = ExternalSamplingMCCFR(range(6), seed=71013, budget=budget,
+                                    encoder=encoder, encoder_id=encoder_id)
+
+    def factory(unused_seed):
+        # Repeated DEVELOPMENT deal deliberately creates revisits for numerical
+        # continuation checking. It is never used as a learning-quality result.
+        return study.AAFullHandArena(rules).reset(71012)
+
+    for _ in range(3):
+        trainer.iterate(factory)
+    checkpoint = json.loads(json.dumps(trainer.checkpoint(), sort_keys=True))
+    resumed = ExternalSamplingMCCFR.restore(checkpoint, budget=budget, encoder=encoder,
+                                            expected_encoder=encoder_id)
+    for _ in range(3):
+        trainer.iterate(factory)
+        resumed.iterate(factory)
+    assert trainer.checkpoint() == resumed.checkpoint()
+    assert learning_summary(trainer, elapsed_seconds=1)["nonuniform_infosets"] > 0
