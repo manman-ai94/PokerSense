@@ -224,6 +224,15 @@ def train_job(output, job_id, seconds):
     """Runs only inside an externally killable child; save every complete sweep."""
     started = time.monotonic()
     manifest, job, case, rules, directory, binding = _context(output, job_id)
+    _validate_number(seconds, "training_job_seconds", job["seconds"])
+    reservation = read_json(Path(output) / "study-state.json")["jobs"][job_id]
+    if (reservation["status"] != "RUNNING" or not reservation["attempts"]
+            or reservation["attempts"][-1]["status"] != "RUNNING"
+            or seconds > reservation["attempts"][-1]["reserved_seconds"]
+            or seconds > job["seconds"] - reservation["charged_seconds"]):
+        raise ValueError("training_job_requires_remaining_scheduler_reservation")
+    if (directory / "result.json").exists():
+        raise ValueError("training_job_already_committed")
     protocol = manifest["protocol"]
     encoder_id, encoder, policy_factory, frozen_type = _components(case["version"])
     control = job["operation"] == "control"
@@ -239,6 +248,9 @@ def train_job(output, job_id, seconds):
         if saved["binding"] != binding:
             raise ValueError("study_checkpoint_binding_mismatch")
         prior_elapsed = saved["elapsed_seconds"]
+        if (prior_elapsed >= job["seconds"]
+                or seconds > job["seconds"] - prior_elapsed):
+            raise ValueError("training_checkpoint_exhausted_frozen_case_budget")
         restore_kwargs = dict(kwargs)
         restore_kwargs.pop("encoder_id")
         trainer = ExternalSamplingMCCFR.restore(
@@ -409,19 +421,81 @@ def _control_comparison(output, case):
 
 
 def gate2(output, manifest):
-    reasons = []
+    """Recompute gates from actual bound checkpoint and export, never report flags."""
+    reasons, verified_cases = [], []
     for case in manifest["cases"]:
         if case["version"] != "V2":
             continue
-        train = _result(output, case["id"] + "-train", manifest)
-        control = _result(output, case["id"] + "-control", manifest)
-        if not train or not train["diagnostics"]["learning_signal"]:
+        verified = {"case": case["id"]}
+        for operation in ("train", "control"):
+            try:
+                verified[operation] = _verified_learning(
+                    output, manifest, case, operation)
+            except (ValueError, KeyError, TypeError, OSError) as exc:
+                verified[operation] = None
+                reasons.append({"case": case["id"],
+                                "reason": operation.upper() + "_ARTIFACT_NOT_VERIFIED",
+                                "detail": str(exc)})
+        train, control = verified["train"], verified["control"]
+        if not train or not train["learning_signal"]:
             reasons.append({"case": case["id"], "reason": "NO_LEARNING_SIGNAL"})
-        if (not control or control["diagnostics"]["completed_sweeps"] < 2
-                or control["diagnostics"]["nonuniform_infosets"] != 0
-                or control["diagnostics"]["update_regrets"] is not False):
+        if (not control or control["completed_sweeps"] < 2
+                or control["nonuniform_infosets"] != 0
+                or control["update_regrets"] is not False):
             reasons.append({"case": case["id"], "reason": "CONTROL_NOT_VERIFIED"})
-    return {"status": "PASS" if not reasons else "BLOCKED", "reasons": reasons}
+        verified_cases.append(verified)
+    return {"status": "PASS" if not reasons else "BLOCKED", "reasons": reasons,
+            "verification": "RECOMPUTED_FROM_BOUND_CHECKPOINT_AND_FROZEN_EXPORT",
+            "verified_cases": verified_cases}
+
+
+def _verified_learning(output, manifest, case, operation):
+    job_id = case["id"] + "-" + operation
+    result = _result(output, job_id, manifest)
+    if (result is None or result.get("status") != "COMPLETE"
+            or not all(result.get(key) for key in (
+                "checkpoint_file_sha256", "policy_file_sha256", "policy_sha256",
+                "encoder"))):
+        raise ValueError("complete_result_with_mandatory_artifact_hashes_required")
+    directory = Path(output) / job_id
+    saved = _check_document(read_json(directory / "latest-checkpoint.json"))
+    binding = result["binding"]
+    encoder_id, _, _, cls = _components(case["version"])
+    if saved["binding"] != binding or result["encoder"] != encoder_id:
+        raise ValueError("gate_checkpoint_binding_or_encoder_mismatch")
+    trainer = ExternalSamplingMCCFR.restore(
+        saved["trainer"], expected_binding=binding, expected_encoder=encoder_id,
+        update_regrets=operation == "train")
+    if (trainer.players != tuple(range(case["players"]))
+            or trainer.seed != case["training_seed"]):
+        raise ValueError("gate_training_seed_or_players_mismatch")
+    requested = (manifest["protocol"]["requested_sweeps"] if operation == "train"
+                 else manifest["protocol"]["control"]["requested_sweeps"])
+    if trainer.iterations > requested:
+        raise ValueError("gate_training_exceeded_frozen_sweep_budget")
+    if operation == "control" and any(value != 0 for row in trainer.regrets.values()
+                                      for value in row.values()):
+        raise ValueError("zero_update_control_has_nonzero_regret")
+    document = read_json(directory / "policy.json")
+    frozen = cls(document)
+    if (document["sha256"] != result["policy_sha256"]
+            or document["rules_fingerprint"] != binding["rules_fingerprint"]
+            or document["table_size"] != case["players"]
+            or document["stack_depth_bb"] != "100"
+            or document["training"].get("checkpoint_sha256")
+            != saved["trainer"]["sha256"]
+            or document["training"].get("iterations") != trainer.iterations
+            or document["training"].get("seed") != trainer.seed
+            or document["training"].get("nodes") != trainer.total_nodes
+            or document["training"].get("update_regrets") is not trainer.update_regrets
+            or frozen.frozen_map() != trainer.average_policy()):
+        raise ValueError("gate_export_does_not_match_committed_training_state")
+    diagnostics = learning_summary(trainer, elapsed_seconds=saved["elapsed_seconds"],
+                                   threshold=manifest["protocol"]["gate2"][
+                                       "nonuniform_tv_threshold"])
+    return {key: diagnostics[key] for key in (
+        "completed_sweeps", "nonuniform_infosets",
+        "repeated_exported_nonuniform_infosets", "update_regrets", "learning_signal")}
 
 
 def summarize(output, manifest, state):

@@ -360,6 +360,10 @@ def test_actual_training_job_retains_atomic_state_on_node_budget_failure(
     output = tmp_path / variant
     manifest = study.freeze(output, max_nodes=1)
     job_id = variant + "-n6-seed1103-control"
+    state = study.read_json(output / "study-state.json")
+    state["jobs"][job_id].update(status="RUNNING", attempts=[
+        {"status": "RUNNING", "reserved_seconds": 0.5}])
+    study._atomic(output / "study-state.json", state)
     report = study.train_job(output, job_id, seconds=0.5)
     assert report["stop_reason"] == "whole_sweep_budget_exceeded"
     assert report["diagnostics"]["completed_sweeps"] == 0
@@ -372,3 +376,96 @@ def test_actual_training_job_retains_atomic_state_on_node_budget_failure(
     assert (output / job_id / "policy.json").exists()
     result = study._result(output, job_id, manifest)
     assert result["policy_sha256"] == report["policy_sha256"]
+
+
+def test_gate2_rejects_self_rehashed_success_flag_without_actual_artifacts(frozen):
+    output, manifest = frozen
+    for case in manifest["cases"]:
+        if case["version"] == "V2":
+            _fake_result(output, manifest, case["id"] + "-train",
+                         learning_signal=True, completed_sweeps=0,
+                         nonuniform_infosets=0, update_regrets=False)
+            _fake_result(output, manifest, case["id"] + "-control")
+    result = study.gate2(output, manifest)
+    assert result["status"] == "BLOCKED"
+    assert all(row["train"] is None for row in result["verified_cases"])
+    assert any(row["reason"] == "TRAIN_ARTIFACT_NOT_VERIFIED"
+               for row in result["reasons"])
+
+
+def test_gate2_recomputes_real_checkpoint_export_instead_of_report_flags(frozen):
+    output, manifest = frozen
+    case = next(case for case in manifest["cases"] if case["version"] == "V2")
+
+    class MoreSeatsToy(TinyGame):
+        def observe(self, actor):
+            view = super().observe(actor)
+            view["actions"] = ("fold", "check_call")
+            return view
+
+        def terminal_returns(self):
+            utility = (2 if self.history[0] == "fold" else 0) - (
+                1 if self.history[1] == "fold" else 0)
+            return {0: utility, 1: -utility,
+                    **{seat: 0 for seat in range(2, case["players"])}}
+
+    for operation in ("train", "control"):
+        job_id = case["id"] + "-" + operation
+        _, _, _, rules, directory, binding = study._context(output, job_id)
+        encoder_id, _, factory, _ = study._components(case["version"])
+        trainer = ExternalSamplingMCCFR(
+            range(case["players"]), seed=case["training_seed"], binding=binding,
+            encoder_id=encoder_id, update_regrets=operation == "train",
+            encoder=lambda obs: canonical_hash(obs["key"]),
+            menu=lambda obs: obs["actions"])
+        for _ in range(20 if operation == "train" else 2):
+            trainer.iterate(MoreSeatsToy)
+        study._checkpoint(directory / "latest-checkpoint.json", binding, trainer, 1)
+        document = trainer.export(rules_fingerprint=rules.fingerprint,
+                                  table_size=case["players"], stack_depth_bb=100,
+                                  policy_factory=factory)
+        study.write_new(directory / "policy.json", document)
+        report = {"binding": binding, "status": "COMPLETE", "encoder": encoder_id,
+                  "policy_sha256": document["sha256"],
+                  "policy_file_sha256": study._hash_file(directory / "policy.json"),
+                  "checkpoint_file_sha256": study._hash_file(
+                      directory / "latest-checkpoint.json"),
+                  "diagnostics": {"learning_signal": False, "completed_sweeps": 0}}
+        study.write_new(directory / "result.json", study._bound_document(report))
+    verified = study._verified_learning(output, manifest, case, "train")
+    assert verified["learning_signal"] and verified["completed_sweeps"] == 20
+    control = study._verified_learning(output, manifest, case, "control")
+    assert control["nonuniform_infosets"] == 0 and control["completed_sweeps"] == 2
+    # The other eight V2 cases still exist and prevent a global gate pass.
+    assert study.gate2(output, manifest)["status"] == "BLOCKED"
+    path = output / (case["id"] + "-train") / "policy.json"
+    modified = study.read_json(path)
+    modified.pop("sha256")
+    key = next(iter(modified["policy"]))
+    modified["policy"][key] = {a: 1 / len(modified["policy"][key])
+                               for a in modified["policy"][key]}
+    study._atomic(path, study._bound_document(modified))
+    result_path = path.parent / "result.json"
+    report = study.read_json(result_path)
+    report.pop("sha256")
+    report["policy_file_sha256"] = study._hash_file(path)
+    report["policy_sha256"] = study.read_json(path)["sha256"]
+    study._atomic(result_path, study._bound_document(report))
+    with pytest.raises(ValueError, match="export_does_not_match"):
+        study._verified_learning(output, manifest, case, "train")
+
+
+def test_private_job_entry_cannot_grant_new_time_or_bypass_scheduler(frozen):
+    output, manifest = frozen
+    job_id = manifest["cases"][0]["id"] + "-train"
+    with pytest.raises(ValueError, match="budget"):
+        study.train_job(output, job_id, seconds=61)
+    with pytest.raises(ValueError, match="scheduler_reservation"):
+        study.train_job(output, job_id, seconds=60)
+    state = study.read_json(output / "study-state.json")
+    state["jobs"][job_id].update(
+        status="RUNNING", charged_seconds=59,
+        attempts=[{"status": "RUNNING", "reserved_seconds": 60}])
+    study._atomic(output / "study-state.json", state)
+    with pytest.raises(ValueError, match="scheduler_reservation"):
+        study.train_job(output, job_id, seconds=2)
