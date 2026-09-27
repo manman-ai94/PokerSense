@@ -33,6 +33,23 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 POLICY READINESS V2 CLOSEOUT:** source40a42f5, manifest0b5750b5.
+  All99jobs complete:18train/18zero-update controls/54eval/9query. Training
+  1024.844s, evaluation258.156s under2400s supervised batch budgets. Independent
+  checkpoint/export recomputation confirms nineV2 85-97sweeps and41-56repeat
+  nonuniform infosets; all18controls two sweeps,zero regret,uniform. Numerical
+  recovery fixed and actual3.11/3.12 counterexamples pass; CI36310254293 green.
+  Gate3 NO_GO: V2 345/5670 complete(4.44-8.89% percase), V1 350/5670. All11340
+  pairs retained,10645UNKNOWN failures,EV null;3150queries complete,105preflop
+  hits,0/630 each postflopstreet,315expected out-of-scope refusals. Declared
+  malicious-input27/27 rejected,not universal leakage proof. Independent1620
+  shard audit agrees. V2misses4630unvisited+695regret-only/noaverage; no observed
+  exact/abstract collision in measured prefixes,not proof of global equivalence.
+  Actualnineassets passed shadow process load/repeat/legal/deadline probes using
+  already-seen preflop inputs; no physical latency/live/strength acceptance.
+  Stop this experiment; only next recommendation is finite preflop support-set
+  average-policy coverage study,not started. All old assets and dirty primary
+  preserved. Full result/commands:docs/AA-POLICY-READINESS-RESULTS-20260927.zh-CN.md.
 - **2026-09-27 POLICY READINESS V2, PRE-FIT FREEZE:** added explicit V2 suit/path
   encoding, versioned research assets, shared shadow loader, committed-visit
   learning diagnostics and bounded 18-case V1/V2 study with no-update controls.

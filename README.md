@@ -18,8 +18,10 @@ all nine player-count/seed configurations, retaining failures without automatic
 tuning, best-seed selection, paid calls, or live promotion.
 The [V2 readiness experiment](docs/AA-POLICY-READINESS-V2.zh-CN.md) separates
 real-policy integration, reproducible learning changes and unseen-hand execution.
-The initial fit is preserved after a Python 3.11 checkpoint-order failure;
-a corrected source-bound rerun is required before unseen evaluation.
+The corrected bounded run is complete: evaluation controls and reproducible
+learning changes pass, but all nine V2 candidates fail unseen-hand coverage.
+Only 345/5670 paired opportunities complete; postflop queries have zero hits.
+Training expansion stopped. See [all results and reproduction commands](docs/AA-POLICY-READINESS-RESULTS-20260927.zh-CN.md).
 
 ## AA eight-seat development monitor
 
