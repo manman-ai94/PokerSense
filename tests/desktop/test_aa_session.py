@@ -190,3 +190,66 @@ def test_late_result_cannot_publish_after_stop_or_stale(expire):
         wait_until(lambda: source.closed.is_set())
     assert session.snapshot()["payload"] is None
     assert session.snapshot()["status"] == "STOPPED"
+
+
+def test_late_first_recognition_cannot_relabel_old_source_as_fresh():
+    source = Source()
+    read = source.read
+
+    def timed_read():
+        stamp = time.monotonic()
+        return {**read(), "host_source_started_at": stamp,
+                "host_source_received_at": stamp}
+
+    source.read = timed_read
+    reader = Reader()
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_read(image, sequence, sample):
+        entered.set()
+        release.wait(1)
+        return {"current_actor": 4}
+
+    reader.read = slow_read
+    session = AARecognitionSession(lambda _: source, lambda: reader, stale_after=.03)
+    session.start({})
+    try:
+        assert entered.wait(1)
+        time.sleep(.04)
+        release.set()
+        wait_until(lambda: source.closed.is_set())
+        result = session.snapshot()
+        assert result["status"] == "STALE"
+        assert result["payload"] is None
+        assert result["realtime"]["advice"] is None
+    finally:
+        release.set()
+        session.stop()
+
+
+def test_session_reports_separate_host_timing_without_physical_claim():
+    source = Source()
+    read = source.read
+
+    def timed_read():
+        stamp = time.monotonic()
+        return {**read(), "host_source_started_at": stamp,
+                "host_source_received_at": stamp}
+
+    source.read = timed_read
+    session = AARecognitionSession(lambda _: source, Reader)
+    session.start({})
+    try:
+        wait_until(lambda: session.snapshot()["payload"] is not None)
+        result = session.snapshot()
+        timing = result["timing"]
+        assert timing["host_source_received_at"] <= timing["recognition_started_at"]
+        assert timing["recognition_started_at"] <= timing["recognition_finished_at"]
+        assert timing["recognition_finished_at"] <= timing["published_at"]
+        assert timing["source_read_ms"] >= 0 and timing["recognition_ms"] >= 0
+        assert timing["physical_source_timestamp"] is None
+        assert timing["end_to_end_latency_ms"] is None
+        assert result["realtime"]["reason"] == "NO_VERIFIED_TURN_EVIDENCE"
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())

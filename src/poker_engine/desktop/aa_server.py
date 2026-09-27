@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import sys
 import threading
+import time
 from urllib.parse import urlsplit
 import webbrowser
 
@@ -15,6 +16,7 @@ from fastapi.responses import FileResponse, Response
 
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession
+from .aa_turn_runtime import observation_runtime_status
 from .aa_sources import source_factory
 from .aa_table_config import AATableConfigStore
 from .aa_issues import save_issue
@@ -338,6 +340,10 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                       table_rules=table_rules,
                       analysis=analysis_status,
                       strategy_scope="AA8_OBSERVATION_ONLY_NO_ADVICE")
+        # Recheck after other status services finish; never trust a deadline or
+        # advice supplied in a reader payload or a custom session snapshot.
+        result["realtime"] = observation_runtime_status(result, now=time.monotonic())
+        result["realtime"]["rules_revision"] = table_rules["revision"]
         return result
 
     @app.post("/api/review/issues/{issue_id}/river-input")

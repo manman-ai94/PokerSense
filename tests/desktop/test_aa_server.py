@@ -32,6 +32,11 @@ def test_page_status_do_not_start_and_missing_profile_is_visible(tmp_path):
         status = client.get("/api/status").json()
         assert status["profile"]["ready"] is False
         assert status["capture_available"] is False
+        assert status["realtime"]["mode"] == "OBSERVATION_ONLY"
+        assert status["realtime"]["advice"] is None
+        assert status["realtime"]["action_deadline"] is None
+        assert not status["realtime"]["strategy_eligible"]
+        assert status["realtime"]["rules_revision"] == status["table_rules"]["revision"]
         assert client.get("/api/preview.jpg").status_code == 404
         assert session.starts == []
     assert session.stops == 1

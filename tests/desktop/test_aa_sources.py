@@ -32,7 +32,11 @@ def test_capture_is_lazy_and_uses_aa_canvas():
                           backend_factory=Backend)
     assert len(calls) == 1
     assert calls[0]["normalization"].crop_after_rotation == (711, 0, 1209, 1080)
-    assert src.read()["source_frame"] == 8
+    record = src.read()
+    assert record["source_frame"] == 8
+    assert record["host_source_started_at"] <= record["host_source_received_at"]
+    assert record["physical_source_timestamp"] is None
+    assert record["source_clock"] == "host_monotonic_capture_call"
     assert calls[1] == "uvc-2"
     src.close()
     assert calls[-1] == "released"

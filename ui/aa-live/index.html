@@ -20,6 +20,7 @@
   <div class="live-layout">
     <section class="panel preview-panel"><div class="section-heading"><h2>原画面</h2><button id="preview-expand" class="secondary" type="button" aria-haspopup="dialog" disabled>大图预览</button></div><div class="preview-box"><img id="preview" alt="当前 AA 来源画面" hidden><p id="preview-empty">开始后显示最新画面</p></div><p class="footnote">实时预览。复查时请标记，保存同一时刻的画面和识别结果。</p></section>
     <div class="watch-column">
+      <section class="panel realtime-panel" aria-label="行动窗口状态"><div class="section-heading"><h2>10 秒行动窗口</h2><span class="tag">实时建议尚未开放</span></div><p id="realtime-status" role="status">本次无法建议：等待可信回合计时。</p><p id="realtime-timing" class="footnote">剩余行动时间未知；请自行判断与操作。</p></section>
       <section class="panel table-panel"><div class="section-heading"><h2>当前牌桌</h2><span id="quality" class="tag">等待画面</span></div><p id="freshness" class="muted">尚未开始观察</p>
         <div class="board-zone"><span class="eyebrow">公共牌</span><div id="board" class="cards" aria-label="公共牌"></div><div class="pot-line"><span>底池 <strong id="pot">未知</strong></span><span><strong id="street">未知</strong></span></div></div>
         <div class="hero-line"><div><span class="eyebrow">我的手牌 · 座位 4</span><div id="hero" class="cards" aria-label="Hero 手牌"></div></div><dl><div><dt>当前行动者</dt><dd id="actor">未知</dd></div><div><dt>庄位</dt><dd id="dealer">未知</dd></div><div><dt>跟注额候选</dt><dd id="call-price">未知</dd></div></dl></div>

@@ -7,6 +7,37 @@ let localEpoch = 0, requestId = 0, serverGeneration = -1, sequence = -1;
 let serverInstance = null;
 let lastProgress = 0, statusData = {}, pending = false, pollAbort = null;
 let previewAbort = null, previewUrl = null, previewId = 0, modeTouched = false;
+let realtimeExpiresAt = null;
+const monotonicNow = () => globalThis.performance?.now?.() ?? Date.now();
+function clearRealtime(reason = "本次无法建议：等待可信的回合计时与已验证策略。") {
+  realtimeExpiresAt = null;
+  el("realtime-status").textContent = reason;
+  el("realtime-timing").textContent = "剩余行动时间未知；不要等待本页面作出决策。";
+}
+function renderRealtime(state, requestStarted) {
+  const value = state.realtime;
+  if (!value || value.mode !== "OBSERVATION_ONLY" || value.advice !== null ||
+      value.strategy_eligible !== false || value.advice_emitted !== false ||
+      !Number.isFinite(value.status_ttl_ms) || value.status_ttl_ms <= 0 ||
+      value.status_ttl_ms > 500 || value.identity?.generation !== state.generation ||
+      value.identity?.instance_id !== state.instance_id) {
+    clearRealtime("本次无法建议：实时状态身份或格式无效。"); return;
+  }
+  // Count the entire HTTP roundtrip against TTL; response arrival never
+  // restarts the server's validity window. This watchdog is independent of poll.
+  realtimeExpiresAt = requestStarted + value.status_ttl_ms;
+  if (monotonicNow() >= realtimeExpiresAt) { realtimeWatchdog(); return; }
+  const reasons = {NO_CURRENT_OBSERVATION:"当前没有有效画面", SOURCE_TIME_UNKNOWN:"源画面时间未绑定",
+    SOURCE_STALE:"源画面已过期", NO_VERIFIED_TURN_EVIDENCE:"未获得可信的回合起点或倒计时"};
+  el("realtime-status").textContent = `本次无法建议：${reasons[value.reason] || "实时条件未满足"}。`;
+  el("realtime-timing").textContent = Number.isFinite(value.source_host_age_ms) ?
+    `本机来源年龄 ${Math.ceil(value.source_host_age_ms)} ms；采集卡之前的延迟与剩余行动时间未知。` :
+    "剩余行动时间未知；当前没有通过验收的实时策略。";
+}
+function realtimeWatchdog() {
+  if (realtimeExpiresAt !== null && monotonicNow() >= realtimeExpiresAt)
+    clearRealtime("实时状态已过期，本次无法建议。");
+}
 const known = value => value !== null && value !== undefined && value !== "UNKNOWN";
 const text = value => !known(value) ? "未知" : typeof value === "object" ? JSON.stringify(value) : String(value);
 const translated = value => labels[value] || text(value);
@@ -70,6 +101,7 @@ function phaseDescription(row) {
   return `${prefix} · 可追溯投入 ${text(ledger.observed_total)} · 与显示底池差额 ${text(ledger.unallocated_difference)}（未解释，不能作为抽水或盈利）`;
 }
 function clearCurrent(reason) {
+  clearRealtime();
   cards("hero", null, 2); cards("board", null, 5); seatCards(); clearPreview();
   for (const id of ["pot", "street", "actor", "dealer"]) el(id).textContent = "未知";
   for (const id of ["sequence", "source-frame", "latency", "coverage"]) el(id).textContent = "—";
@@ -174,6 +206,7 @@ async function preview(epoch, gen, seq) {
 }
 async function poll() {
   if (pending || document.hidden) return;
+  const requestStarted = monotonicNow();
   const epoch = localEpoch, ticket = ++requestId, abort = new AbortController(); pollAbort = abort;
   const timeout = setTimeout(() => abort.abort(), 2500);
   try {
@@ -206,6 +239,7 @@ async function poll() {
     }
     indicator("正在观察 · 候选", "good");
     if (advanced) { render(state.payload, state); preview(epoch, serverGeneration, sequence); }
+    renderRealtime(state, requestStarted);
   } catch (failure) {
     if (epoch !== localEpoch || ticket !== requestId) return;
     clearCurrent("服务连接中断或读取失败，已清空当前字段与预览。"); indicator("连接异常", "bad"); error(`读取状态失败：${failure.message}`);
@@ -241,4 +275,5 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) poll();
 });
 async function tick() { await poll(); setTimeout(tick, 250); }
+setInterval(realtimeWatchdog, 50);
 clearCurrent("尚未开始观察；没有显示历史牌面。"); tick();

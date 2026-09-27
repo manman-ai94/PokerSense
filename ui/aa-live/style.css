@@ -55,3 +55,5 @@ footer{padding:16px 0;font-size:11px}button:focus-visible,select:focus-visible{o
 
 .hand-block{margin-top:16px}.hand-block-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.hand-block-head h3{font-size:14px;margin:0;color:var(--ink)}.hand-rows{display:flex;flex-direction:column;gap:4px}.hand-rows>.rules-grid{padding:10px 0;border-bottom:1px solid var(--line)}.hand-rows>.rules-grid label{font-size:12px}
 .hand-rows>.rules-grid input:disabled{background:#f1f4f2;color:var(--muted)}
+.realtime-panel { border-left: 4px solid #be8a33; }
+.realtime-panel #realtime-status { font-weight: 600; }
