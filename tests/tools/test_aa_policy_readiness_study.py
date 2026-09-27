@@ -50,7 +50,10 @@ def learner(**kwargs):
 
 @pytest.fixture
 def frozen(tmp_path, monkeypatch):
+    from tools import aa_policy_street_challenges as queries
     monkeypatch.setattr(study, "identity", lambda: {"test_identity": "fixed"})
+    monkeypatch.setattr(study, "EVALUATION_SEEDS", tuple(range(700, 730)))
+    monkeypatch.setattr(queries, "CHALLENGE_SPEC", queries.DEVELOPMENT_SPEC)
     output = tmp_path / "study"
     manifest = study.freeze(output)
     return output, manifest
@@ -74,7 +77,7 @@ def _fake_result(output, manifest, job_id, **diagnostics):
 def test_manifest_has_all_version_seed_cases_and_unexecuted_denominator(frozen):
     output, manifest = frozen
     assert len(manifest["cases"]) == 18
-    assert len(manifest["jobs"]) == 90
+    assert len(manifest["jobs"]) == 99
     assert manifest["expected_pairs"] == 11340
     for version in study.VERSIONS:
         assert sum(row["expected_pairs"] for row in manifest["cases"]
@@ -85,7 +88,7 @@ def test_manifest_has_all_version_seed_cases_and_unexecuted_denominator(frozen):
     assert report["metrics"] is None
     assert not report["strategy_eligible"]
     protocol = manifest["protocol"]
-    assert protocol["evaluation_seeds"] == list(range(3000000, 3000030))
+    assert protocol["evaluation_seeds"] == list(range(700, 730))
     assert protocol["control"]["requested_sweeps"] == 2
     assert protocol["max_batch_seconds"] == 3600
     with pytest.raises(FileExistsError):
@@ -253,7 +256,7 @@ def test_one_failed_v2_seed_blocks_all_evaluation_and_retains_pairs(frozen):
     assert report["gate2"]["status"] == "BLOCKED"
     assert report["unexecuted_pairs"] == 11340
     assert report["complete_pairs"] == report["blocked_pairs"] == 0
-    assert sum(row["status"] == "GATE_BLOCKED" for row in report["jobs"].values()) == 54
+    assert sum(row["status"] == "GATE_BLOCKED" for row in report["jobs"].values()) == 63
 
 
 def test_real_memory_is_positive_or_explicitly_unknown():
@@ -285,7 +288,7 @@ def test_actual_evaluator_resumes_only_uncommitted_seed_blocks(tmp_path, monkeyp
     from poker_engine.strategy import aa_arena_evaluation as evaluation
     from poker_engine.strategy.aa_frozen_policy import make_policy
     monkeypatch.setattr(study, "identity", lambda: {"fixture_identity": "fixed"})
-    monkeypatch.setattr(study, "EVALUATION_SEEDS", (17, 19))
+    monkeypatch.setattr(study, "EVALUATION_SEEDS", tuple(range(700, 730)))
     output = tmp_path / "actual-evaluation"
     manifest = study.freeze(output)
     case = manifest["cases"][0]
@@ -303,18 +306,18 @@ def test_actual_evaluator_resumes_only_uncommitted_seed_blocks(tmp_path, monkeyp
     def interrupt_after_first(*args, **kwargs):
         seed = kwargs["seeds"][0]
         calls.append(seed)
-        if seed == 19:
+        if seed == 701:
             raise KeyboardInterrupt()
         return actual(*args, **kwargs)
 
     monkeypatch.setattr(evaluation, "evaluate_paired", interrupt_after_first)
     with pytest.raises(KeyboardInterrupt):
         study.evaluate_job(output, job_id)
-    committed = (directory / "seed-17.json").read_bytes()
-    assert not (directory / "seed-19.json").exists()
+    committed = (directory / "seed-700.json").read_bytes()
+    assert not (directory / "seed-701.json").exists()
     # A crash while saving may leave this unfinished sibling. Resume replaces only
-    # the unfinished bytes, never the immutable completed seed-17 receipt.
-    (directory / "seed-19.json.pending").write_text("unfinished", encoding="utf-8")
+    # the unfinished bytes, never the immutable completed seed-700 receipt.
+    (directory / "seed-701.json.pending").write_text("unfinished", encoding="utf-8")
 
     def complete(*args, **kwargs):
         calls.append(kwargs["seeds"][0])
@@ -323,23 +326,23 @@ def test_actual_evaluator_resumes_only_uncommitted_seed_blocks(tmp_path, monkeyp
     monkeypatch.setattr(evaluation, "evaluate_paired", complete)
     study.evaluate_job(output, job_id)
     study.evaluate_job(output, job_id)
-    assert calls == [17, 19, 19]
-    assert (directory / "seed-17.json").read_bytes() == committed
+    assert calls == [700, 701, *range(701, 730)]
+    assert (directory / "seed-700.json").read_bytes() == committed
     manifest, state = study.load_frozen(output)
     result = study.summarize(output, manifest, state)
-    assert result["blocked_pairs"] == 12
+    assert result["blocked_pairs"] == 180
     assert result["complete_pairs"] == 0
-    assert result["unexecuted_pairs"] == result["expected_pairs"] - 12
+    assert result["unexecuted_pairs"] == result["expected_pairs"] - 180
     first = result["cases"][0]
     assert first["observed_prefix_coverage"]["first_hero_hit"] == 0
-    assert first["local_policy_latency"]["samples"] == 12
+    assert first["local_policy_latency"]["samples"] == 180
     assert first["execution_coverage_gate"] == "BLOCKED"
     assert first["metrics"] is None
     # An intact hash on a seed block cannot let it move to another style/job.
-    altered = study.read_json(directory / "seed-17.json")
+    altered = study.read_json(directory / "seed-700.json")
     altered.pop("sha256")
     altered["binding"]["job_id"] = case["id"] + "-evaluate-pot_raise"
-    study._atomic(directory / "seed-17.json", study._bound_document(altered))
+    study._atomic(directory / "seed-700.json", study._bound_document(altered))
     with pytest.raises(ValueError, match="manifest_mismatch"):
         study.summarize(output, manifest, state)
 
@@ -469,3 +472,41 @@ def test_private_job_entry_cannot_grant_new_time_or_bypass_scheduler(frozen):
     study._atomic(output / "study-state.json", state)
     with pytest.raises(ValueError, match="scheduler_reservation"):
         study.train_job(output, job_id, seconds=2)
+
+
+def test_actual_development_query_job_is_bound_and_cannot_pass_admission(frozen):
+    output, manifest = frozen
+    case = next(row for row in manifest["cases"] if row["version"] == "V2")
+    job_id = case["id"] + "-query"
+    _, _, _, rules, directory, _ = study._context(output, job_id)
+    encoder, _, factory, _ = study._components("V2")
+    policy_directory = output / (case["id"] + "-train")
+    policy_directory.mkdir()
+    document = factory(rules_fingerprint=rules.fingerprint, table_size=case["players"],
+                       stack_depth_bb=100, policy={},
+                       training={"purpose": "DEVELOPMENT_QUERY_WIRING_ONLY"})
+    study.write_new(policy_directory / "policy.json", document)
+    report = study.query_job(output, job_id, deadline=time.monotonic() + 20)
+    assert report["query_report"]["development_only"] is True
+    assert {row["seed"] for row in report["query_report"]["rows"]} == {4441, 4442}
+    assert report["query_report"]["side_pot_scope_failures"] == 0
+    assert report["hidden_input_probe"]["passed"]
+    assert report["binding"]["query_spec_sha256"] == manifest["protocol"][
+        "street_query_spec_sha256"]
+    assert not study._query_success(report, manifest["protocol"]["street_query_spec"])
+    before = (directory / "result.json").read_bytes()
+    study.query_job(output, job_id, deadline=time.monotonic() + 20)
+    assert (directory / "result.json").read_bytes() == before
+    assert document["encoder"] == encoder
+
+
+def test_rehashed_manifest_cannot_remove_failed_cases_from_denominator(frozen):
+    output, manifest = frozen
+    changed = deepcopy(manifest)
+    changed.pop("sha256")
+    changed["cases"].pop()
+    changed = study._bound_document(changed)
+    study._atomic(output / "frozen-manifest.json", changed)
+    with pytest.raises(ValueError, match="denominator"):
+        study.load_frozen(output)
+    assert study.gate2(output, {"cases": []})["status"] == "BLOCKED"

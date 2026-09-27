@@ -37,7 +37,7 @@ from tools.aa_full_hand_lab import (
 VERSIONS = ("V1_FIXED", "V2")
 TRAINING_SEEDS = (1103, 2207, 3301)
 OPPONENT_NAMES = ("check_call", "min_raise", "pot_raise")
-EVALUATION_SEEDS = tuple(range(3000000, 3000030))
+EVALUATION_SEEDS = tuple(range(6000000, 6000030))
 MAX_BATCH_SECONDS = 3600.0
 TERMINAL_JOB_STATUSES = {"COMPLETE", "ERROR", "EXHAUSTED", "GATE_BLOCKED"}
 
@@ -101,6 +101,10 @@ def _check_document(document):
 def freeze(output, *, training_seconds=60, requested_sweeps=100000,
            max_nodes=1000000, max_infosets=100000, max_actions=1000,
            rules_path=DEFAULT_RULES):
+    from poker_engine.strategy.aa_policy_encoding_v2 import (
+        ABSTRACTION_DISCLOSURE, ENCODER_VERSION_V2,
+    )
+    from tools.aa_policy_street_challenges import CHALLENGE_SPEC
     _validate_number(training_seconds, "training_seconds", 60)
     for name, value in (("requested_sweeps", requested_sweeps),
                         ("max_nodes", max_nodes),
@@ -125,13 +129,24 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
                          "case_id": case["id"], "operation": "evaluate",
                          "opponent": opponent,
                          "expected_pairs": case["players"] * len(EVALUATION_SEEDS)})
+        if case["version"] == "V2":
+            jobs.append({"id": case["id"] + "-query", "case_id": case["id"],
+                         "operation": "query", "expected_pairs": 0})
     protocol = {
         "kind": "AA_POLICY_READINESS_V2", "player_counts": [6, 7, 8],
         "versions": list(VERSIONS), "training_seeds": list(TRAINING_SEEDS),
+        "encoders": {"V1_FIXED": ENCODER_VERSION, "V2": ENCODER_VERSION_V2},
+        "v2_abstraction_disclosure": ABSTRACTION_DISCLOSURE,
+        "street_query_spec": deepcopy(CHALLENGE_SPEC),
+        "street_query_spec_sha256": canonical_hash(CHALLENGE_SPEC),
         "training_deal_domain": [2 ** 62, 2 ** 63],
         "evaluation_seeds": list(EVALUATION_SEEDS),
         "confirmation_seed_domain_reserved": [4000000, 4000030],
-        "old_evaluation_seeds": "DEVELOPMENT_ONLY",
+        "old_evaluation_seeds": {
+            "original_million_domain": "DEVELOPMENT_ONLY",
+            "prior_three_million_protocol": "RETIRED_BEFORE_FIT_NOT_CONFIRMATION",
+            "engineering_fixture_domains": [17, 19, [700, 730]],
+        },
         "main_depth_bb": 100, "training_seconds": training_seconds,
         "requested_sweeps": requested_sweeps, "max_nodes": max_nodes,
         "max_infosets": max_infosets, "max_actions": max_actions,
@@ -174,6 +189,15 @@ def freeze(output, *, training_seconds=60, requested_sweeps=100000,
 def load_frozen(output, *, check_identity=True):
     output = Path(output)
     manifest = _check_document(read_json(output / "frozen-manifest.json"))
+    expected_cases = {(variant, n, seed) for variant in VERSIONS
+                      for n in (6, 7, 8) for seed in TRAINING_SEEDS}
+    if (manifest.get("expected_cases") != 18 or len(manifest["cases"]) != 18
+            or {(row["version"], row["players"], row["training_seed"])
+                for row in manifest["cases"]} != expected_cases
+            or len({row["id"] for row in manifest["cases"]}) != 18
+            or len(manifest["jobs"]) != 99
+            or len({row["id"] for row in manifest["jobs"]}) != 99):
+        raise ValueError("frozen_case_or_job_denominator_mismatch")
     if check_identity and manifest["identity"] != identity():
         raise ValueError("study_source_or_dependency_drift")
     state = read_json(output / "study-state.json")
@@ -352,6 +376,32 @@ def evaluate_job(output, job_id):
     return report
 
 
+def query_job(output, job_id, *, deadline):
+    from tools.aa_policy_street_challenges import (
+        evaluate_queries, hidden_input_rejection_probe,
+    )
+    manifest, job, case, rules, directory, binding = _context(output, job_id)
+    existing = _result(output, job_id, manifest)
+    if existing is not None:
+        return existing
+    path = Path(output) / (case["id"] + "-train") / "policy.json"
+    document = read_json(path)
+    policy = _components(case["version"])[3](document)
+    binding["policy_file_sha256"] = _hash_file(path)
+    binding["query_spec_sha256"] = manifest["protocol"]["street_query_spec_sha256"]
+    query_report = evaluate_queries(
+        rules, policy, spec=deepcopy(manifest["protocol"]["street_query_spec"]),
+        deadline=deadline)
+    probe = (hidden_input_rejection_probe(rules, policy)
+             if time.monotonic() < deadline else {
+                 "passed": False, "cases": [], "scope": "UNEXECUTED_BUDGET"})
+    report = {"binding": binding, "status": "COMPLETE", "query_report": query_report,
+              "hidden_input_probe": probe, "strategy_eligible": False,
+              "metrics": None}
+    write_new(directory / "result.json", _bound_document(report))
+    return report
+
+
 def _result(output, job_id, manifest):
     path = Path(output) / job_id / "result.json"
     if not path.exists():
@@ -420,9 +470,54 @@ def _control_comparison(output, case):
             "scope": "fixed_two_sweep_negative_control_not_equal_budget"}
 
 
+def _query_success(query, spec):
+    """Check row/counter consistency; development queries cannot pass admission."""
+    report = query["query_report"]
+    if (report.get("development_only") is not False or report.get("spec") != spec
+            or report.get("spec_sha256") != canonical_hash(spec)):
+        return False
+    counts = {street: {"opportunities": 0, "hit": 0, "illegal": 0}
+              for street in ("preflop", "flop", "turn", "river")}
+    scope_failures = 0
+    groups = {}
+    for row in report["rows"]:
+        group = (row["kind"], row["seed"])
+        groups.setdefault(group, []).append(row["index"])
+        scoped = row["kind"] != "side_pot_scope"
+        if row["scope_expected"] is not scoped:
+            return False
+        if not scoped:
+            scope_failures += row["lookup_status"] != "SCOPE_MISMATCH"
+            continue
+        counter = counts[row["street"]]
+        counter["opportunities"] += 1
+        counter["hit"] += row["lookup_status"] == "HIT"
+        counter["illegal"] += row["legal"] is False
+        if row["lookup_status"] == "HIT" and row["legal"] is not True:
+            return False
+    expected_groups = {(kind, seed) for kind in spec["kinds"] for seed in spec["seeds"]}
+    if (set(groups) != expected_groups
+            or any(indices != list(range(len(indices))) for indices in groups.values())
+            or counts != report["by_street"]
+            or scope_failures != report["side_pot_scope_failures"]):
+        return False
+    positive = all(row["hit"] > 0 for row in counts.values())
+    probe = query["hidden_input_probe"]
+    cases = probe.get("cases", [])
+    return (positive and report["all_streets_have_positive"] is True
+            and all(row["illegal"] == 0 for row in counts.values())
+            and scope_failures == 0 and probe.get("passed") is True
+            and len(cases) == 3
+            and [row["container"] for row in cases] == [None, "public_history", "rules"]
+            and all(row["rejected"] is True for row in cases))
+
+
 def gate2(output, manifest):
     """Recompute gates from actual bound checkpoint and export, never report flags."""
     reasons, verified_cases = [], []
+    if sum(case["version"] == "V2" for case in manifest["cases"]) != 9:
+        return {"status": "BLOCKED", "reasons": [{"reason": "NINE_V2_CASES_REQUIRED"}],
+                "verified_cases": []}
     for case in manifest["cases"]:
         if case["version"] != "V2":
             continue
@@ -530,6 +625,14 @@ def summarize(output, manifest, state):
             raise ValueError("readiness_denominator_mismatch")
         train = _result(output, case["id"] + "-train", manifest)
         control = _result(output, case["id"] + "-control", manifest)
+        query = (_result(output, case["id"] + "-query", manifest)
+                 if case["version"] == "V2" else None)
+        if query is not None:
+            path = Path(output) / (case["id"] + "-train") / "policy.json"
+            if (query["binding"].get("policy_file_sha256") != _hash_file(path)
+                    or query["binding"].get("query_spec_sha256")
+                    != manifest["protocol"]["street_query_spec_sha256"]):
+                raise ValueError("query_artifact_binding_mismatch")
         coverage = summarize_opportunities(branches)
         latencies = sorted(op["policy_latency_ms"] for branch in branches
                            for op in branch.get("hero_opportunities", [])
@@ -550,12 +653,25 @@ def summarize(output, manifest, state):
                          and not any(coverage["failure_counts"].get(name, 0)
                                      for name in ("ILLEGAL_ACTION", "INVALID_MENU",
                                                   "ADAPTER_ERROR", "SCOPE_MISMATCH")))
+        gate3_status = "NOT_ASSESSED"
+        if (query is not None and evaluated == case["expected_pairs"]
+                and query["query_report"]["status"] == "COMPLETE_QUERY_DIAGNOSTIC"):
+            gate3_pass = (
+                complete / case["expected_pairs"] >= 0.8
+                and _query_success(query, manifest["protocol"]["street_query_spec"])
+                and not any(coverage["failure_counts"].get(name, 0)
+                            for name in ("ILLEGAL_ACTION", "INVALID_MENU",
+                                         "ADAPTER_ERROR", "SCOPE_MISMATCH")))
+            gate3_status = "PASS_RESEARCH_EXECUTABILITY" if gate3_pass else "NO_GO"
+            if query["query_report"].get("development_only"):
+                gate3_status = "NOT_ASSESSED"
         rows.append({**case, "training": train, "control": control,
                      "partial_training": (None if train else _partial_diagnostics(
                          output, case["id"] + "-train", manifest)),
                      "partial_control": (None if control else _partial_diagnostics(
                          output, case["id"] + "-control", manifest)),
                      "control_comparison": _control_comparison(output, case),
+                     "street_query": query, "gate3": gate3_status,
                      "complete_pairs": complete, "blocked_pairs": blocked,
                      "unexecuted_pairs": case["expected_pairs"] - evaluated,
                      "complete_hand_fraction": complete / case["expected_pairs"],
@@ -564,6 +680,11 @@ def summarize(output, manifest, state):
                      "execution_coverage_gate": "PASS" if coverage_gate else "BLOCKED",
                      "metrics": None})
     current = manifest["identity"] == identity()
+    case_gates = [row["gate3"] for row in rows if row["version"] == "V2"]
+    gate3_status = ("PASS_RESEARCH_EXECUTABILITY"
+                    if len(case_gates) == 9 and all(
+                        value == "PASS_RESEARCH_EXECUTABILITY" for value in case_gates)
+                    else "NOT_ASSESSED" if "NOT_ASSESSED" in case_gates else "NO_GO")
     return {"schema_version": 1, "manifest_sha256": manifest["sha256"],
             "source_and_dependency_identity_verified": current,
             "expected_cases": manifest["expected_cases"], "cases": rows,
@@ -574,7 +695,7 @@ def summarize(output, manifest, state):
             "gate2": (gate2(output, manifest) if current else {
                 "status": "BLOCKED", "reasons": [{"reason": "SOURCE_DRIFT"}]}),
             "jobs": deepcopy(state["jobs"]),
-            "gate3": "NOT_ASSESSED_REQUIRES_SEPARATE_STREET_AND_LEAK_CHALLENGES",
+            "gate3": gate3_status if current else "SOURCE_DRIFT_BLOCKED",
             "metrics": None, "strategy_strength": "NOT_ASSESSED",
             "strategy_eligible": False, "advice_emitted": False}
 
@@ -735,7 +856,7 @@ def _run_phase(output, phase, *, batch_seconds=3600, runner=run_bounded):
     deadline = time.monotonic() + batch_seconds
     output = Path(output)
     manifest, state = load_frozen(output)
-    operations = {"train", "control"} if phase == "train" else {"evaluate"}
+    operations = {"train", "control"} if phase == "train" else {"evaluate", "query"}
     gate = gate2(output, manifest) if phase == "evaluate" else None
     for job in manifest["jobs"]:
         if job["operation"] not in operations:
@@ -765,7 +886,7 @@ def _run_phase(output, phase, *, batch_seconds=3600, runner=run_bounded):
             row["error"] = "unresolved_interrupted_attempt"
             continue
         slot = remaining
-        if job["operation"] != "evaluate":
+        if job["operation"] in ("train", "control"):
             slot = min(slot, job["seconds"] - row["charged_seconds"])
         if slot <= 0:
             row["status"] = "EXHAUSTED"
@@ -788,7 +909,8 @@ def _run_phase(output, phase, *, batch_seconds=3600, runner=run_bounded):
             if _result(output, job["id"], manifest) is not None:
                 row["status"] = "COMPLETE"
             elif result["status"] == "TIMED_OUT_KILLED":
-                row["status"] = ("INTERRUPTED" if job["operation"] == "evaluate"
+                row["status"] = ("INTERRUPTED"
+                                 if job["operation"] in ("evaluate", "query")
                                  else "EXHAUSTED")
             else:
                 row["status"], row["error"] = "ERROR", "worker_exited_without_result"
@@ -850,6 +972,10 @@ def main(argv=None):
         job = next(row for row in manifest["jobs"] if row["id"] == args.job)
         if job["operation"] == "evaluate":
             evaluate_job(args.output, args.job)
+        elif job["operation"] == "query":
+            if args.job_deadline is None or not math.isfinite(args.job_deadline):
+                raise ValueError("query_requires_external_deadline")
+            query_job(args.output, args.job, deadline=args.job_deadline)
         else:
             remaining = (args.job_deadline - time.monotonic()
                          if args.job_deadline is not None else args.batch_seconds)
