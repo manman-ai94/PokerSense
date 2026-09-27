@@ -7,7 +7,14 @@ from .aa_policy_worker import AAIsolatedPolicyWorker
 
 class AAFrozenShadowSession:
     def __init__(self, artifact, *, seed=0):
-        self.policy = FrozenResearchPolicy(artifact)
+        if artifact.get("kind") == "AA_FROZEN_POLICY_V2":
+            from poker_engine.strategy.aa_frozen_policy_v2 import FrozenResearchPolicyV2
+            from poker_engine.strategy.aa_policy_encoding_v2 import information_key_v2
+            self.policy = FrozenResearchPolicyV2(artifact)
+            self._information_key = information_key_v2
+        else:
+            self.policy = FrozenResearchPolicy(artifact)
+            self._information_key = information_key
         self.worker = AAIsolatedPolicyWorker(self.policy.frozen_map(), seed=seed)
 
     def preload(self):
@@ -30,7 +37,7 @@ class AAFrozenShadowSession:
                     "action": None, "strategy_eligible": False,
                     "advice_emitted": False}
         return self.worker.lookup(
-            information_key(observation), identity=identity,
+            self._information_key(observation), identity=identity,
             state_key=canonical_hash(observation),
             rules_fingerprint=observation["rules_fingerprint"],
             legal_actions=action_ids(observation), window=window,
