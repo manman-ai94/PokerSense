@@ -16,6 +16,10 @@ unknown information sets; see the [correction](docs/AA-EVALUATION-CORRECTION-V1.
 The [bounded study command](docs/AA-SELF-PLAY-STUDY.zh-CN.md) freezes and executes
 all nine player-count/seed configurations, retaining failures without automatic
 tuning, best-seed selection, paid calls, or live promotion.
+The [V2 readiness experiment](docs/AA-POLICY-READINESS-V2.zh-CN.md) separates
+real-policy integration, reproducible learning changes and unseen-hand execution.
+The initial fit is preserved after a Python 3.11 checkpoint-order failure;
+a corrected source-bound rerun is required before unseen evaluation.
 
 ## AA eight-seat development monitor
 

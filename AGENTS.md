@@ -33,6 +33,18 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 POLICY READINESS V2, PRE-FIT FREEZE:** added explicit V2 suit/path
+  encoding, versioned research assets, shared shadow loader, committed-visit
+  learning diagnostics and bounded 18-case V1/V2 study with no-update controls.
+  Full denominators freeze11340pairs and3150 separate query opportunities.
+  Stage1 passed before fitting. First1024.86s training batch showed variation,
+  but Python3.11 CI exposed sorted-JSON continuation rounding drift; all149
+  files preserved and no new evaluation/query seed consumed in that batch.
+  Canonical action-order normalization repair independently reproduced on
+  Python3.11/3.12; exact checkpoint/JSON equality retained, no tolerance change.
+  Fresh source-bound matrix required; same algorithm, seeds, budgets and gates.
+  See docs/AA-POLICY-READINESS-V2.zh-CN.md and numerical reproducibility note.
+  No strength/live qualification, capture, paid calls, packaging or release.
 - **2026-09-27 FROZEN-POLICY EVALUATION CORRECTION (STAGE 1):** original
   PR37 b796cce's 48/378 failures were independent_policy_salt_required during
   binding, not measured coverage misses. Unified canonical 64-hex-string salts
