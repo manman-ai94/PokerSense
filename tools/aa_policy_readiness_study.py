@@ -7,6 +7,7 @@ Resume continues only uncommitted work, at the original identity and budgets.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
@@ -24,7 +25,7 @@ from poker_engine.strategy.aa_frozen_policy import (
     ENCODER_VERSION, FrozenResearchPolicy, canonical_hash, information_key,
     make_policy,
 )
-from poker_engine.strategy.aa_learning_diagnostics import learning_summary
+from poker_engine.strategy.aa_learning_diagnostics import learning_summary, memory_usage
 from poker_engine.strategy.aa_mccfr import (
     ExternalSamplingMCCFR, TrainingBudget, TrainingBudgetExceeded,
 )
@@ -207,14 +208,15 @@ def _context(output, job_id):
     directory = Path(output) / job["id"]
     directory.mkdir(exist_ok=True)
     binding = {"manifest_sha256": manifest["sha256"], "case": case,
-               "operation": job["operation"], "rules": rules.to_dict(),
+               "job_id": job_id, "operation": job["operation"],
+               "rules": rules.to_dict(),
                "rules_fingerprint": rules.fingerprint, "stack_depth_bb": "100"}
     return manifest, job, case, rules, directory, binding
 
 
 def _checkpoint(path, binding, trainer, elapsed):
     value = _bound_document({"binding": binding, "trainer": trainer.checkpoint(),
-                             "elapsed_seconds": elapsed})
+                             "elapsed_seconds": elapsed, "memory": memory_usage()})
     _atomic(path, value)
 
 
@@ -297,6 +299,9 @@ def evaluate_job(output, job_id):
         pot_raise_policy,
     )
     manifest, job, case, rules, directory, binding = _context(output, job_id)
+    existing = _result(output, job_id, manifest)
+    if existing is not None:
+        return existing
     policy_path = Path(output) / (case["id"] + "-train") / "policy.json"
     candidate_document = read_json(policy_path)
     frozen_type = _components(case["version"])[3]
@@ -326,10 +331,8 @@ def evaluate_job(output, job_id):
                 or result["complete_pairs"] + result["blocked_pairs"]
                 != case["players"]):
             raise ValueError("evaluation_block_denominator_mismatch")
-        temporary = destination.with_suffix(".pending")
-        write_new(temporary, _bound_document({"binding": binding, "seed": seed,
-                                             "evaluation": result}))
-        temporary.replace(destination)
+        _atomic(destination, _bound_document({"binding": binding, "seed": seed,
+                                              "evaluation": result}))
     report = {"binding": binding, "status": "COMPLETE",
               "seed_blocks": len(manifest["protocol"]["evaluation_seeds"]),
               "metrics": None, "strategy_eligible": False}
@@ -347,6 +350,7 @@ def _result(output, job_id, manifest):
     binding = result["binding"]
     if (binding["manifest_sha256"] != manifest["sha256"]
             or binding.get("case") != case
+            or binding.get("job_id") != job_id
             or binding.get("operation") != job["operation"]
             or binding.get("rules") != manifest["rules"][str(case["players"])]):
         raise ValueError("result_manifest_mismatch")
@@ -367,14 +371,18 @@ def _partial_diagnostics(output, job_id, manifest):
     binding = value["binding"]
     if (binding["manifest_sha256"] != manifest["sha256"]
             or binding.get("case") != case
+            or binding.get("job_id") != job_id
             or binding.get("operation") != job["operation"]):
         raise ValueError("partial_checkpoint_binding_mismatch")
     trainer = ExternalSamplingMCCFR.restore(
         value["trainer"], expected_binding=binding,
         expected_encoder=value["trainer"]["encoder_id"])
-    return {"diagnostics": learning_summary(
-        trainer, elapsed_seconds=value["elapsed_seconds"]),
-        "final_export_validated": False, "status": "COMMITTED_CHECKPOINT_ONLY"}
+    diagnostics = learning_summary(trainer, elapsed_seconds=value["elapsed_seconds"])
+    diagnostics["memory"] = value.get("memory", {
+        "rss_bytes": None, "peak_rss_bytes": None,
+        "source": "UNKNOWN_KILLED_TRAINING_CHILD"})
+    return {"diagnostics": diagnostics,
+            "final_export_validated": False, "status": "COMMITTED_CHECKPOINT_ONLY"}
 
 
 def _control_comparison(output, case):
@@ -417,9 +425,11 @@ def gate2(output, manifest):
 
 
 def summarize(output, manifest, state):
+    from poker_engine.strategy.aa_policy_diagnostics import summarize_opportunities
     rows = []
     for case in manifest["cases"]:
         complete, blocked, evaluated = 0, 0, 0
+        branches = []
         for job in manifest["jobs"]:
             if job["case_id"] != case["id"] or job["operation"] != "evaluate":
                 continue
@@ -431,12 +441,14 @@ def summarize(output, manifest, state):
                 binding = doc["binding"]
                 if (binding["manifest_sha256"] != manifest["sha256"]
                         or binding.get("case") != case
+                        or binding.get("job_id") != job["id"]
                         or binding.get("operation") != "evaluate"
                         or doc["seed"] != seed
                         or binding.get("policy_file_sha256") != _hash_file(
                             Path(output) / (case["id"] + "-train") / "policy.json")):
                     raise ValueError("evaluation_manifest_mismatch")
                 result = doc["evaluation"]
+                branches.extend(row["candidate"] for row in result["rows"])
                 complete += result["complete_pairs"]
                 blocked += result["blocked_pairs"]
                 evaluated += result["expected_pairs"]
@@ -444,6 +456,26 @@ def summarize(output, manifest, state):
             raise ValueError("readiness_denominator_mismatch")
         train = _result(output, case["id"] + "-train", manifest)
         control = _result(output, case["id"] + "-control", manifest)
+        coverage = summarize_opportunities(branches)
+        latencies = sorted(op["policy_latency_ms"] for branch in branches
+                           for op in branch.get("hero_opportunities", [])
+                           if op.get("policy_latency_ms") is not None)
+        timing = {"scope": "LOCAL_POLICY_CALL_ONLY_NOT_CAPTURE_TO_DISPLAY",
+                  "samples": len(latencies),
+                  "p95_ms": (latencies[math.ceil(0.95 * len(latencies)) - 1]
+                             if latencies else None),
+                  "p99_ms": (latencies[math.ceil(0.99 * len(latencies)) - 1]
+                             if latencies else None)}
+        first_hits = coverage["first_hero_hit"]
+        coverage["first_hero_hit_fraction_all_planned_pairs"] = (
+            first_hits / case["expected_pairs"])
+        coverage["unobserved_first_hero_opportunities"] = (
+            case["expected_pairs"] - coverage["first_hero_observed"])
+        coverage_gate = (complete / case["expected_pairs"] >= 0.8
+                         and all(row["hit"] > 0 for row in coverage["streets"].values())
+                         and not any(coverage["failure_counts"].get(name, 0)
+                                     for name in ("ILLEGAL_ACTION", "INVALID_MENU",
+                                                  "ADAPTER_ERROR", "SCOPE_MISMATCH")))
         rows.append({**case, "training": train, "control": control,
                      "partial_training": (None if train else _partial_diagnostics(
                          output, case["id"] + "-train", manifest)),
@@ -453,6 +485,9 @@ def summarize(output, manifest, state):
                      "complete_pairs": complete, "blocked_pairs": blocked,
                      "unexecuted_pairs": case["expected_pairs"] - evaluated,
                      "complete_hand_fraction": complete / case["expected_pairs"],
+                     "observed_prefix_coverage": coverage,
+                     "local_policy_latency": timing,
+                     "execution_coverage_gate": "PASS" if coverage_gate else "BLOCKED",
                      "metrics": None})
     current = manifest["identity"] == identity()
     return {"schema_version": 1, "manifest_sha256": manifest["sha256"],
@@ -473,8 +508,9 @@ def summarize(output, manifest, state):
 class _ProcessTree:
     """Windows job object closes the entire owned tree, including nested workers."""
 
-    def __init__(self, process):
+    def __init__(self, process, owns_group=True):
         self.process, self.handle = process, None
+        self.owns_group = owns_group
         if sys.platform != "win32":
             return
         import ctypes
@@ -530,7 +566,12 @@ class _ProcessTree:
         elif sys.platform != "win32":
             import signal
             try:
-                os.killpg(self.process.pid, signal.SIGKILL)
+                if self.owns_group:
+                    # Nested readiness subprocesses inherit this group. Closing
+                    # the outer watchdog therefore kills the whole nested tree.
+                    os.killpg(self.process.pid, signal.SIGKILL)
+                elif self.process.poll() is None:
+                    self.process.kill()
             except ProcessLookupError:
                 pass
 
@@ -542,12 +583,14 @@ def run_bounded(command, *, seconds, cwd=ROOT, log_path=None):
     log = open(log_path, "ab") if log_path else subprocess.DEVNULL
     process, tree = None, None
     try:
+        owns_group = os.environ.get("POKERSENSE_READINESS_OWNED_TREE") != "1"
+        environment = dict(os.environ, POKERSENSE_READINESS_OWNED_TREE="1")
         process = subprocess.Popen(
             command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0,
-            start_new_session=sys.platform != "win32",
+            start_new_session=sys.platform != "win32" and owns_group, env=environment,
         )
-        tree = _ProcessTree(process)
+        tree = _ProcessTree(process, owns_group=owns_group)
         try:
             remaining = max(0.001, seconds - (time.monotonic() - start))
             code = process.wait(timeout=remaining)
@@ -572,7 +615,45 @@ def _command(*args):
     return [sys.executable, "-m", "tools.aa_policy_readiness_study", *map(str, args)]
 
 
+@contextmanager
+def _exclusive_study(output):
+    """Crash-released OS lock prevents concurrent resume/execution of one study."""
+    path = Path(output) / ".execution.lock"
+    with path.open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if not stream.tell():
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        if sys.platform == "win32":
+            import msvcrt
+            try:
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                raise ValueError("study_already_running") from exc
+        else:
+            import fcntl
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise ValueError("study_already_running") from exc
+        try:
+            yield
+        finally:
+            if sys.platform == "win32":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream, fcntl.LOCK_UN)
+
+
 def run_phase(output, phase, *, batch_seconds=3600, runner=run_bounded):
+    _validate_number(batch_seconds, "batch_seconds", MAX_BATCH_SECONDS)
+    with _exclusive_study(output):
+        return _run_phase(output, phase, batch_seconds=batch_seconds, runner=runner)
+
+
+def _run_phase(output, phase, *, batch_seconds=3600, runner=run_bounded):
     """Inner scheduler; the public CLI additionally supervises this entire process."""
     _validate_number(batch_seconds, "batch_seconds", MAX_BATCH_SECONDS)
     if phase not in ("train", "evaluate"):

@@ -62,6 +62,7 @@ def _fake_result(output, manifest, job_id, **diagnostics):
     directory = output / job_id
     directory.mkdir(exist_ok=True)
     value = {"binding": {"manifest_sha256": manifest["sha256"], "case": case,
+                         "job_id": job_id,
                          "operation": job["operation"],
                          "rules": manifest["rules"][str(case["players"])]},
              "diagnostics": {"learning_signal": True, "completed_sweeps": 2,
@@ -268,3 +269,106 @@ def test_cli_report_is_nonmutating(frozen):
     before = {path: path.read_bytes() for path in output.glob("*.json")}
     assert study.main(["report", "--output", str(output)]) == 0
     assert before == {path: path.read_bytes() for path in output.glob("*.json")}
+
+
+def test_concurrent_resume_is_rejected_and_lock_releases_on_interrupt(frozen):
+    output, _ = frozen
+    with study._exclusive_study(output):
+        with pytest.raises(ValueError, match="already_running"):
+            study.run_phase(output, "train")
+    with study._exclusive_study(output):
+        pass
+
+
+def test_actual_evaluator_resumes_only_uncommitted_seed_blocks(tmp_path, monkeypatch):
+    """Real empty asset exercises retained misses, not a claimed learned policy."""
+    from poker_engine.strategy import aa_arena_evaluation as evaluation
+    from poker_engine.strategy.aa_frozen_policy import make_policy
+    monkeypatch.setattr(study, "identity", lambda: {"fixture_identity": "fixed"})
+    monkeypatch.setattr(study, "EVALUATION_SEEDS", (17, 19))
+    output = tmp_path / "actual-evaluation"
+    manifest = study.freeze(output)
+    case = manifest["cases"][0]
+    job_id = case["id"] + "-evaluate-check_call"
+    _, _, _, rules, directory, _ = study._context(output, job_id)
+    asset_directory = output / (case["id"] + "-train")
+    asset_directory.mkdir()
+    policy = make_policy(rules_fingerprint=rules.fingerprint, table_size=6,
+                         stack_depth_bb=100, policy={},
+                         training={"purpose": "EMPTY_ASSET_ENGINEERING_FAILURE_TEST"})
+    study.write_new(asset_directory / "policy.json", policy)
+    actual = evaluation.evaluate_paired
+    calls = []
+
+    def interrupt_after_first(*args, **kwargs):
+        seed = kwargs["seeds"][0]
+        calls.append(seed)
+        if seed == 19:
+            raise KeyboardInterrupt()
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(evaluation, "evaluate_paired", interrupt_after_first)
+    with pytest.raises(KeyboardInterrupt):
+        study.evaluate_job(output, job_id)
+    committed = (directory / "seed-17.json").read_bytes()
+    assert not (directory / "seed-19.json").exists()
+    # A crash while saving may leave this unfinished sibling. Resume replaces only
+    # the unfinished bytes, never the immutable completed seed-17 receipt.
+    (directory / "seed-19.json.pending").write_text("unfinished", encoding="utf-8")
+
+    def complete(*args, **kwargs):
+        calls.append(kwargs["seeds"][0])
+        return actual(*args, **kwargs)
+
+    monkeypatch.setattr(evaluation, "evaluate_paired", complete)
+    study.evaluate_job(output, job_id)
+    study.evaluate_job(output, job_id)
+    assert calls == [17, 19, 19]
+    assert (directory / "seed-17.json").read_bytes() == committed
+    manifest, state = study.load_frozen(output)
+    result = study.summarize(output, manifest, state)
+    assert result["blocked_pairs"] == 12
+    assert result["complete_pairs"] == 0
+    assert result["unexecuted_pairs"] == result["expected_pairs"] - 12
+    first = result["cases"][0]
+    assert first["observed_prefix_coverage"]["first_hero_hit"] == 0
+    assert first["local_policy_latency"]["samples"] == 12
+    assert first["execution_coverage_gate"] == "BLOCKED"
+    assert first["metrics"] is None
+    # An intact hash on a seed block cannot let it move to another style/job.
+    altered = study.read_json(directory / "seed-17.json")
+    altered.pop("sha256")
+    altered["binding"]["job_id"] = case["id"] + "-evaluate-pot_raise"
+    study._atomic(directory / "seed-17.json", study._bound_document(altered))
+    with pytest.raises(ValueError, match="manifest_mismatch"):
+        study.summarize(output, manifest, state)
+
+
+def test_export_refuses_wrong_encoder_factory_even_for_empty_asset():
+    from poker_engine.strategy.aa_frozen_policy import make_policy
+    trainer = ExternalSamplingMCCFR(range(6), encoder_id="different_encoder")
+    with pytest.raises(ValueError, match="encoder_factory"):
+        trainer.export(rules_fingerprint="f" * 64, table_size=6, stack_depth_bb=100,
+                       policy_factory=make_policy)
+
+
+@pytest.mark.parametrize("variant", ["v1_fixed", "v2"])
+def test_actual_training_job_retains_atomic_state_on_node_budget_failure(
+        tmp_path, monkeypatch, variant):
+    """Single-node probes validate plumbing; neither is a training experiment."""
+    monkeypatch.setattr(study, "identity", lambda: {"fixture_identity": "fixed"})
+    output = tmp_path / variant
+    manifest = study.freeze(output, max_nodes=1)
+    job_id = variant + "-n6-seed1103-control"
+    report = study.train_job(output, job_id, seconds=0.5)
+    assert report["stop_reason"] == "whole_sweep_budget_exceeded"
+    assert report["diagnostics"]["completed_sweeps"] == 0
+    assert report["diagnostics"]["nonuniform_infosets"] == 0
+    assert report["diagnostics"]["update_regrets"] is False
+    assert not report["diagnostics"]["learning_signal"]
+    saved = study.read_json(output / job_id / "latest-checkpoint.json")
+    assert saved["binding"]["manifest_sha256"] == manifest["sha256"]
+    assert saved["trainer"]["committed_visits"] == {}
+    assert (output / job_id / "policy.json").exists()
+    result = study._result(output, job_id, manifest)
+    assert result["policy_sha256"] == report["policy_sha256"]
