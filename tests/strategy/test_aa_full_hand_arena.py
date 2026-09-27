@@ -200,3 +200,10 @@ def test_reject_unknown_rake_bad_stacks_deck_and_clone_independence():
     clone = arena.clone()
     clone.step("raise_to:100")
     assert arena.observe(arena.actor) == before
+
+
+def test_short_forced_blind_refused_instead_of_reducing_nominal_call_price():
+    # PokerKit would offer call1 when nominal BB2 has stack1. Until that
+    # platform rule is adapted, refuse rather than silently model a 1chip BB.
+    with pytest.raises(ValueError, match="short forced blind"):
+        AAFullHandArena(rules(), {0: 200, 1: 1, 2: 200, 3: 200, 4: 200, 5: 200})

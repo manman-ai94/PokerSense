@@ -28,8 +28,9 @@ dealer_seat=None, optional_straddler=None)` 接收现有 `AARuleProfileV2`。
 PokerKit 固定为 0.7.5，负责四街行动顺序、全下、最小加注、短加注重开及结算。
 UTG straddle 的最小完整加注仅在翻前改成 straddle 金额，翻后恢复 BB；不能
 直接把引擎的所有街 min_bet 都改成 straddle。可选 straddle 必须显式指出
-合法 UTG 座位，或显式采用本手没有 straddle 的默认值。短码不足以支付完整
-straddle 的情况拒绝，不进行推断。
+合法 UTG 座位，或显式采用本手没有 straddle 的默认值。短码不足以支付自己的完整
+前注加盲注／straddle 的情况拒绝；PokerKit 对不足额 BB 的默认跟注价会低于
+声明的 BB，因此此类开局等待专门适配。完整强制下注之后的短码全下继续支持。
 
 终局另从完整投入重建分层底池、未跟注退款和资格，再与 PokerKit 的无抽水
 净额比较；不一致即报错。抽水按总可争池计算一次总 cap，再按配置比例或

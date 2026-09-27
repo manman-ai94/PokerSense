@@ -123,8 +123,8 @@ class AAFullHandArena:
         for seat, amount in self.starting_stacks.items():
             if amount <= rules.ante or amount % rules.minimum_chip:
                 raise ValueError("stack must cover ante and align to minimum chip")
-            if seat == self._straddler and amount < plan.contributions[seat]:
-                raise ValueError("short straddle is not supported")
+            if amount < plan.contributions[seat]:
+                raise ValueError("short forced blind/straddle is not supported")
         self._state = None
         self._history = []
         self._settlement = None
