@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import random
+import re
 from collections import Counter
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
@@ -197,7 +198,7 @@ class FrozenResearchPolicy:
         raise ValueError("frozen_mixture_requires_independent_evaluation_salt")
 
     def for_game(self, salt):
-        if type(salt) is not int:
+        if not isinstance(salt, str) or re.fullmatch(r"[0-9a-f]{64}", salt) is None:
             raise ValueError("independent_policy_salt_required")
 
         def decide(observation):
@@ -209,3 +210,26 @@ class FrozenResearchPolicy:
                 raise ValueError("unknown_policy_information_set")
             return choice
         return decide
+
+    def inspect_lookup(self, observation):
+        """Explain one lookup without sampling or simulator-private fields."""
+        from .aa_policy_diagnostics import failure_category
+
+        result = {"policy_sha256": self.sha256,
+                  "encoder_version": self._data["encoder"],
+                  "information_key": None, "status": "ADAPTER_ERROR"}
+        try:
+            result["information_key"] = information_key(observation)
+            result["feature_summary"] = {
+                "street": observation["street"], "actor": observation["actor"],
+                "table_size": observation["table_size"],
+                "legal_action_ids": list(action_ids(observation)),
+                "card_bucket": card_bucket(observation["own_hole"],
+                                           observation["board"]),
+            }
+            distribution = self.distribution(observation)
+            result["status"] = "HIT" if distribution is not None else (
+                "UNKNOWN_INFORMATION_SET")
+        except (ValueError, TypeError, KeyError) as exc:
+            result.update(status=failure_category(exc, "LOOKUP"), reason=str(exc))
+        return result

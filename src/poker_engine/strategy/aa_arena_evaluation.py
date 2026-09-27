@@ -12,8 +12,10 @@ import hashlib
 import json
 import random
 from statistics import mean
+import time
 
 from .aa_full_hand_arena import AAFullHandArena, ArenaAction, SETTLEMENT_MODEL
+from .aa_policy_diagnostics import failure_category, summarize_opportunities
 
 
 def check_call_policy(observation):
@@ -47,11 +49,17 @@ def _digest(value):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _play(arena, hero, policy, opponent, max_actions, policy_salts):
+def _play(arena, hero, policy, opponent, max_actions, policy_salts,
+          record_diagnostics=False):
     trace = []
+    opportunities = []
+    binding_success = False
+    phase, failing_seat, street = "BIND", None, None
+    attempted_index = None
     try:
         bound = {}
         for seat in arena.occupied_seats:
+            failing_seat = seat
             chooser = policy if seat == hero else opponent
             factory = getattr(chooser, "for_game", None)
             if factory is not None:
@@ -61,12 +69,34 @@ def _play(arena, hero, policy, opponent, max_actions, policy_salts):
             if not callable(chooser):
                 raise ValueError("policy_for_game_must_return_callable")
             bound[seat] = chooser
+        binding_success = True
         while not arena.terminal:
+            phase, failing_seat, street = "BUDGET", arena.actor, arena.street
+            attempted_index = len(trace)
             if len(trace) >= max_actions:
                 raise RuntimeError("max_actions_exceeded")
             obs = arena.observe(arena.actor)
+            street = obs["street"]
+            phase = "DECIDE"
             chooser = bound[arena.actor]
-            action = chooser(obs)
+            opportunity = None
+            if record_diagnostics and arena.actor == hero:
+                inspect = getattr(policy, "inspect_lookup", None)
+                diagnostic = (inspect(obs) if callable(inspect) else
+                              {"status": "EXTERNAL_POLICY"})
+                opportunity = {"street": street, "action_index": len(trace),
+                               "hero_opportunity_index": len(opportunities),
+                               "lookup_status": diagnostic["status"],
+                               "diagnostic": diagnostic,
+                               "policy_latency_ms": None}
+                opportunities.append(opportunity)
+            started = time.perf_counter()
+            try:
+                action = chooser(obs)
+            finally:
+                if opportunity is not None:
+                    opportunity["policy_latency_ms"] = (
+                        time.perf_counter() - started) * 1000
             # Repeated calls cannot establish purity, but detect an accidental
             # stateful/random adapter before claiming a paired experiment.
             repeated = chooser(arena.observe(arena.actor))
@@ -77,15 +107,31 @@ def _play(arena, hero, policy, opponent, max_actions, policy_salts):
                 raise ValueError("policy_not_deterministic_for_observation")
             trace.append({"actor": arena.actor, "observation_sha256": _digest(obs),
                           "action": action_id})
+            phase = "STEP"
             arena.step(action)
         returns = arena.terminal_returns()
-        return {"status": "COMPLETE", "return": returns[hero],
-                "actions": len(trace), "trace_sha256": _digest(trace),
-                "terminal": arena.terminal_result()}
+        result = {"status": "COMPLETE", "return": returns[hero],
+                  "actions": len(trace), "trace_sha256": _digest(trace),
+                  "terminal": arena.terminal_result()}
+        if record_diagnostics:
+            result.update(binding_success=binding_success,
+                          hero_opportunities=opportunities, first_failure=None,
+                          action_count_semantics="ATTEMPTED_ACTIONS")
+        return result
     except Exception as exc:
-        return {"status": "BLOCKED", "error_type": type(exc).__name__,
-                "error": str(exc), "actions": len(trace),
-                "trace_sha256": _digest(trace), "return": None}
+        result = {"status": "BLOCKED", "error_type": type(exc).__name__,
+                  "error": str(exc), "actions": len(trace),
+                  "trace_sha256": _digest(trace), "return": None}
+        if record_diagnostics:
+            result.update(binding_success=binding_success,
+                          hero_opportunities=opportunities,
+                          action_count_semantics="ATTEMPTED_ACTIONS",
+                          first_failure={"phase": phase, "actor": failing_seat,
+                                         "actor_is_hero": failing_seat == hero,
+                                         "street": street,
+                                         "action_index": attempted_index,
+                                         "category": failure_category(exc, phase)})
+        return result
 
 
 def _cluster_interval(values, samples, seed):
@@ -101,7 +147,8 @@ def _cluster_interval(values, samples, seed):
 def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
                     candidate_id="candidate", baseline_id="baseline",
                     starting_stacks=None, bootstrap_samples=1000,
-                    bootstrap_seed=0, max_actions=1000, policy_seed=7719):
+                    bootstrap_seed=0, max_actions=1000, policy_seed=7719,
+                    record_diagnostics=False):
     """Compare both policies in every Hero seat, with fixed same-deal seeds.
 
     One seed's complete set of Hero rotations is one bootstrap cluster. Rows
@@ -145,9 +192,9 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
                 salts = {seat: format(policy_rng.getrandbits(256), "064x")
                          for seat in initial.occupied_seats}
                 left = _play(initial.clone(), hero, candidate, opponent, max_actions,
-                             salts)
+                             salts, record_diagnostics)
                 right = _play(initial.clone(), hero, baseline, opponent, max_actions,
-                              salts)
+                              salts, record_diagnostics)
                 complete = left["status"] == right["status"] == "COMPLETE"
                 delta = ((left["return"] - right["return"]) / bb
                          if complete else None)
@@ -194,17 +241,24 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
                                     prototype.starting_stacks.items()},
                 "cluster_unit": "one_seed_all_hero_rotations",
                 "ci": "two_sided_95_percentile_cluster_bootstrap"}
-    return {"schema_version": 1, "protocol": protocol,
-            "protocol_sha256": _digest(protocol), "rows": rows, "groups": groups,
-            "expected_pairs": sum(g["expected_pairs"] for g in groups),
-            "complete_pairs": sum(g["complete_pairs"] for g in groups),
-            "blocked_pairs": sum(g["blocked_pairs"] for g in groups),
-            "status": "BLOCKED" if any(g["blocked_pairs"] for g in groups)
-            else "COMPLETE",
-            "settlement_model": SETTLEMENT_MODEL,
-            "strategy_eligible": False, "promotion": "NOT_ASSESSED",
-            "limitations": ["synthetic_opponents_not_empirical_player_pool",
-                            "policy_identifiers_are_not_source_integrity_proofs",
-                            "determinism_probe_is_not_a_policy_purity_proof",
-                            "no_automatic_promotion_from_confidence_intervals",
-                            "same_PokerKit_engine_is_not_an_independent_oracle"]}
+    result = {
+        "schema_version": 1, "protocol": protocol,
+        "protocol_sha256": _digest(protocol), "rows": rows, "groups": groups,
+        "expected_pairs": sum(g["expected_pairs"] for g in groups),
+        "complete_pairs": sum(g["complete_pairs"] for g in groups),
+        "blocked_pairs": sum(g["blocked_pairs"] for g in groups),
+        "status": "BLOCKED" if any(g["blocked_pairs"] for g in groups) else "COMPLETE",
+        "settlement_model": SETTLEMENT_MODEL,
+        "strategy_eligible": False, "promotion": "NOT_ASSESSED",
+        "limitations": ["synthetic_opponents_not_empirical_player_pool",
+                        "policy_identifiers_are_not_source_integrity_proofs",
+                        "determinism_probe_is_not_a_policy_purity_proof",
+                        "no_automatic_promotion_from_confidence_intervals",
+                        "same_PokerKit_engine_is_not_an_independent_oracle"],
+    }
+    if record_diagnostics:
+        result["candidate_diagnostics"] = summarize_opportunities(
+            row["candidate"] for row in rows)
+        result["baseline_diagnostics"] = summarize_opportunities(
+            row["baseline"] for row in rows)
+    return result

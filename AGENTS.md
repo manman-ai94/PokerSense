@@ -33,6 +33,21 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 FROZEN-POLICY EVALUATION CORRECTION (STAGE 1):** original
+  PR37 b796cce's 48/378 failures were independent_policy_salt_required during
+  binding, not measured coverage misses. Unified canonical 64-hex-string salts
+  and added actual artifact-loader/evaluator integration on 6/7/8 players.
+  Declared controls 42/42 complete with identical traces, settlements and
+  returns to direct check/call. Actual rerun of nine old assets now binds,
+  then records378 UNKNOWN_INFORMATION_SET at each first Hero decision; all
+  denominator rows retained, affected EV null. Original57JSON hashes unchanged.
+  All592 exported entries uniform after one sweep; no learned-strength claim.
+  Added explicit failure phase/actor and observed-prefix street diagnostics;
+  unseen suffix counts remain unknown. Independent review reproduced controls,
+  old/new failures and negative paths. No expanded training before this gate,
+  no live/capture/paid calls or packaging changes. See
+  docs/AA-EVALUATION-CORRECTION-V1.zh-CN.md; older performance attribution below
+  is historical and superseded by this correction, not rewritten raw evidence.
 - **2026-09-27 TEN-SECOND AA ENGINEERING PREVIEW:** isolated from exact
   `af67b4bb3ba56da2d4fdb70e0731583afc7aaf40` on
   `codex/aa-ten-second-foundation`, version `0.2.0.dev1`. Added monotonic

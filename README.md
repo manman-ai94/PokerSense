@@ -9,7 +9,10 @@ is no validated production turn-time source or qualified policy asset. Physical
 end-to-end latency and empirical strategy strength remain unverified. Capture and
 model APIs are off by default; private recognition models remain external.
 See the [implementation and acceptance checklist](docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md),
-including the failed coverage result of this increment's short training probe.
+including the corrected attribution of this increment's short training probe.
+The original 378 failures were adapter binding errors, not measured coverage
+misses. An actual rerun after repairing the salt contract separately confirmed
+unknown information sets; see the [correction](docs/AA-EVALUATION-CORRECTION-V1.zh-CN.md).
 The [bounded study command](docs/AA-SELF-PLAY-STUDY.zh-CN.md) freezes and executes
 all nine player-count/seed configurations, retaining failures without automatic
 tuning, best-seed selection, paid calls, or live promotion.
