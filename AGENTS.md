@@ -33,6 +33,22 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 LOCAL CANDIDATE SCREEN:** isolated branch codex/aa-local-policy-screen
+  from15d5895; source9663038, screen-v3 manifest770b2551. Pinned Mapika0.8b/2b-v10
+  safetensors/licenses and separate Windows CUDA runtime; no desktop dependency
+  changes. Added synthetic-only exact-state/public-input external option adapter
+  and frozen48-query, preloaded-process screen with complete failures, no truncation,
+  actual loaded identity, high-resolution deadlines and no live registration.
+  Independent review repaired incomplete source/runtime binding and blocking IPC;
+  actual v1 wrongly rejected upstream empty temperature map (48NOT_RUN), preserved.
+  v2 returned48legal with coarse-clock timing; v3 sameinputs/scores/actions afterQPC
+  repair:0.8b24/24<=300ms,p95=210.051ms;2b22/24,p95=300.999ms. Longriverprobe
+  209.425/298.132ms. Prior slower v2 and two timeouts preserved; uncontrolled load
+  means no speedup claim.125focusedtests/full lint pass. Queries are not full-hand
+  model play, not quality/profit/end-to-end acceptance. Real rules still unsaved;
+  choose0.8b only as next offline evaluation priority, not promotion. No third
+  candidate/training/paid API/cloud/capture/reservedmedia/package/merge/release.
+  Details:docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md.
 - **2026-09-27 AA MANUAL TABLE SETTINGS:** observation header now exposes saved
   settings and edit entry; empty tables open the existing form automatically.
   Basic/advanced fields, explicit percent/BB units, optional usual stack range,

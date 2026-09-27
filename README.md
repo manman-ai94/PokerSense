@@ -1,5 +1,12 @@
 # PokerSense
 
+The [two local model screen](docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md)
+now has actual Windows/GPU evidence: both frozen candidates returned legal actions
+on 24 synthetic four-street queries each. The 0.8B model has more timing margin in
+this small sample, but full-hand poker strength and live suitability remain
+unassessed. Earlier slower results are retained; the runtime is separate from
+the desktop app, and no live action advice is enabled.
+
 The AA observation page now shows a **table-settings summary and an Edit button**.
 An unconfigured table opens the form automatically. Enter blinds, ante, straddle,
 rake and cap, plus an optional usual effective-stack range in BB; unknown values
