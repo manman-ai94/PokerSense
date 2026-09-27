@@ -33,6 +33,17 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-28 LOCAL FULL-HAND PROTOCOL READY:** isolated successor to adfc1ef
+  adds9public-only exact terminal sanity cases and bounded full-hand diagnostics.
+  Pinned2models,6/7/8players,30newseeds8200000..8200029,allHero seats,3fixedopponents:
+  540shards/3780pairedopportunities. At most2x2400s batches,oneattempt per shard,
+  interruptedshardsremainBLOCKED,no profit-dependentreplay. Firstforward/cached
+  repeats and complete/timelycomplete are distinct; anymissing/failedgroup keeps
+  EV/CI null. Sanity18rows separate,highfee50percent is syntheticstress,notAA.
+  42sanity+31fullhand focused tests pass,full lint/diff clean; independent review
+  reproduced exact public oracles and stale/timing/identity/denominator attacks.
+  Freeze/run pending this note; no realrules/capture/training/live promotion.
+  Protocol:docs/AA-LOCAL-FULLHAND-20260928.zh-CN.md.
 - **2026-09-27 LOCAL CANDIDATE SCREEN:** isolated branch codex/aa-local-policy-screen
   from15d5895; source9663038, screen-v3 manifest770b2551. Pinned Mapika0.8b/2b-v10
   safetensors/licenses and separate Windows CUDA runtime; no desktop dependency
