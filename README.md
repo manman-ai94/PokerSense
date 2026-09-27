@@ -1,5 +1,13 @@
 # PokerSense
 
+The AA observation page now shows a **table-settings summary and an Edit button**.
+An unconfigured table opens the form automatically. Enter blinds, ante, straddle,
+rake and cap, plus an optional usual effective-stack range in BB; unknown values
+stay blank. Settings persist locally across restarts. Cancel reloads the latest
+saved configuration; save or reset stops observation and invalidates old analysis.
+The stack range is descriptive metadata, not the current hand's stacks or a grant
+of live-policy eligibility. See [manual table settings](docs/AA-TABLE-VALIDATION-V2.zh-CN.md).
+
 The current increment is **AA engineering preview 0.2.0.dev1**. Windows packaging
 now uses the dedicated AA entry; `launch/aa/START-AA.cmd` opens its local offline UI.
 It adds ten-second turn deadline primitives, stale-result rejection, a killable

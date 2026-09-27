@@ -57,3 +57,28 @@ footer{padding:16px 0;font-size:11px}button:focus-visible,select:focus-visible{o
 .hand-rows>.rules-grid input:disabled{background:#f1f4f2;color:var(--muted)}
 .realtime-panel { border-left: 4px solid #be8a33; }
 .realtime-panel #realtime-status { font-weight: 600; }
+
+.table-settings-summary{margin-bottom:16px;padding:16px 20px}
+.table-settings-summary .section-heading{margin-bottom:4px}
+.table-settings-summary h2{margin:2px 0;font-size:16px;overflow-wrap:anywhere}
+#rules-summary{margin:8px 0 0;font-size:13px;overflow-wrap:anywhere}
+#table-settings-panel{scroll-margin-top:75px}
+#rules-details{margin-top:16px}
+#rules-details>summary{font-size:14px;color:var(--green);font-weight:600}
+#rules-form .rules-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:start}
+#rules-form input,#rules-form select{width:100%;min-width:0}
+#rules-form label{color:var(--ink)}
+#rules-form label small{font-size:11px;line-height:1.5;color:var(--muted)}
+.rule-unit-input{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f6f8f7}
+#rules-form .rule-unit-input input{border:0;border-radius:0;flex:1;min-width:0}
+.rule-unit{padding:0 12px;font-size:13px;color:var(--muted)}
+.stack-range{border:1px solid var(--line);border-radius:10px;margin:0 0 18px;padding:10px 16px 14px;min-width:0}
+.stack-range legend{font-size:13px;font-weight:600;padding:0 6px;color:var(--ink)}
+#rules-form #rules-stack-fields{grid-template-columns:repeat(2,minmax(0,1fr));padding:4px 0}
+.stack-range .footnote{margin-top:8px}
+#rules-more{border-top:1px solid var(--line);padding-top:14px}
+#rules-more>summary{color:var(--ink);font-size:13px}
+.rules-buttons{border-top:1px solid var(--line);padding-top:18px;margin-top:18px}
+#rules-feedback{overflow-wrap:anywhere}
+@media(max-width:680px){#rules-form .rules-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.table-settings-summary .section-heading{flex-wrap:wrap}}
+@media(max-width:430px){#rules-form .rules-grid,#rules-form #rules-stack-fields{grid-template-columns:1fr}.rules-buttons button{flex:1;padding:8px 10px}.table-settings-summary{padding:14px}}

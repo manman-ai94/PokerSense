@@ -33,6 +33,19 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 AA MANUAL TABLE SETTINGS:** observation header now exposes saved
+  settings and edit entry; empty tables open the existing form automatically.
+  Basic/advanced fields, explicit percent/BB units, optional usual stack range,
+  save/cancel/reset and bounded request recovery added. New range is metadata
+  only: no actual stacks, rule fingerprint, readiness or live promotion changes.
+  Legacy files load without rewrite; omitted legacyPOST metadata is preserved
+  under revision lock, explicitnull clears. Save/reset retain stop+invalidate.
+  Focused57pytest pass (including actual HTTP/hand-receipt lifecycle),10new UI
+  scenarios+39analysis+8TTL checks pass, scoped lint/diff clean. Independent
+  review reproduced oldrule identity, concurrentrevision refusal and no-rewrite
+  migration. Browser synthetic form/save/error/cancel/summary exercised; no
+  capture/private media/paid calls or new package. Follow setup contract in
+  docs/AA-TABLE-VALIDATION-V2.zh-CN.md. Old dirty primary/frozen studies retained.
 - **2026-09-27 POLICY READINESS V2 CLOSEOUT:** source40a42f5, manifest0b5750b5.
   All99jobs complete:18train/18zero-update controls/54eval/9query. Training
   1024.844s, evaluation258.156s under2400s supervised batch budgets. Independent
