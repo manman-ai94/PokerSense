@@ -127,6 +127,7 @@ class AAFullHandArena:
                 raise ValueError("short forced blind/straddle is not supported")
         self._state = None
         self._history = []
+        self._board_history = []
         self._settlement = None
 
     def _units(self, amount):
@@ -153,6 +154,7 @@ class AAFullHandArena:
         self._deck = cards
         self._deck_cursor = 0
         self._history = []
+        self._board_history = []
         self._folded = set()
         self._settlement = None
         antes = self._units(self.rules.ante)
@@ -221,7 +223,12 @@ class AAFullHandArena:
             if state.can_burn_card():
                 state.burn_card(self._take(1)[0])
             elif state.can_deal_board():
-                state.deal_board(self._take(state.board_dealing_count))
+                cards = self._take(state.board_dealing_count)
+                street = self.street
+                state.deal_board(cards)
+                self._board_history.append({
+                    "street": street, "cards": [repr(card) for card in cards],
+                })
             elif state.can_push_chips():
                 state.push_chips()
             elif state.can_pull_chips():
@@ -308,6 +315,8 @@ class AAFullHandArena:
             "terminal": self.terminal,
             "own_hole": [repr(card) for card in self._holes[index]],
             "board": [repr(card) for row in state.board_cards for card in row],
+            # Recorded when dealt, never reconstructed from a final board.
+            "board_history": deepcopy(self._board_history),
             "stacks": {str(s): _money(Fraction(self.starting_stacks[s])
                                       + self._settlement["returns"][s])
                        if self.terminal else _money(self._chips(state.stacks[i]))
@@ -317,6 +326,32 @@ class AAFullHandArena:
             "bets": {str(s): _money(self._chips(state.bets[i]))
                      for i, s in enumerate(self._seats)},
             "folded": sorted(self._folded),
+            "all_in": sorted(s for i, s in enumerate(self._seats)
+                             if state.stacks[i] == 0 and s not in self._folded),
+            "contributions": {
+                str(s): _money(self._chips(int(self._contributions[i])))
+                for i, s in enumerate(self._seats)
+            },
+            "betting": {
+                "can_raise": bool(is_actor and state.can_complete_bet_or_raise_to()),
+                "min_raise_to": _money(self._chips(
+                    state.min_completion_betting_or_raising_to_amount))
+                if is_actor and state.min_completion_betting_or_raising_to_amount
+                is not None else None,
+                "max_raise_to": _money(self._chips(
+                    state.max_completion_betting_or_raising_to_amount))
+                if is_actor and state.max_completion_betting_or_raising_to_amount
+                is not None else None,
+                "last_full_raise_increment": _money(self._chips(
+                    state.completion_betting_or_raising_amount)),
+                "acted_since_full_raise": sorted(
+                    self._seats[i] for i in state.acted_player_indices),
+                "pending_actors": [self._seats[i] for i in state.actor_indices],
+                "consecutive_short_raise_increments": [
+                    _money(self._chips(value)) for value in
+                    state.consecutive_all_in_completion_betting_or_raising_amounts
+                ],
+            },
             "pot": _money(self._chips(sum(-p for p in state.payoffs)))
             if not self.terminal else "0",
             "to_call": _money(self._chips(state.checking_or_calling_amount))
