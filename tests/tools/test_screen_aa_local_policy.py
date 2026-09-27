@@ -9,7 +9,7 @@ import socket
 import struct
 import sys
 import time
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -399,7 +399,7 @@ def test_scoring_uses_exact_verified_items_once_under_no_grad(monkeypatch, corru
     monkeypatch.setitem(sys.modules, "decider",
                         SimpleNamespace(temperature=temperatures))
     monkeypatch.setitem(sys.modules, "decider.model", SimpleNamespace(collate=collate))
-    decider = SimpleNamespace(T=1.03, T_by_type=None, dev="cuda", m=SimpleNamespace(
+    decider = SimpleNamespace(T=1.03, T_by_type={}, dev="cuda", m=SimpleNamespace(
         tok=SimpleNamespace(pad_token_id=0), slot_logits=slot_logits))
     if corrupt:
         with pytest.raises(ValueError, match="forward_input"):
@@ -410,3 +410,98 @@ def test_scoring_uses_exact_verified_items_once_under_no_grad(monkeypatch, corru
         assert scores == [0.25, 0.75] and state["forward_calls"] == 1
         assert receipt["attention_valid_tokens"] == 3
         assert receipt["forward_input_ids_sha256"] == canonical_hash([[11, 12, 13, 0]])
+
+
+@pytest.mark.parametrize("index", (0, 1))
+def test_loaded_config_accepts_upstream_empty_temperature_map_only(index):
+    spec = screen.MODEL_SPECS[index]
+    values = {"layout": "plain", "schema_first": False, "neutralize_none": False,
+              "T": spec["temperature"], "T_by_type": {}}
+    screen.validate_loaded_config(SimpleNamespace(**values), spec)
+    for field, value in (("T_by_type", None), ("T_by_type", {"choice": 1.03}),
+                         ("T_by_type", []), ("layout", "chat"),
+                         ("T", 1.04), ("schema_first", True),
+                         ("neutralize_none", True)):
+        changed = {**values, field: value}
+        with pytest.raises(ValueError, match="loaded_model_configuration_mismatch"):
+            screen.validate_loaded_config(SimpleNamespace(**changed), spec)
+
+
+@pytest.mark.parametrize("index", (0, 1))
+@pytest.mark.parametrize("temperature_map", ({}, None))
+def test_actual_worker_constructor_and_ready_chain_use_upstream_map_semantics(
+        tmp_path, monkeypatch, index, temperature_map):
+    """Stub weights/runtime; actual worker, guard and READY execute, no forward."""
+    directory = fixture_model(tmp_path, index)
+    model = screen._manifest_model(directory, screen.MODEL_SPECS[index])
+    upstream_dir = tmp_path / "stub-upstream"
+    (upstream_dir / "decider").mkdir(parents=True)
+    upstream = {"directory": str(upstream_dir), "files": {}}
+    for name in screen.UPSTREAM_FILES:
+        if not name.endswith(".py"):
+            continue
+        path = upstream_dir / name
+        path.write_text("# Stub source identity, not a model implementation.\n")
+        upstream["files"][name] = screen._sha(path)
+        module_name = ("decider" if name.endswith("__init__.py") else
+                       name[:-3].replace("/", "."))
+        module = ModuleType(module_name)
+        module.__file__ = str(path)
+        monkeypatch.setitem(sys.modules, module_name, module)
+    runtime = {"packages": {}}
+    for name in ("torch", "transformers"):
+        path = tmp_path / (name + "-stub.py")
+        path.write_text("# Stub runtime identity only.\n")
+        module = ModuleType(name)
+        module.__file__ = str(path)
+        module.__version__ = "stub-test-only"
+        runtime["packages"][name] = {
+            "version": module.__version__, "module": screen._file_receipt(path)}
+        monkeypatch.setitem(sys.modules, name, module)
+    calls = []
+    sys.modules["torch"].bfloat16 = "torch.bfloat16"
+    sys.modules["torch"].cuda = SimpleNamespace(
+        synchronize=lambda: calls.append("sync"))
+    tokenizer = type("Qwen2Tokenizer", (), {})()
+    tokenizer.name_or_path = str(directory)
+    loaded_model = type("Qwen3_5ForCausalLM", (), {})()
+    loaded_model.name_or_path = str(directory)
+    loaded_model.parameters = lambda: iter([SimpleNamespace(dtype="torch.bfloat16")])
+    loaded_model.config = SimpleNamespace(
+        model_type="qwen3_5_text", architectures=["Qwen3_5ForCausalLM"])
+
+    def constructor(path, **kwargs):
+        assert path == str(directory)
+        assert kwargs == {"device": "cuda", "dtype": "torch.bfloat16",
+                          "use_graphs": False}
+        calls.append("construct")
+        return SimpleNamespace(
+            layout="plain", schema_first=False, neutralize_none=False,
+            T=model["temperature"], T_by_type=temperature_map, dev="cuda",
+            m=SimpleNamespace(tok=tokenizer, lm=loaded_model))
+
+    sys.modules["decider.infer"].Decider = constructor
+    monkeypatch.setattr(screen, "_require_runtime", lambda expected: expected)
+    monkeypatch.setattr(screen, "verify_assets", lambda *args: None)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(sys, "dont_write_bytecode", sys.dont_write_bytecode)
+    for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY",
+                "DISABLE_TELEMETRY", "DO_NOT_TRACK"):
+        monkeypatch.delenv(key, raising=False)
+    responses = []
+
+    def receive():
+        calls.append("receive-stop")
+        return None
+
+    connection = SimpleNamespace(send=responses.append, recv=receive)
+    screen.model_worker(connection, model, upstream, runtime)
+    assert len(responses) == 1
+    if temperature_map == {}:
+        assert responses[0]["status"] == "READY"
+        screen.validate_ready(responses[0], model, upstream, runtime)
+        assert calls == ["construct", "sync", "receive-stop"]
+    else:
+        assert responses[0]["status"] == "ERROR"
+        assert responses[0]["reason"] == "loaded_model_configuration_mismatch"
+        assert calls == ["construct"]

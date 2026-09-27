@@ -360,6 +360,7 @@ def expected_ready(model, upstream, runtime):
                             if runtime["packages"][name] is not None},
         "model_directory": directory, "tokenizer_name_or_path": directory,
         "model_name_or_path": directory, "device": "cuda",
+        "temperature": model["temperature"], "temperature_by_type": {},
         "dtype": "torch.bfloat16", "model_class": "Qwen3_5ForCausalLM",
         "tokenizer_class": "Qwen2Tokenizer", "model_type": "qwen3_5_text",
         "architectures": ["Qwen3_5ForCausalLM"],
@@ -388,6 +389,7 @@ def loaded_ready(decider, model, upstream, runtime):
         "model_directory": str(Path(model["directory"]).resolve()),
         "tokenizer_name_or_path": str(Path(decider.m.tok.name_or_path).resolve()),
         "model_name_or_path": str(Path(decider.m.lm.name_or_path).resolve()),
+        "temperature": decider.T, "temperature_by_type": dict(decider.T_by_type),
         "device": str(decider.dev), "dtype": str(next(decider.m.lm.parameters()).dtype),
         "model_class": type(decider.m.lm).__name__,
         "tokenizer_class": type(decider.m.tok).__name__,
@@ -468,6 +470,14 @@ def _error(exc):
     return {"status": status, "error_type": type(exc).__name__, "reason": text}
 
 
+def validate_loaded_config(decider, model):
+    """Audited upstream normalizes an absent temperature override to exactly {}."""
+    if (decider.layout != "plain" or decider.schema_first is not False
+            or decider.neutralize_none is not False or decider.T != model["temperature"]
+            or type(decider.T_by_type) is not dict or decider.T_by_type != {}):
+        raise ValueError("loaded_model_configuration_mismatch")
+
+
 def model_worker(connection, model, upstream, runtime):
     """One owned, preloaded model process; every request executes a fresh forward."""
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY",
@@ -482,10 +492,7 @@ def model_worker(connection, model, upstream, runtime):
         from decider.infer import Decider
         decider = Decider(model["directory"], device="cuda", dtype=torch.bfloat16,
                           use_graphs=False)
-        if (decider.layout != "plain" or decider.schema_first
-                or decider.neutralize_none or decider.T != model["temperature"]
-                or decider.T_by_type is not None):
-            raise ValueError("loaded_model_configuration_mismatch")
+        validate_loaded_config(decider, model)
         torch.cuda.synchronize()
         connection.send(loaded_ready(decider, model, upstream, runtime))
     except BaseException as exc:
