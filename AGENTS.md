@@ -61,6 +61,10 @@ changing desktop capture, recognition, packaging, or project documentation.
   passed Windows/macOS/hygiene, build36301786735 produced AA Windows installer
   and legacy macOS artifacts with release skipped. Later study-only changes
   require their own latest-head checks; these runs are not relabeled.
+  Actual isolated install/EXE/uninstall on the first CI artifact passed
+  functionally and restored test registration, but /NOICONS was ignored.
+  Added AllowNoIcons=yes plus regression assertion; preserve the failed
+  installer audit and require rebuilt-artifact verification (tracked on PR37).
 - **2026-09-23 INDEPENDENT PR #34 EVALUATION GATE:** independently audited
   original head `4f59d723f20fab760b50c0f2de1ec88a5b9b1b8f` against exact main
   `d98084aba96eac6ff3bc0cf07dad99b00e36ff31`. Recompiled all six V1 books from

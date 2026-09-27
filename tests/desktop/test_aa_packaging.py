@@ -93,6 +93,7 @@ def test_versions_and_canonical_windows_installer_agree():
     installer = (ROOT / "packaging/pokersense.iss").read_text("utf-8")
     assert '#define MyAppExeName "PokerSense-AA.exe"' in installer
     assert '#define MyAppVersion "0.2.0-dev1"' in installer
+    assert "AllowNoIcons=yes" in installer
     assert 'Source: "..\\dist\\PokerSense-AA\\*"' in installer
     windows = (ROOT / "packaging/windows-version.txt").read_text("utf-8")
     assert "'ProductVersion', '" + __version__ + "'" in windows

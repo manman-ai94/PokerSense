@@ -22,6 +22,7 @@ VersionInfoVersion={#MyWindowsVersion}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+AllowNoIcons=yes
 OutputDir=..\dist
 OutputBaseFilename=PokerSense-AA-Setup
 Compression=lzma2
