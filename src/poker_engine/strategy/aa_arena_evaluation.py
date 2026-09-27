@@ -2,7 +2,8 @@
 
 This is a synthetic evaluation scaffold, not an empirical promotion gate. The
 caller freezes protocol, candidate and opponent implementations before running.
-Policies are pure deterministic observation -> action-id functions.
+Policies are pure observation -> action-id functions after optional for_game
+binding to independent opaque per-seat salts; no deck seed enters a policy.
 """
 from __future__ import annotations
 
@@ -46,14 +47,25 @@ def _digest(value):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _play(arena, hero, policy, opponent, max_actions):
+def _play(arena, hero, policy, opponent, max_actions, policy_salts):
     trace = []
     try:
+        bound = {}
+        for seat in arena.occupied_seats:
+            chooser = policy if seat == hero else opponent
+            factory = getattr(chooser, "for_game", None)
+            if factory is not None:
+                if not callable(factory):
+                    raise ValueError("policy_for_game_must_be_callable")
+                chooser = factory(policy_salts[seat])
+            if not callable(chooser):
+                raise ValueError("policy_for_game_must_return_callable")
+            bound[seat] = chooser
         while not arena.terminal:
             if len(trace) >= max_actions:
                 raise RuntimeError("max_actions_exceeded")
             obs = arena.observe(arena.actor)
-            chooser = policy if arena.actor == hero else opponent
+            chooser = bound[arena.actor]
             action = chooser(obs)
             # Repeated calls cannot establish purity, but detect an accidental
             # stateful/random adapter before claiming a paired experiment.
@@ -89,13 +101,16 @@ def _cluster_interval(values, samples, seed):
 def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
                     candidate_id="candidate", baseline_id="baseline",
                     starting_stacks=None, bootstrap_samples=1000,
-                    bootstrap_seed=0, max_actions=1000):
+                    bootstrap_seed=0, max_actions=1000, policy_seed=7719):
     """Compare both policies in every Hero seat, with fixed same-deal seeds.
 
     One seed's complete set of Hero rotations is one bootstrap cluster. Rows
     from failed games remain and make the affected group's metrics unavailable.
-    All callables must be frozen deterministic pure policies; no online learning,
-    future-card access, paid calls or policy selection occurs here.
+    Optional policy.for_game(opaque_salt) may bind a mixed policy to a fresh,
+    pure per-game decision sampler. The same per-seat salts are reused in the
+    paired branches; independent policy_seed RNG never exposes deck seeds.
+    Bound callables must be frozen deterministic pure policies; no online
+    learning, future-card access, paid calls or policy selection occurs here.
     """
     seeds = tuple(seeds)
     if not seeds or any(type(seed) is not int for seed in seeds):
@@ -103,7 +118,7 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
     if len(set(seeds)) != len(seeds):
         raise ValueError("duplicate seeds would inflate the sample size")
     if (type(bootstrap_samples) is not int or bootstrap_samples < 100
-            or type(bootstrap_seed) is not int
+            or type(bootstrap_seed) is not int or type(policy_seed) is not int
             or type(max_actions) is not int or max_actions < 1):
         raise ValueError("invalid fixed evaluation budgets")
     if not opponents or any(not isinstance(k, str) or not k
@@ -111,11 +126,15 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
         raise ValueError("at least one named opponent is required")
     for name, policy in [(candidate_id, candidate), (baseline_id, baseline),
                          *opponents.items()]:
-        if not isinstance(name, str) or not name or not callable(policy):
-            raise ValueError("policies need nonempty identifiers and callables")
+        factory = getattr(policy, "for_game", None)
+        if (not isinstance(name, str) or not name
+                or (not callable(policy) and not callable(factory))
+                or (factory is not None and not callable(factory))):
+            raise ValueError("policies need identifiers and callable factories")
     prototype = AAFullHandArena(rules, starting_stacks=starting_stacks)
     bb = Fraction(rules.big_blind)
     rows, groups = [], []
+    policy_rng = random.Random(policy_seed)
     for opponent_name, opponent in sorted(opponents.items()):
         group_rows, seed_means = [], []
         for seed in seeds:
@@ -123,8 +142,12 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
             # Every seed has a fresh deck; both branches clone exactly this root.
             initial = prototype.reset(seed)
             for hero in initial.occupied_seats:
-                left = _play(initial.clone(), hero, candidate, opponent, max_actions)
-                right = _play(initial.clone(), hero, baseline, opponent, max_actions)
+                salts = {seat: format(policy_rng.getrandbits(256), "064x")
+                         for seat in initial.occupied_seats}
+                left = _play(initial.clone(), hero, candidate, opponent, max_actions,
+                             salts)
+                right = _play(initial.clone(), hero, baseline, opponent, max_actions,
+                              salts)
                 complete = left["status"] == right["status"] == "COMPLETE"
                 delta = ((left["return"] - right["return"]) / bb
                          if complete else None)
@@ -164,6 +187,8 @@ def evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
                 "rules": rules.to_dict(), "candidate_id": candidate_id,
                 "baseline_id": baseline_id, "opponents": sorted(opponents),
                 "seeds": list(seeds), "bootstrap_seed": bootstrap_seed,
+                "policy_seed": policy_seed,
+                "policy_sampling": "per_game_per_seat_salts_shared_by_paired_branches",
                 "bootstrap_samples": bootstrap_samples, "max_actions": max_actions,
                 "starting_stacks": {str(k): str(v) for k, v in
                                     prototype.starting_stacks.items()},

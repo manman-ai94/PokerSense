@@ -128,3 +128,65 @@ def test_bad_protocol_seeds_rejected(seeds):
     with pytest.raises(ValueError):
         evaluate_paired(rules(), check_call_policy, check_call_policy,
                         {"passive": check_call_policy}, seeds=seeds)
+
+
+class SaltedMix:
+    def __init__(self):
+        self.salts = []
+
+    def for_game(self, salt):
+        self.salts.append(salt)
+        fold = int(salt, 16) % 2 == 0
+
+        def choose(observation):
+            ids = {action["id"] for action in observation["legal_actions"]}
+            return "fold" if fold and "fold" in ids else "check_call"
+
+        return choose
+
+
+def test_mixed_policy_salts_are_fresh_per_trial_and_replayed_for_paired_branches():
+    from collections import Counter
+    from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
+    hero, opponent = SaltedMix(), SaltedMix()
+    report = evaluate_paired(rules(), hero, hero, {"mixed": opponent},
+                             seeds=[11, 22], bootstrap_samples=100, policy_seed=7719)
+    assert report["status"] == "COMPLETE"
+    assert report["groups"][0]["delta_net_bb100"] == 0
+    assert report["groups"][0]["ci95_delta_net_bb100"] == [0, 0]
+    assert all(row["candidate"]["trace_sha256"] == row["baseline"]["trace_sha256"]
+               for row in report["rows"])
+    assert set(Counter(hero.salts).values()) == {2}
+    assert len(set(hero.salts)) == 12
+    assert set(Counter(opponent.salts).values()) == {2}
+    assert len(set(opponent.salts)) == 12 * 5
+    assert not set(hero.salts) & set(opponent.salts)
+    assert all(isinstance(salt, str) and len(salt) == 64 for salt in hero.salts)
+    assert report["protocol"]["policy_seed"] == 7719
+    # The *same* decision receives differing choices across separately bound
+    # games, while re-reading one decision cannot advance RNG or resample.
+    arena = AAFullHandArena(rules()).reset(9)
+    observation = arena.observe(arena.actor)
+    probe = SaltedMix()
+    choices = set()
+    for salt in set(hero.salts):
+        bound = probe.for_game(salt)
+        choice = bound(observation)
+        assert bound(observation) == choice
+        choices.add(choice)
+    assert choices == {"fold", "check_call"}
+    assert report == evaluate_paired(rules(), SaltedMix(), SaltedMix(),
+                                     {"mixed": SaltedMix()}, seeds=[11, 22],
+                                     bootstrap_samples=100, policy_seed=7719)
+
+
+def test_bad_bound_policy_is_a_retained_game_failure():
+    class BadFactory:
+        def for_game(self, salt):
+            return None
+    report = evaluate_paired(rules(), BadFactory(), check_call_policy,
+                             {"passive": check_call_policy}, seeds=[1],
+                             bootstrap_samples=100)
+    assert report["blocked_pairs"] == report["expected_pairs"] == 6
+    assert all(row["candidate"]["error"] == "policy_for_game_must_return_callable"
+               for row in report["rows"])

@@ -43,10 +43,18 @@ PokerKit 引擎的自洽比较不能宣称独立规则 oracle。
 
 `evaluate_paired(rules, candidate, baseline, opponents, *, seeds,
 candidate_id, baseline_id, starting_stacks=None, bootstrap_samples=1000,
-bootstrap_seed=0, max_actions=1000)` 接收纯确定性 `observation -> action ID`
+bootstrap_seed=0, max_actions=1000, policy_seed=7719)` 接收纯确定性
+`observation -> action ID`
 策略及具名对手映射，每个对手组使用相同发牌比较候选／基线，并让 Hero 轮换
 每个已占座位。候选、基线及对手实现应在调用前冻结；在线学习、用评估结果
 重新选择策略和即时付费调用不属于此函数。
+
+混合策略可以提供 `for_game(opaque_salt)` 返回纯的逐决策采样函数。实验台用
+与发牌 RNG 独立的 `policy_seed` 产生每个 trial、每个物理座位的新 salt，
+配对两边复用相同座位的 salt，不能被先前候选分支的随机调用数扰动。策略只
+得到 salt，得不到发牌 seed；策略应以 salt、策略身份、信息集身份固定该次
+决策，刷新不重复抽样，同信息集在不同对局仍可混合。普通纯函数保持原行为。
+协议记录 policy_seed 与采样方式；错误的 factory 结果保留为 BLOCKED 行。
 
 每个 seed 的全部 Hero 换座形成一个 bootstrap cluster，避免把高度相关的
 重复牌局误当独立样本。每个人数、对手组分别报告净 BB/100 差及双侧 95%
