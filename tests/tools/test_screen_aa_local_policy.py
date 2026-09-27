@@ -1,6 +1,13 @@
 """Fake workers test transport/accounting only, never actual model evidence."""
+from copy import deepcopy
+from contextlib import contextmanager
 import json
+import multiprocessing
+from multiprocessing.connection import Connection
 from pathlib import Path
+import socket
+import struct
+import sys
 import time
 from types import SimpleNamespace
 
@@ -22,6 +29,9 @@ def fixture_model(tmp_path, index):
     directory.mkdir()
     for name in screen.MODEL_FILES:
         write(directory / name, {})
+    write(directory / "config.json", {
+        "architectures": ["Qwen3_5ForCausalLM"], "model_type": "qwen3_5_text"})
+    write(directory / "tokenizer_config.json", {"tokenizer_class": "Qwen2Tokenizer"})
     write(directory / "source-metadata.json", {"sha": spec["revision"]})
     write(directory / "decider_config.json", {
         "version": spec["version"], "temperature": spec["temperature"],
@@ -75,14 +85,16 @@ class FakeClient:
     """Synthetic protocol response source; contains no model inference."""
     instances = []
 
-    def __init__(self, model, upstream):
+    def __init__(self, model, upstream, runtime=None):
         self.queries = []
         self.closed = False
+        self.ready = {"status": "READY",
+                      **screen.expected_ready(model, upstream, runtime)}
         self.instances.append(self)
 
     def receive(self, seconds):
         assert 0 < seconds <= 120
-        return {"status": "READY", "elapsed_ms": 0}
+        return {**self.ready, "elapsed_ms": 0}
 
     def query(self, query, seconds):
         self.queries.append((query["id"], seconds))
@@ -103,7 +115,8 @@ def test_warmup_and_hard_deadline_are_separate_all_48_diagnostic_rows_count(froz
     assert len(report["summary"]["all_opportunity_elapsed_ms"]) == 48
     for client, model in zip(FakeClient.instances, report["models"]):
         assert client.closed and len(client.queries) == 26
-        assert client.queries[0][0] == client.queries[1][0] == client.queries[-1][0]
+        assert client.queries[0][0] == client.queries[1][0]
+        assert client.queries[-1][0] == "n8-min_raise_first-river"
         assert client.queries[0][1] == 10 and client.queries[-1][1] == 0.3
         assert model["warmup"]["included_in_denominator"] is False
         assert model["hard_deadline"]["status"] == "LATE_VALID"
@@ -191,11 +204,10 @@ class FakeDecider:
 
 def test_render_checks_complete_context_and_prompt_without_truncation(frozen):
     request = screen.load_manifest(frozen)["queries"][0]["request"]
-    context, questions, counts = screen.render_checked(FakeDecider(), request)
-    assert json.loads(context) == {"state": request["state"], "rules": request["rules"]}
-    assert questions[0]["question"] == request["question"]
-    assert counts == {"context_tokens": 100, "prompt_tokens": 200}
-    assert questions[0]["options"][0].startswith(request["options"][0]["id"] + ": ")
+    fake = FakeDecider()
+    items, counts = screen.render_checked(fake, request)
+    assert counts["context_tokens"] == 100 and counts["prompt_tokens"] == 200
+    assert counts["validated_prompt_ids_sha256"] == canonical_hash(items[0]["ids"])
     for fake, message in ((FakeDecider(context_count=4097), "CONTEXT_OVERFLOW"),
                           (FakeDecider(prompt_count=8193), "PROMPT_OVERFLOW"),
                           (FakeDecider(corrupt=True), "TRUNCATION")):
@@ -210,7 +222,8 @@ def test_config_refuses_remote_code_flags_and_wrong_temperature(tmp_path):
     write(directory / "config.json", {"nested": {"auto_map": {}}})
     with pytest.raises(ValueError, match="remote_code"):
         screen._check_config(directory, spec)
-    write(directory / "config.json", {})
+    write(directory / "config.json", {
+        "architectures": ["Qwen3_5ForCausalLM"], "model_type": "qwen3_5_text"})
     config = screen.read_json(directory / "decider_config.json")
     config["temperature"] = 1.3
     write(directory / "decider_config.json", config)
@@ -218,7 +231,7 @@ def test_config_refuses_remote_code_flags_and_wrong_temperature(tmp_path):
         screen._check_config(directory, spec)
 
 
-def hanging_fake_worker(connection, model, upstream):
+def hanging_fake_worker(connection, model, upstream, runtime):
     connection.send({"status": "READY"})
     connection.recv()
     time.sleep(60)
@@ -234,3 +247,166 @@ def test_actual_owned_process_is_terminated_on_external_timeout():
         assert not client.process.is_alive()
     finally:
         client.close()
+
+
+def unread_fake_worker(connection, model, upstream, runtime):
+    connection.send({"status": "READY"})
+    time.sleep(60)
+
+
+def test_unread_pipe_serialization_and_large_send_have_one_external_deadline():
+    client = screen.WorkerClient({}, {}, target=unread_fake_worker)
+    try:
+        assert client.receive(10)["status"] == "READY"
+        result = client.query({"payload": b"x" * (8 * 1024 * 1024)}, 0.3)
+        assert result["status"] == "TIMEOUT"
+        assert 280 <= result["acceptance_stopped_ms"] < 750
+        assert result["elapsed_ms"] < 1500
+        assert result["cleanup_ms"] >= 0 and result["worker_terminated"]
+        assert not result["transport_thread_alive"]
+    finally:
+        client.close()
+
+
+def partial_response_worker(sock):
+    connection = Connection(sock.detach())
+    connection.send({"status": "READY"})
+    connection.recv()
+    # A genuine stream frame prefix arrives, then the body never completes.
+    connection._send(struct.pack("!i", 1000000) + b"partial")
+    time.sleep(60)
+
+
+def test_partial_response_recv_is_bounded_not_just_poll():
+    left, right = socket.socketpair()
+    client = screen.WorkerClient.__new__(screen.WorkerClient)
+    client.connection = Connection(left.detach())
+    client._closed = False
+    context = multiprocessing.get_context("spawn")
+    client.process = context.Process(target=partial_response_worker, args=(right,))
+    client.process.start()
+    right.close()
+    try:
+        assert client.receive(10)["status"] == "READY"
+        result = client.query({"synthetic": True}, 0.3)
+        assert result["status"] == "TIMEOUT"
+        assert 280 <= result["acceptance_stopped_ms"] < 750
+        assert result["elapsed_ms"] < 1500 and result["worker_terminated"]
+        assert not result["transport_thread_alive"]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize("change", ["pokerkit_version", "runtime", "source"])
+def test_runtime_and_transitive_source_drift_rejected_after_self_rehash(frozen, change):
+    path = frozen / "manifest.json"
+    data = screen.read_json(path)
+    assert "src/poker_engine/strategy/aa_frozen_policy.py" in data["source_sha256"]
+    assert "tools/aa_policy_readiness_study.py" in data["source_sha256"]
+    assert "tools/aa_full_hand_lab.py" in data["source_sha256"]
+    assert "pyproject.toml" in data["source_sha256"]
+    if change == "pokerkit_version":
+        data["pokerkit_version"] = "WRONG_RUNTIME_VERSION"
+    elif change == "runtime":
+        data["runtime_identity"]["executable"]["sha256"] = "0" * 64
+    else:
+        data["source_sha256"]["tools/aa_full_hand_lab.py"] = "0" * 64
+    data.pop("sha256")
+    data["sha256"] = canonical_hash(data)
+    write(path, data)
+    with pytest.raises(ValueError, match="protocol_mismatch"):
+        screen.load_manifest(frozen)
+
+
+@pytest.mark.parametrize("name", [
+    "adapter_config.json", "special_tokens_map.json", "added_tokens.json",
+    "tokenizer.model", "bad.bin", "bad.pt", "bad.pickle",
+])
+def test_unregistered_model_files_refused_even_when_weights_missing(tmp_path, name):
+    directory = fixture_model(tmp_path, 0)
+    write(directory / name, {})
+    with pytest.raises(ValueError, match="unregistered_model_files"):
+        screen._manifest_model(directory, screen.MODEL_SPECS[0])
+
+
+def test_runtime_records_dependency_versions_metadata_and_record_hashes():
+    runtime = screen.runtime_identity()
+    assert runtime["python_version"] == sys.version
+    assert len(runtime["executable"]["sha256"]) == 64
+    for key in ("METADATA", "RECORD", "module"):
+        assert len(runtime["packages"]["pokerkit"][key]["sha256"]) == 64
+    assert set(runtime["packages"]) == set(screen.RUNTIME_PACKAGES)
+
+
+def test_ready_must_match_actual_loaded_modules_paths_runtime_and_dtype(frozen):
+    manifest = screen.load_manifest(frozen)
+    model, upstream, runtime = (manifest["models"][0], manifest["upstream"],
+                                manifest["runtime_identity"])
+    expected = screen.expected_ready(model, upstream, runtime)
+    screen.validate_ready(expected, model, upstream, runtime)
+    for key, value in (("dtype", "torch.float32"), ("tokenizer_name_or_path", "remote"),
+                       ("runtime_identity", {}), ("upstream_modules", {})):
+        changed = deepcopy(expected)
+        changed[key] = value
+        with pytest.raises(ValueError, match="worker_identity"):
+            screen.validate_ready(changed, model, upstream, runtime)
+
+
+@pytest.mark.parametrize("corrupt", [False, True])
+def test_scoring_uses_exact_verified_items_once_under_no_grad(monkeypatch, corrupt):
+    """Pure tensor stand-ins verify data flow, not CUDA or model performance."""
+    state = {"no_grad": False, "forward_calls": 0}
+    items = [{"ids": [11, 12, 13], "nopts": [2], "types": ["choice"]}]
+
+    class Tensor:
+        def __init__(self, value):
+            self.value = value
+
+        def tolist(self):
+            return deepcopy(self.value)
+
+        def to(self, device):
+            assert device == "cuda"
+            return self
+
+        def cpu(self):
+            return self
+
+    @contextmanager
+    def no_grad():
+        state["no_grad"] = True
+        yield
+        state["no_grad"] = False
+
+    def collate(received, pad):
+        assert received is items and pad == 0 and state["no_grad"]
+        return {"input_ids": Tensor([[99 if corrupt else 11, 12, 13, 0]]),
+                "attention_mask": Tensor([[1, 1, 1, 0]]),
+                "slot_idx": Tensor([2]), "slot_batch": Tensor([0]),
+                "nopts": Tensor([2])}
+
+    def slot_logits(*args):
+        assert state["no_grad"]
+        assert args[0].tolist() == [[11, 12, 13, 0]]
+        state["forward_calls"] += 1
+        return Tensor([[1, 2]])
+
+    temperatures = SimpleNamespace(
+        for_items=lambda temperature, by_type, received: temperature,
+        slot_temperatures=lambda temperature, received: temperature,
+        scaled_softmax=lambda logits, temperature: Tensor([[0.25, 0.75]]))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(no_grad=no_grad))
+    monkeypatch.setitem(sys.modules, "decider",
+                        SimpleNamespace(temperature=temperatures))
+    monkeypatch.setitem(sys.modules, "decider.model", SimpleNamespace(collate=collate))
+    decider = SimpleNamespace(T=1.03, T_by_type=None, dev="cuda", m=SimpleNamespace(
+        tok=SimpleNamespace(pad_token_id=0), slot_logits=slot_logits))
+    if corrupt:
+        with pytest.raises(ValueError, match="forward_input"):
+            screen.score_verified_items(decider, items)
+        assert state["forward_calls"] == 0
+    else:
+        scores, receipt = screen.score_verified_items(decider, items)
+        assert scores == [0.25, 0.75] and state["forward_calls"] == 1
+        assert receipt["attention_valid_tokens"] == 3
+        assert receipt["forward_input_ids_sha256"] == canonical_hash([[11, 12, 13, 0]])

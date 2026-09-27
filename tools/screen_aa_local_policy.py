@@ -8,11 +8,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import multiprocessing
 import os
 from pathlib import Path
+import platform
 import sys
+import threading
 import time
 
 from poker_engine.strategy.aa_external_local_policy import (
@@ -45,6 +48,9 @@ MODEL_SPECS = (
 )
 UPSTREAM_COMMIT = "a5120cce45b9ff70964fac54ea6e8c1ac5b08c7f"
 UPSTREAM_FILES = {
+    "LICENSE": "8489ebe7c8abe903fcdaace4080ef1660bba98ea44c8007923bfb91777945e37",
+    "pyproject.toml": (
+        "c6b76b417b1efe5e0a0c68349c636191ada681b1d4dbf32b317c5940dc2f75e9"),
     "decider/__init__.py": (
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
     "decider/infer.py": (
@@ -59,6 +65,8 @@ UPSTREAM_FILES = {
 MODEL_FILES = ("config.json", "decider_config.json", "tokenizer_config.json",
                "tokenizer.json", "generation_config.json", "chat_template.jinja",
                "source-metadata.json")
+RUNTIME_PACKAGES = ("torch", "transformers", "numpy", "tokenizers",
+                    "huggingface_hub", "safetensors", "pokerkit")
 
 
 def _sha(path):
@@ -94,6 +102,10 @@ def _check_config(directory, spec):
     cfg = read_json(directory / "decider_config.json")
     if any(_contains_auto_map(value) for value in (config, tokenizer, cfg)):
         raise ValueError("auto_map_remote_code_refused")
+    if (config.get("architectures") != ["Qwen3_5ForCausalLM"]
+            or config.get("model_type") != "qwen3_5_text"
+            or tokenizer.get("tokenizer_class") != "Qwen2Tokenizer"):
+        raise ValueError("unsupported_model_or_tokenizer_architecture")
     if (cfg.get("version") != spec["version"]
             or cfg.get("temperature") != spec["temperature"]
             or cfg.get("schema_first") is not False
@@ -106,8 +118,12 @@ def _check_config(directory, spec):
 
 def _manifest_model(directory, spec):
     directory = Path(directory).resolve()
+    names = _inventory(directory)
+    allowed = set(MODEL_FILES) | {"README.md", "model.safetensors"}
+    if names - allowed:
+        raise ValueError("unregistered_model_files:" + str(sorted(names - allowed)))
     files = {}
-    for name in MODEL_FILES:
+    for name in (*MODEL_FILES, *(["README.md"] if "README.md" in names else [])):
         path = directory / name
         files[name] = ({"sha256": _sha(path), "size": path.stat().st_size}
                        if path.is_file() else None)
@@ -120,12 +136,74 @@ def _manifest_model(directory, spec):
 
 
 def _source_hashes():
-    names = ["tools/screen_aa_local_policy.py",
-             "src/poker_engine/strategy/aa_external_local_policy.py",
-             "src/poker_engine/strategy/aa_policy_encoding_v2.py",
-             "src/poker_engine/strategy/aa_full_hand_arena.py",
-             "src/poker_engine/strategy/aa_rules_v2.py"]
+    names = sorted(path.relative_to(ROOT).as_posix()
+                   for folder in ("src", "tools")
+                   for path in (ROOT / folder).rglob("*.py"))
+    names += ["pyproject.toml", DEFAULT_RULES.relative_to(ROOT).as_posix()]
     return {name: _sha(ROOT / name) for name in names}
+
+
+def _file_receipt(path):
+    path = Path(path).resolve()
+    return {"path": str(path), "sha256": _sha(path)}
+
+
+def runtime_identity():
+    """Interpreter and dependency metadata identities, without importing ML packages."""
+    packages = {}
+    for name in RUNTIME_PACKAGES:
+        try:
+            dist = importlib.metadata.distribution(name)
+        except importlib.metadata.PackageNotFoundError:
+            packages[name] = None
+            continue
+        metadata = {}
+        for filename in ("METADATA", "RECORD"):
+            matches = [path for path in dist.files or ()
+                       if str(path).replace("\\", "/").endswith(
+                           ".dist-info/" + filename)]
+            metadata[filename] = (_file_receipt(dist.locate_file(matches[0]))
+                                  if len(matches) == 1 else None)
+        module = importlib.util.find_spec(name)
+        packages[name] = {"version": dist.version, **metadata,
+                          "module": _file_receipt(module.origin)
+                          if module and module.origin else None}
+    base = getattr(sys, "_base_executable", sys.executable)
+    return {"python_version": sys.version,
+            "implementation": platform.python_implementation(),
+            "cache_tag": sys.implementation.cache_tag,
+            "executable": _file_receipt(sys.executable),
+            "base_executable": _file_receipt(base),
+            "prefix": str(Path(sys.prefix).resolve()),
+            "base_prefix": str(Path(sys.base_prefix).resolve()), "packages": packages}
+
+
+def _require_runtime(expected):
+    actual = runtime_identity()
+    if actual != expected:
+        raise ValueError("runtime_identity_mismatch")
+    for name, item in actual["packages"].items():
+        if item is None or any(item[key] is None
+                               for key in ("METADATA", "RECORD", "module")):
+            raise ValueError("required_runtime_package_missing:" + name)
+    return actual
+
+
+def _inventory(directory):
+    directory = Path(directory)
+    if not directory.exists():
+        return set()
+    paths = list(directory.rglob("*"))
+    if any(path.is_symlink() or getattr(path, "is_junction", lambda: False)()
+           for path in paths):
+        raise ValueError("linked_asset_path_refused")
+    files = {path.relative_to(directory).as_posix() for path in paths if path.is_file()}
+    permitted_dirs = {str(Path(name).parent).replace("\\", "/") for name in files}
+    if any(path.is_dir() and path.relative_to(directory).as_posix()
+           not in permitted_dirs
+           for path in paths):
+        raise ValueError("unregistered_asset_directory")
+    return files
 
 
 def frozen_queries():
@@ -194,6 +272,7 @@ def freeze(output, model_08b, model_2b, upstream_package):
         "prompt_cap": PROMPT_CAP, "batch_cap_seconds": MAX_BATCH_SECONDS,
         "query_timeout_seconds": 10, "warmup_timeout_seconds": 10,
         "load_timeout_seconds": 120, "hard_deadline_seconds": 0.3,
+        "hard_deadline_query_id": "n8-min_raise_first-river",
         "seeds": list(DEVELOPMENT_SEEDS), "sample_kind": "DEVELOPMENT_ONLY",
         "option_rendering": "id: text", "queries": queries,
         "models": [_manifest_model(path, spec) for path, spec in
@@ -202,6 +281,7 @@ def freeze(output, model_08b, model_2b, upstream_package):
                      "commit": UPSTREAM_COMMIT, "files": UPSTREAM_FILES},
         "source_sha256": _source_hashes(), "expected_queries": 48,
         "pokerkit_version": importlib.metadata.version("pokerkit"),
+        "runtime_identity": runtime_identity(),
         "strategy_eligible": False, "advice_emitted": False,
     }
     manifest["sha256"] = canonical_hash(manifest)
@@ -218,8 +298,12 @@ def load_manifest(output):
         raise ValueError("manifest_digest_mismatch")
     fixed_budgets = {"query_timeout_seconds": 10, "warmup_timeout_seconds": 10,
                      "load_timeout_seconds": 120, "hard_deadline_seconds": 0.3,
-                     "batch_cap_seconds": MAX_BATCH_SECONDS}
+                     "batch_cap_seconds": MAX_BATCH_SECONDS,
+                     "hard_deadline_query_id": "n8-min_raise_first-river"}
     if (manifest["source_sha256"] != _source_hashes()
+            or manifest.get("runtime_identity") != runtime_identity()
+            or manifest.get("pokerkit_version")
+            != importlib.metadata.version("pokerkit")
             or manifest["context_cap"] != CONTEXT_CAP
             or manifest["prompt_cap"] != PROMPT_CAP
             or manifest["seeds"] != list(DEVELOPMENT_SEEDS)
@@ -243,6 +327,8 @@ def load_manifest(output):
 def verify_assets(model, upstream):
     for group in (model, upstream):
         directory = Path(group["directory"])
+        if _inventory(directory) != set(group["files"]):
+            raise ValueError("asset_file_inventory_mismatch")
         for name, receipt in group["files"].items():
             path = directory / name
             if receipt is None or not path.is_file() or path.is_symlink():
@@ -254,6 +340,65 @@ def verify_assets(model, upstream):
             if _sha(path) != digest:
                 raise ValueError("asset_digest_mismatch:" + name)
     _check_config(model["directory"], model)
+
+
+def expected_ready(model, upstream, runtime):
+    directory = str(Path(model["directory"]).resolve())
+    return {
+        "runtime_identity": runtime,
+        "upstream_modules": {
+            ("decider" if name == "decider/__init__.py" else
+             name[:-3].replace("/", ".")):
+            {"path": str((Path(upstream["directory"]) / name).resolve()),
+             "sha256": digest}
+            for name, digest in upstream["files"].items() if name.endswith(".py")},
+        "runtime_modules": {name: runtime["packages"][name]["module"]
+                            for name in ("torch", "transformers")
+                            if runtime["packages"][name] is not None},
+        "actual_versions": {name: runtime["packages"][name]["version"]
+                            for name in ("torch", "transformers")
+                            if runtime["packages"][name] is not None},
+        "model_directory": directory, "tokenizer_name_or_path": directory,
+        "model_name_or_path": directory, "device": "cuda",
+        "dtype": "torch.bfloat16", "model_class": "Qwen3_5ForCausalLM",
+        "tokenizer_class": "Qwen2Tokenizer", "model_type": "qwen3_5_text",
+        "architectures": ["Qwen3_5ForCausalLM"],
+        "config_sha256": model["files"]["config.json"]["sha256"],
+        "decider_config_sha256": model["files"]["decider_config.json"]["sha256"],
+    }
+
+
+def validate_ready(response, model, upstream, runtime):
+    expected = expected_ready(model, upstream, runtime)
+    if any(response.get(key) != value for key, value in expected.items()):
+        raise ValueError("loaded_worker_identity_mismatch")
+
+
+def loaded_ready(decider, model, upstream, runtime):
+    """Receipts are measured from imported modules and the actual loaded objects."""
+    result = {
+        "runtime_identity": _require_runtime(runtime),
+        "upstream_modules": {
+            name: _file_receipt(sys.modules[name].__file__)
+            for name in expected_ready(model, upstream, runtime)["upstream_modules"]},
+        "runtime_modules": {name: _file_receipt(sys.modules[name].__file__)
+                            for name in ("torch", "transformers")},
+        "actual_versions": {name: str(sys.modules[name].__version__)
+                            for name in ("torch", "transformers")},
+        "model_directory": str(Path(model["directory"]).resolve()),
+        "tokenizer_name_or_path": str(Path(decider.m.tok.name_or_path).resolve()),
+        "model_name_or_path": str(Path(decider.m.lm.name_or_path).resolve()),
+        "device": str(decider.dev), "dtype": str(next(decider.m.lm.parameters()).dtype),
+        "model_class": type(decider.m.lm).__name__,
+        "tokenizer_class": type(decider.m.tok).__name__,
+        "model_type": decider.m.lm.config.model_type,
+        "architectures": decider.m.lm.config.architectures,
+        "config_sha256": _sha(Path(model["directory"]) / "config.json"),
+        "decider_config_sha256": _sha(Path(model["directory"]) / "decider_config.json"),
+    }
+    validate_ready(result, model, upstream, runtime)
+    result["status"] = "READY"
+    return result
 
 
 def render_checked(decider, request):
@@ -276,8 +421,42 @@ def render_checked(decider, request):
         raise ValueError("PROMPT_MUTATION_OR_TRUNCATION")
     if len(items[0]["ids"]) > PROMPT_CAP:
         raise ValueError("PROMPT_OVERFLOW")
-    return context, questions, {"context_tokens": len(context_ids),
-                                "prompt_tokens": len(items[0]["ids"])}
+    return items, {"context_tokens": len(context_ids),
+                   "prompt_tokens": len(items[0]["ids"]),
+                   "validated_prompt_ids_sha256": canonical_hash(items[0]["ids"])}
+
+
+def score_verified_items(decider, items):
+    """The audited eager scoring path, applied to the already checked token IDs."""
+    import torch
+    from decider.model import collate
+    from decider import temperature as TT
+    with torch.no_grad():
+        temperature = TT.for_items(decider.T, decider.T_by_type, items)
+        batch = collate(items, decider.m.tok.pad_token_id)
+        actual_ids = batch["input_ids"].tolist()
+        actual_mask = batch["attention_mask"].tolist()
+        valid_tokens = sum(sum(row) for row in actual_mask)
+        size = len(items[0]["ids"])
+        if (len(actual_ids) != 1 or actual_ids[0][:size] != items[0]["ids"]
+                or valid_tokens != size or len(actual_ids[0]) > PROMPT_CAP
+                or actual_mask != [[1] * size + [0] * (len(actual_ids[0]) - size)]):
+            raise ValueError("forward_input_does_not_match_verified_prompt")
+        logits = decider.m.slot_logits(
+            batch["input_ids"].to(decider.dev), batch["attention_mask"].to(decider.dev),
+            batch["slot_idx"].to(decider.dev), batch["slot_batch"].to(decider.dev),
+            batch["nopts"].to(decider.dev))
+        probabilities = TT.scaled_softmax(
+            logits, TT.slot_temperatures(temperature, items)).cpu()
+        values = probabilities.tolist()
+        if len(values) != 1:
+            raise ValueError("unexpected_model_output_rows")
+        scores = values[0][:items[0]["nopts"][0]]
+        if len(scores) != items[0]["nopts"][0]:
+            raise ValueError("invalid_model_output_menu")
+        return scores, {"forward_input_ids_sha256": canonical_hash(actual_ids),
+                        "attention_valid_tokens": valid_tokens,
+                        "forward_uses_verified_items": True}
 
 
 def _error(exc):
@@ -289,13 +468,15 @@ def _error(exc):
     return {"status": status, "error_type": type(exc).__name__, "reason": text}
 
 
-def model_worker(connection, model, upstream):
+def model_worker(connection, model, upstream, runtime):
     """One owned, preloaded model process; every request executes a fresh forward."""
     for key in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY",
                 "DISABLE_TELEMETRY", "DO_NOT_TRACK"):
         os.environ[key] = "1"
+    sys.dont_write_bytecode = True
     try:
-        _check_config(model["directory"], model)
+        _require_runtime(runtime)
+        verify_assets(model, upstream)
         sys.path.insert(0, upstream["directory"])
         import torch
         from decider.infer import Decider
@@ -306,9 +487,7 @@ def model_worker(connection, model, upstream):
                 or decider.T_by_type is not None):
             raise ValueError("loaded_model_configuration_mismatch")
         torch.cuda.synchronize()
-        connection.send({"status": "READY", "device": str(decider.dev),
-                         "torch": torch.__version__,
-                         "transformers": importlib.metadata.version("transformers")})
+        connection.send(loaded_ready(decider, model, upstream, runtime))
     except BaseException as exc:
         connection.send(_error(exc))
         return
@@ -331,21 +510,17 @@ def model_worker(connection, model, upstream):
                     or encode_decision_v2(query["observation"])["exact_key"]
                     != query["exact_key"]):
                 raise ValueError("query_request_identity_mismatch")
-            context, questions, counts = render_checked(decider, request)
+            items, counts = render_checked(decider, request)
             torch.cuda.synchronize()
             inference_started = time.perf_counter()
-            answers = decider.decide(context, questions, max_ctx_tokens=CONTEXT_CAP)
+            values, forward_receipt = score_verified_items(decider, items)
             torch.cuda.synchronize()
             inference_ms = (time.perf_counter() - inference_started) * 1000
-            if len(answers) != 1 or set(answers[0]["probs"]) != set(
-                    questions[0]["options"]):
-                raise ValueError("invalid_model_output_menu")
             ids = [option["id"] for option in request["options"]]
-            scores = {action: answers[0]["probs"][text] for action, text in
-                      zip(ids, questions[0]["options"])}
+            scores = dict(zip(ids, values))
             action = select_action(scores, ids)
             response = {"status": "VALID", "action": action, "scores": scores,
-                        "inference_ms": inference_ms, **counts,
+                        "inference_ms": inference_ms, **counts, **forward_receipt,
                         "cached": False, "scores_are_gto_frequencies": False}
         except BaseException as exc:
             response = _error(exc)
@@ -354,47 +529,74 @@ def model_worker(connection, model, upstream):
 
 
 class WorkerClient:
-    def __init__(self, model, upstream, target=model_worker):
+    def __init__(self, model, upstream, target=model_worker, runtime=None):
         context = multiprocessing.get_context("spawn")
         self.connection, child = context.Pipe()
-        self.process = context.Process(target=target, args=(child, model, upstream))
+        self.process = context.Process(
+            target=target, args=(child, model, upstream, runtime))
+        self._closed = False
         self.process.start()
         child.close()
 
-    def receive(self, seconds):
+    def _exchange(self, seconds, query=None, send=False):
+        """Bound serialization, blocked writes and partial reads by one deadline."""
         started = time.monotonic()
-        if seconds <= 0 or not self.connection.poll(seconds):
+        deadline = started + max(0, seconds)
+        done = threading.Event()
+        box = {}
+
+        def transport():
+            try:
+                if send:
+                    self.connection.send(query)
+                value = self.connection.recv()
+                if not isinstance(value, dict) or "status" not in value:
+                    raise ValueError("invalid_worker_response")
+                box["value"] = value
+            except BaseException as exc:
+                box["value"] = _error(exc)
+            finally:
+                box["finished"] = time.monotonic()
+                done.set()
+
+        thread = threading.Thread(target=transport, daemon=True)
+        thread.start()
+        done.wait(max(0, deadline - time.monotonic()))
+        accepted_at = time.monotonic()
+        if (not done.is_set() or box.get("finished", accepted_at) > deadline
+                or accepted_at > deadline):
+            # Stop accepting now, regardless of whether a thread is in pickle,
+            # send, or a partially delivered recv. Cleanup is separately timed.
             self.close()
+            thread.join(timeout=0.1)
+            finished = time.monotonic()
             return {"status": "TIMEOUT", "reason": "owned_worker_deadline",
-                    "elapsed_ms": (time.monotonic() - started) * 1000}
-        try:
-            value = self.connection.recv()
-        except (EOFError, OSError):
-            value = {"status": "ERROR", "reason": "worker_exited_without_response"}
-        value["elapsed_ms"] = (time.monotonic() - started) * 1000
+                    "deadline_ms": max(0, seconds) * 1000,
+                    "acceptance_stopped_ms": (accepted_at - started) * 1000,
+                    "cleanup_ms": (finished - accepted_at) * 1000,
+                    "elapsed_ms": (finished - started) * 1000,
+                    "worker_terminated": not self.process.is_alive(),
+                    "transport_thread_alive": thread.is_alive()}
+        value = box["value"]
+        value["elapsed_ms"] = (accepted_at - started) * 1000
         return value
+
+    def receive(self, seconds):
+        return self._exchange(seconds)
 
     def query(self, query, seconds):
-        started = time.monotonic()
-        try:
-            self.connection.send(query)
-        except (BrokenPipeError, EOFError, OSError):
-            return {"status": "ERROR", "reason": "worker_unavailable"}
-        value = self.receive(max(0, seconds - (time.monotonic() - started)))
-        value["elapsed_ms"] = (time.monotonic() - started) * 1000
-        if value["status"] != "TIMEOUT" and value["elapsed_ms"] > seconds * 1000:
-            self.close()
-            return {"status": "TIMEOUT", "reason": "late_response_discarded",
-                    "elapsed_ms": value["elapsed_ms"]}
-        return value
+        return self._exchange(seconds, query=query, send=True)
 
     def close(self):
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         if self.process.is_alive():
             self.process.terminate()
-        self.process.join(timeout=1)
+        self.process.join(timeout=0.2)
         if self.process.is_alive():
             self.process.kill()
-            self.process.join(timeout=1)
+            self.process.join(timeout=0.2)
         self.connection.close()
 
 
@@ -450,7 +652,8 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
                 save()
                 continue
             load_started = time.monotonic()
-            client = client_factory(spec, manifest["upstream"])
+            client = client_factory(spec, manifest["upstream"],
+                                    runtime=manifest["runtime_identity"])
             result["load"] = client.receive(min(120, deadline - time.monotonic()))
             result["load"]["elapsed_ms"] = (time.monotonic() - load_started) * 1000
             save()
@@ -459,6 +662,8 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
                     row["reason"] = "model_load_failed"
                 save()
                 continue
+            validate_ready(result["load"], spec, manifest["upstream"],
+                           manifest["runtime_identity"])
             result["warmup"] = client.query(
                 manifest["queries"][0], min(10, deadline - time.monotonic()))
             result["warmup"]["included_in_denominator"] = False
@@ -476,9 +681,10 @@ def run_screen(output, *, batch_seconds=600, client_factory=WorkerClient,
                 save()
             if alive and time.monotonic() < deadline:
                 result["hard_deadline"] = client.query(
-                    manifest["queries"][0], min(0.3, deadline - time.monotonic()))
+                    manifest["queries"][-1], min(0.3, deadline - time.monotonic()))
                 result["hard_deadline"].update(
-                    budget_ms=300, included_in_denominator=False)
+                    budget_ms=300, included_in_denominator=False,
+                    query_id=manifest["hard_deadline_query_id"])
                 if (result["hard_deadline"]["status"] == "VALID"
                         and result["hard_deadline"]["elapsed_ms"] > 300):
                     result["hard_deadline"]["status"] = "LATE_VALID"
