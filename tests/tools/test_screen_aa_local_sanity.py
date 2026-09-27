@@ -115,6 +115,8 @@ def test_worker_illegal_action_cannot_be_reported_valid(frozen):
     lambda m: m["models"][0].update(temperature=9),
     lambda m: m["runtime_identity"].update(python_version="wrong"),
     lambda m: m["source_sha256"].update(unknown="wrong"),
+    lambda m: m.update(kind="LIVE_STRATEGY"),
+    lambda m: m.update(strategy_eligible=True),
 ])
 def test_rehashed_protocol_drift_rejected(frozen, mutate):
     output, manifest = frozen

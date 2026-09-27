@@ -76,6 +76,8 @@ def load(output):
     manifest = read_json(Path(output) / "manifest.json")
     body = {key: value for key, value in manifest.items() if key != "sha256"}
     if (canonical_hash(body) != manifest["sha256"]
+            or manifest["kind"] != "AA_LOCAL_PUBLIC_SANITY_V1"
+            or manifest["strategy_eligible"] is not False
             or manifest["limits"] != LIMITS or manifest["expected_rows"] != 18
             or manifest["cases"] != build_sanity_cases()
             or manifest["source_sha256"] != screen._source_hashes()
@@ -229,6 +231,8 @@ def main():
                              seconds=590, cwd=screen.ROOT,
                              log_path=args.output / "screen.log")
         result["supervisor_perf_counter_seconds"] = time.perf_counter() - start
+        result["helper_elapsed_clock"] = "monotonic_in_reused_run_bounded"
+        result["supervisor_clock"] = screen.clock_identity()
         screen._atomic(args.output / "supervisor.json", result)
         print(json.dumps(result))
     elif args.phase == "_run":
