@@ -70,6 +70,8 @@ def test_real_frozen_asset_completes_predeclared_checkcall_full_hand(n):
         lookup = frozen.inspect_lookup(obs)
         assert lookup["status"] == "HIT"
         assert lookup["encoder"] == ENCODER_VERSION_V2
+        assert lookup["encoder_version"] == ENCODER_VERSION_V2
+        assert lookup["information_key"] == lookup["abstract_key"]
         assert lookup["exact_key"] != lookup["abstract_key"]
         assert lookup["features"]["street"] == original.street
         assert decide(obs) == decide(obs) == "check_call"
@@ -91,6 +93,7 @@ def test_lookup_hit_miss_scope_and_invalid_menu_remain_distinct():
     assert result["status"] == "UNKNOWN_INFORMATION_SET"
     assert result["distribution"] is None
     assert result["abstract_key"] is not None
+    assert result["information_key"] == result["abstract_key"]
     assert frozen.distribution(changed) is None
     with pytest.raises(ValueError, match="unknown_policy_information_set"):
         frozen.for_game("a" * 64)(changed)
@@ -108,21 +111,20 @@ def test_lookup_hit_miss_scope_and_invalid_menu_remain_distinct():
 
 @pytest.mark.parametrize("salt", [
     None, True, False, 1, 1.0, "a" * 63, "a" * 65,
-    "g" * 64, "a" * 64 + "\n", " " * 64,
+    "g" * 64, "a" * 64 + "\n", " " * 64, "A" * 64, "Ab" * 32,
 ])
 def test_game_salt_requires_exact_64_hex_string(salt):
     with pytest.raises(ValueError, match="independent_policy_salt"):
         FrozenResearchPolicyV2(artifact()).for_game(salt)
 
 
-def test_salt_case_is_normalized_and_game_choice_is_stable():
+def test_canonical_salt_game_choice_is_stable():
     game = arena()
     obs = game.observe(game.actor)
     doc = artifact(obs)
     ids = [row["id"] for row in obs["legal_actions"]]
     doc["policy"][information_key_v2(obs)] = {action: 1 / len(ids) for action in ids}
     frozen = FrozenResearchPolicyV2(rehash(doc))
-    assert frozen.for_game("AB" * 32)(obs) == frozen.for_game("ab" * 32)(obs)
     assert len({frozen.for_game("ab" * 32)(obs) for _ in range(10)}) == 1
 
 

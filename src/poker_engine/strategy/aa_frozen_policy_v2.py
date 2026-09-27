@@ -107,6 +107,7 @@ class FrozenResearchPolicyV2:
         report = {
             "policy_version": POLICY_KIND_V2, "policy_sha256": self.sha256,
             "encoder": ENCODER_VERSION_V2, "status": None, "distribution": None,
+            "encoder_version": ENCODER_VERSION_V2, "information_key": None,
             "exact_key": None, "abstract_key": None, "features": None,
             "strategy_eligible": False, "advice_emitted": False,
         }
@@ -127,6 +128,7 @@ class FrozenResearchPolicyV2:
             return report
         report.update({key: encoded[key] for key in ("exact_key", "abstract_key",
                                                      "features")})
+        report["information_key"] = encoded["abstract_key"]
         dist = self._data["policy"].get(encoded["abstract_key"])
         if dist is None:
             report.update(status="UNKNOWN_INFORMATION_SET",
@@ -164,9 +166,8 @@ class FrozenResearchPolicyV2:
         raise ValueError("frozen_mixture_requires_independent_evaluation_salt")
 
     def for_game(self, salt):
-        if not _hex64(salt):
+        if not _hex64(salt) or salt != salt.lower():
             raise ValueError("independent_policy_salt_required")
-        salt = salt.lower()
 
         def decide(observation):
             key = information_key_v2(observation)
