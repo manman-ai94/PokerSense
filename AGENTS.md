@@ -33,6 +33,27 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-27 TEN-SECOND AA ENGINEERING PREVIEW:** isolated from exact
+  `af67b4bb3ba56da2d4fdb70e0731583afc7aaf40` on
+  `codex/aa-ten-second-foundation`, version `0.2.0.dev1`. Added monotonic
+  turn deadlines, source-age rejection, independent UI TTL and killable
+  preloaded shadow policy execution; actual AA HTTP remains observation-only
+  because verified physical turn timing and qualified live policy are absent.
+  Windows entry/package now AA; frozen EXE offline self-check, 13 endpoints,
+  actual spawn analysis and capture refusal passed, browser layout inspected.
+  Added PokerKit 0.7.5 full-hand 6/7/8 simulation, paired seat/deal evaluation,
+  SIMPLE external-sampling MCCFR, scope-bound transactional checkpoints,
+  research-only frozen policy and explicit synthetic recorded-Jev adapter.
+  Independent review repaired checkpoint scope, nested private-label forwarding
+  and partial-commit faults; original probes independently reverified.
+  Full local 4701 passed/2 skipped (471.96s), full lint/diff passed; existing
+  30-case baseline digest unchanged. Nine bounded 3s training probes retained:
+  two completed ten sweeps, seven budget-exhausted. Eight-player coverage probe
+  48/48 BLOCKED, zero paired EV: no strategy promotion. Physical p95/p99,
+  real hands, strong strategy and installer installation NOT accepted; local
+  Inno compiler absent. No capture, paid inference/cloud, merge/tag/release.
+  Old dirty primary and rejected experiments preserved. Start with
+  docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md; do not call this live readiness.
 - **2026-09-23 INDEPENDENT PR #34 EVALUATION GATE:** independently audited
   original head `4f59d723f20fab760b50c0f2de1ec88a5b9b1b8f` against exact main
   `d98084aba96eac6ff3bc0cf07dad99b00e36ff31`. Recompiled all six V1 books from
