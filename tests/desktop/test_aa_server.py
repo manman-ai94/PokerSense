@@ -154,6 +154,63 @@ def test_analysis_binds_rules_and_invalidates_on_generation_change(tmp_path):
                            json=body).status_code == 400
 
 
+def test_rules_metadata_legacy_post_cancel_and_clear_lifecycle(tmp_path):
+    from poker_engine.desktop.aa_table_config import STACK_RANGE, empty_config
+
+    session, analysis = Session(), Analysis()
+    rules_path = tmp_path / "rules.json"
+    app = aa_server.create_app(tmp_path / "missing", session=session,
+                               analysis_service=analysis, rules_path=rules_path)
+    with TestClient(app) as client:
+        first = client.get("/api/rules").json()
+        document = {**empty_config(), "small_blind": "1", "big_blind": "2",
+                    STACK_RANGE[0]: "50", STACK_RANGE[1]: "200"}
+        analysis.report = {"status": "COMPLETE", "binding": {}}
+        saved = client.post("/api/rules", headers=HEADERS,
+                            json={"document": document,
+                                  "revision": first["revision"]}).json()
+        assert analysis.status()["status"] == "CANCELLED"
+        assert session.stops == 1 and session.starts == []
+        # Old callers omit both metadata fields, but may still edit table rules.
+        old_document = {key: value for key, value in document.items()
+                        if key not in STACK_RANGE}
+        old_document["table_label"] = "changed by other page"
+        latest = client.post("/api/rules", headers=HEADERS,
+                             json={"document": old_document,
+                                   "revision": saved["revision"]}).json()
+        assert latest["document"][STACK_RANGE[0]] == "50"
+        assert latest["document"][STACK_RANGE[1]] == "200"
+        assert session.stops == 2
+        # A stale page or invalid range never saves, cancels, or stops again.
+        analysis.report = {"status": "COMPLETE", "binding": {}}
+        disk = rules_path.read_bytes()
+        stale = client.post("/api/rules", headers=HEADERS,
+                            json={"document": empty_config(),
+                                  "revision": saved["revision"]})
+        assert stale.status_code == 400
+        invalid = client.post("/api/rules", headers=HEADERS,
+                              json={"document": {**document, STACK_RANGE[0]: "300"},
+                                    "revision": latest["revision"]})
+        assert invalid.status_code == 400
+        assert session.stops == 2 and analysis.status()["status"] == "COMPLETE"
+        assert rules_path.read_bytes() == disk
+        # Cancel edits is a fresh GET, so another page's current values win.
+        assert client.get("/api/rules").json() == latest
+        assert session.stops == 2
+        cleared = client.post("/api/rules", headers=HEADERS,
+                              json={"document": empty_config(),
+                                    "revision": latest["revision"]})
+        assert cleared.status_code == 200
+        assert cleared.json()["document"] == empty_config()
+        assert analysis.status()["status"] == "CANCELLED"
+        assert session.stops == 3 and session.starts == []
+    # Restart reads the saved clear; no actual source or capture was opened.
+    restarted = aa_server.create_app(tmp_path / "missing", session=Session(),
+                                     rules_path=rules_path)
+    with TestClient(restarted) as client:
+        assert client.get("/api/rules").json() == cleared.json()
+
+
 def test_analysis_rejects_duplicate_keys_and_large_body(tmp_path):
     app = aa_server.create_app(tmp_path / "missing", session=Session(),
                                analysis_service=Analysis())
