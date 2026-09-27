@@ -207,3 +207,18 @@ def test_short_forced_blind_refused_instead_of_reducing_nominal_call_price():
     # platform rule is adapted, refuse rather than silently model a 1chip BB.
     with pytest.raises(ValueError, match="short forced blind"):
         AAFullHandArena(rules(), {0: 200, 1: 1, 2: 200, 3: 200, 4: 200, 5: 200})
+
+
+def test_handcomputed_threeway_board_tie_preserves_fractional_thirds():
+    arena = AAFullHandArena(rules()).reset(
+        1, deck=deck_with("2d 2h 3d 3h 4d 4h 5d 5h 6d 6h 7d 7h "
+                          "8d Tc Jc Qc 8h Kc 8s Ac"))
+    for action in ("check_call", "check_call", "fold", "fold", "fold", "check_call"):
+        arena.step(action)
+    returns = finish(arena)
+    # SB's folded1 plus three players'2 = pot7, boardroyal splits7/3 each.
+    assert returns == {0: -1, 1: Fraction(1, 3), 2: Fraction(1, 3),
+                       3: Fraction(1, 3), 4: 0, 5: 0}
+    assert arena.terminal_result()["returns"]["1"] == {"numerator": 1, "denominator": 3}
+    assert arena.observe(1)["stacks"]["1"] == "601/3"
+    assert sum(returns.values()) == 0
