@@ -33,6 +33,19 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-28 PREFLOP SUPPORT AUDIT, PRE-RUN:** successor to d3f7052 keeps
+  V2/MCCFR/old nine assets unchanged. Freezes10647policy-free preflop slots,
+  31941asset checks across6/7/8,169classes,all occupied physical seats and3prefixes.
+  Fixed simulation geometry has1014non-decisions/3042asset NOT_APPLICABLE rows;
+  duplicate first-actor prefixes are counted separately from unique keys.
+  Regret membership splits zero/nonzero; visits never imply average export.
+  One600s supervised batch,original files read-only,no fitting or live advice.
+  Report rechecks original source/bindings/average export and real observations;
+  self-rehashed fake507HIT report is rejected.30focusedtests/full lint pass;
+  84existing encoder/frozen-policy/MCCFR regressions pass. Failed rows cannot
+  carry distributions or count as nonuniform hits.
+  Independent engineering review before freeze; actual matrix not yet run.
+  Protocol:docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md.
 - **2026-09-28 LOCAL FULL-HAND CLOSEOUT: NO_GO, budget complete / samples PARTIAL.**
   Experiment source2dfe5a5, DraftPR41 over PR40; manifest27f20f7c. Both fixed
   Mapika models fail public-only decision checks (0.8b6/9,2b3/9); 2b folds all
