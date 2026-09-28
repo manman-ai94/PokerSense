@@ -1,5 +1,12 @@
 # PokerSense
 
+The [finite V2 preflop support audit](docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md)
+completed all 31,941 asset checks without fitting or changing the nine policies.
+Only 2,833/28,899 constructible checks hit an exported average policy; most gaps
+were never visited, while zero/nonzero regret-only rows are reported separately.
+This is coverage of a fixed synthetic support grid, not full-hand completion,
+win rate or a live qualification. Original artifacts and all non-decisions remain.
+
 The [bounded full-hand evaluation](docs/AA-LOCAL-FULLHAND-20260928.zh-CN.md)
 is closed with **NO_GO for both local models**. Both failed public-information
 decision checks, and several complete groups deteriorated against fixed synthetic

@@ -33,19 +33,22 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
-- **2026-09-28 PREFLOP SUPPORT AUDIT, PRE-RUN:** successor to d3f7052 keeps
-  V2/MCCFR/old nine assets unchanged. Freezes10647policy-free preflop slots,
-  31941asset checks across6/7/8,169classes,all occupied physical seats and3prefixes.
-  Fixed simulation geometry has1014non-decisions/3042asset NOT_APPLICABLE rows;
-  duplicate first-actor prefixes are counted separately from unique keys.
-  Regret membership splits zero/nonzero; visits never imply average export.
-  One600s supervised batch,original files read-only,no fitting or live advice.
-  Report rechecks original source/bindings/average export and real observations;
-  self-rehashed fake507HIT report is rejected.30focusedtests/full lint pass;
-  84existing encoder/frozen-policy/MCCFR regressions pass. Failed rows cannot
-  carry distributions or count as nonuniform hits.
-  Independent engineering review before freeze; actual matrix not yet run.
-  Protocol:docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md.
+- **2026-09-28 PREFLOP SUPPORT AUDIT COMPLETE: engineering PASS, support incomplete.**
+  Source4ca7bc0,manifest6f72bbdd; V2/MCCFR/nine assets unchanged. One supervised
+  batch107.621s completed63shards/10647slots/31941asset rows:2833HIT,3042NA,
+  23204UNVISITED,1990zero-regret-only,872nonzero-regret-only;0errors/notrun.
+  28899constructible rows9.80%HIT; after within-asset key dedup2229/27378=8.14%.
+  Fixed limp-then-minraise response prefix9126constructible rows allUNVISITED;
+  not a claim about every second decision. Original95o/8visit witness confirmed.
+  Regret membership is not learning/average export; old traverser roles UNKNOWN.
+  Independent raw result audit PASS;27input artifact hashes unchanged, old
+  primary retained. Fixed default physical geometry/169classes/3prefixes only,
+  not full-hand acceptance, natural frequency, profitability or live readiness.
+  FakeHIT/observation/NA/metadata/failed-nonuniform attacks rejected;30newtests,
+  84encoder/policy/MCCFR regressions and full lint pass. No fitting, capture,
+  paid API, package or live change. Next only: sampling coverage and correct
+  average weighting on enumerable small games before changing collection.
+  Results/commands:docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md.
 - **2026-09-28 LOCAL FULL-HAND CLOSEOUT: NO_GO, budget complete / samples PARTIAL.**
   Experiment source2dfe5a5, DraftPR41 over PR40; manifest27f20f7c. Both fixed
   Mapika models fail public-only decision checks (0.8b6/9,2b3/9); 2b folds all
