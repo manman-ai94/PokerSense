@@ -1,5 +1,8 @@
 # PokerSense
 
+完整进度与审核入口：[去重工作总汇报（含ChatGPT审核提纲）](docs/reports/POKERSENSE-WORK-REPORT-20260928.zh-CN.md)。
+能力清单、固定PR版本、实验结论和证据边界集中列示。
+
 已完成[V2有限翻前支持集审计](docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md)：
 31,941条资产检查全部保留，28,899条可构造决策中仅2,833条命中平均策略。
 多数缺口从未访问；regret表存在但全零、发生非零更新但未导出的情况分别报告。

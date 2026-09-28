@@ -33,6 +33,17 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-28 CONSOLIDATED WORK REPORT:** documentation-only successor to
+  f05d804. One canonical report groups all37pre-report PRs exactly once,
+  distinguishes main af67b4b from Draft37-42, closed research and local-only
+  work, and provides a ChatGPT read-only review brief. A whitelisted evidence
+  index binds public PR/CI snapshots and derived synthetic summaries to original
+  report hashes; it is not raw independent reproduction. Old documents/data
+  retained. Link/arithmetic/unique-PR/privacy checks and independent publication
+  review PASS; user-requested ChatGPT review is still pending.
+  No media, weights, credentials or raw private logs published; no
+  new experiment, runtime change, merge or release. Entry:
+  docs/reports/POKERSENSE-WORK-REPORT-20260928.zh-CN.md.
 - **2026-09-28 PREFLOP SUPPORT AUDIT COMPLETE: engineering PASS, support incomplete.**
   Source4ca7bc0,manifest6f72bbdd; V2/MCCFR/nine assets unchanged. One supervised
   batch107.621s completed63shards/10647slots/31941asset rows:2833HIT,3042NA,

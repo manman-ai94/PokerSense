@@ -1,5 +1,8 @@
 # PokerSense
 
+Read the [deduplicated work report and ChatGPT review brief](docs/reports/POKERSENSE-WORK-REPORT-20260928.zh-CN.md)
+for the complete capability inventory, fixed PR versions, experiment outcomes and evidence limits.
+
 The [finite V2 preflop support audit](docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md)
 completed all 31,941 asset checks without fitting or changing the nine policies.
 Only 2,833/28,899 constructible checks hit an exported average policy; most gaps

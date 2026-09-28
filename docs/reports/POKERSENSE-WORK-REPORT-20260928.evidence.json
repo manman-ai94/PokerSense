@@ -1,0 +1,2454 @@
+{
+  "schema_version": 1,
+  "purpose": "DEDUPLICATED_WORK_REPORT_EVIDENCE_INDEX_NOT_NEW_EXPERIMENT",
+  "observed_at_utc": "2026-09-28T10:42:30.135780+00:00",
+  "canonical_repository": "https://github.com/xiaoyangpeng1994-create/PokerSense",
+  "main_sha": "af67b4bb3ba56da2d4fdb70e0731583afc7aaf40",
+  "integrated_snapshot_sha": "f05d804ba701e8041552327867e4ac9e2d6420fd",
+  "inventory_scope": "Before creation of the documentation-only report PR; issue numbers are not counted as PRs",
+  "pull_requests": [
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/private-pr-workflow",
+      "headRefOid": "05c7481fce447dd0e18995d9f1cf6f4539042966",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T02:50:19Z",
+      "number": 1,
+      "state": "MERGED",
+      "title": "建立公开主仓库的中文 PR 审查流程与分支保护",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/1"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-offline-session-evidence-v1",
+      "headRefOid": "5c1f7c051615c6985d9de0f5352bbe0c0b90fc41",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T05:40:00Z",
+      "number": 2,
+      "state": "MERGED",
+      "title": "关闭模拟器入口并登记 AA8 离线开发会话",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/2"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-action-truth-review-v1",
+      "headRefOid": "701de46d6ef0d0851882e5b3faad93c251d6bb79",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T05:45:13Z",
+      "number": 3,
+      "state": "MERGED",
+      "title": "复核 AA8 完整手动作候选真值",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/3"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-glyph-dedupe-v1",
+      "headRefOid": "3f537fa753e8e6a085be6832d72103b6b0bffebd",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T05:47:55Z",
+      "number": 4,
+      "state": "MERGED",
+      "title": "AA8：新增动作字形去重 V2（保留 V1 冻结）",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/4"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-decision-opportunities-v1",
+      "headRefOid": "96252faf9e3fa5c85910987076a2dcd5c2dda514",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T08:03:08Z",
+      "number": 5,
+      "state": "MERGED",
+      "title": "AA8：新增完整决策机会审计合同 V1",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/5"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-artifact-episodes-v1",
+      "headRefOid": "51b2e32466e43f69199c832e52eac4ee8de9bb08",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T09:44:49Z",
+      "number": 6,
+      "state": "MERGED",
+      "title": "feat: 验真 AA8 决策元数据并枚举 Actor episodes",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/6"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-live-capture-intake-v1",
+      "headRefOid": "243c05e10d8c21d5ebbb272643c54e7692e8fe91",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T12:07:25Z",
+      "number": 7,
+      "state": "MERGED",
+      "title": "feat: 增加 AA 一次性授权的被动采集入库",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/7"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-live-capture-hardware-probe-fix",
+      "headRefOid": "00f9a478db625d77e9466895dc3f2b2c0f866f09",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T13:08:37Z",
+      "number": 8,
+      "state": "MERGED",
+      "title": "fix: 选择 UGREEN 复合设备的视频接口",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/8"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-capture-device-lock-fix",
+      "headRefOid": "d0b04ab5d9d44519dc2cdc07d8ae9a76a2e2d6ea",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T13:52:26Z",
+      "number": 9,
+      "state": "MERGED",
+      "title": "修复被动采集完成后设备锁残留",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/9"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-dryrun-media-review-v1",
+      "headRefOid": "a7240f0a52f7bd1eda2144593c7080b286790ef4",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T14:54:36Z",
+      "number": 10,
+      "state": "MERGED",
+      "title": "记录 AA 旁观 dry-run 002 媒体审查结论",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/10"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-development-capture-001",
+      "headRefOid": "d64420b7787448bc5cf6775a693dda666bbd509b",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T15:16:08Z",
+      "number": 11,
+      "state": "MERGED",
+      "title": "记录首个 AA 旁观开发采集",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/11"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-development-media-review-v1",
+      "headRefOid": "e507f37dbfe73b9d8e1f2c74d02aabea5d5b6687",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T16:31:15Z",
+      "number": 12,
+      "state": "MERGED",
+      "title": "记录首个 AA 开发采集媒体审查",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/12"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/ci-pacing-test-flake-fix",
+      "headRefOid": "0e9fcec10677b661149de96acf7b3fa8f9c7aaea",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T16:23:13Z",
+      "number": 13,
+      "state": "MERGED",
+      "title": "稳定 macOS 实时流节拍测试",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/13"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-development-001-replay",
+      "headRefOid": "417ed15787008d3a875504dfc560c3cc098a6e26",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T18:36:05Z",
+      "number": 14,
+      "state": "MERGED",
+      "title": "记录九手 AA 离线识别回放与状态缺口",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/14"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-observer-replay-fixes",
+      "headRefOid": "e1cef0373ce7ec2ad6e8ae0b8018e69c82102cd7",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T18:16:34Z",
+      "number": 15,
+      "state": "MERGED",
+      "title": "修复旁观开发回放的底部筹码与上下文缺口",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/15"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-glyph-v3-fix",
+      "headRefOid": "d8bd842ae88a3337c1417b475b39cf3a049c1402",
+      "isDraft": false,
+      "mergedAt": "2026-09-14T18:21:25Z",
+      "number": 16,
+      "state": "MERGED",
+      "title": "区分盖牌与弃牌并补充浅色全下字样识别",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/16"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-glyph-holdout-v1",
+      "headRefOid": "0a27045d3aaf6617eaee1e07831144b058f84c27",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 17,
+      "state": "CLOSED",
+      "title": "审计 AA 字样留出资格：无合格同session素材",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/17"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-replay-viewer-v1",
+      "headRefOid": "4827b17fc3ded0a768ceab22b7036ac80b547623",
+      "isDraft": false,
+      "mergedAt": "2026-09-15T01:42:26Z",
+      "number": 18,
+      "state": "MERGED",
+      "title": "让 AA 冻结识别结果在界面逐帧可见",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/18"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-human-confirmation-ledger-v1",
+      "headRefOid": "1285b9e48195bdd773ed07d7aafb2ba8d41c5e22",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 19,
+      "state": "CLOSED",
+      "title": "为 AA 回放增加人工确认台账、复盘与开发标签导出",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/19"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-live-recognition-v1",
+      "headRefOid": "be56b10eef8f27bf6d7bb1f7f366aeecc924e060",
+      "isDraft": false,
+      "mergedAt": "2026-09-17T16:09:39Z",
+      "number": 20,
+      "state": "MERGED",
+      "title": "接通 AA 八座观察、动作解释与多人条件分析",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/20"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/strategy-001-research",
+      "headRefOid": "efe2283294dee34bc12fdc4bf67773120d99b09f",
+      "isDraft": false,
+      "mergedAt": "2026-09-17T16:51:55Z",
+      "number": 24,
+      "state": "MERGED",
+      "title": "[STRATEGY-DIAG] 固定策略诊断与离线复盘接入：B/C 已验收 + D-R1 补修（Draft）",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/24"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/github-001-integration",
+      "headRefOid": "0003a376faf61fa6a88f6e0b0e1c1b1323402b8a",
+      "isDraft": false,
+      "mergedAt": "2026-09-17T15:52:24Z",
+      "number": 26,
+      "state": "MERGED",
+      "title": "[GITHUB-001] 修复标准 Git 同步链路：凭据助手顺序 + 超时/退出码/三方 SHA 校验",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/26"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/usable-001-hand-review",
+      "headRefOid": "5cec34c56abad470843629068fc3494b2b628c33",
+      "isDraft": false,
+      "mergedAt": "2026-09-17T18:12:08Z",
+      "number": 28,
+      "state": "MERGED",
+      "title": "[USABLE-001] U1：真实牌局输入适配 + 现有内核计算 + 最小可操作表单（Draft）",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/28"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/open-source-arch-benchmark",
+      "headRefOid": "7c27633759caefa04d6f5999b55fbc92bc0e19cb",
+      "isDraft": false,
+      "mergedAt": "2026-09-17T19:01:12Z",
+      "number": 29,
+      "state": "MERGED",
+      "title": "[OPEN_SOURCE_ARCH_BENCHMARK] 开源架构基准：状态机 / 手牌历史 / 求解器层的决策矩阵（研究轮，零产品代码改动）",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/29"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "audit/repo-consolidation-kimi",
+      "headRefOid": "a10222ea0e6e9e68ab70499206db9de488a012ef",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 30,
+      "state": "CLOSED",
+      "title": "[REPO AUDIT] PokerSense 全仓库 PR/架构收口审计 · Kimi 第一审",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/30"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-annotation-records-v1",
+      "headRefOid": "dab099cf9030807048b05c08a901b764ebcd440b",
+      "isDraft": false,
+      "mergedAt": "2026-09-19T14:31:50Z",
+      "number": 31,
+      "state": "MERGED",
+      "title": "[DATA-GOVERNANCE] Source-bound field annotations + irreversible exposure history",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/31"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/target-s-real-hand-confirmation",
+      "headRefOid": "c744690eb21e3980b0f9ed344da7b1d0e7ac33d6",
+      "isDraft": false,
+      "mergedAt": "2026-09-21T17:38:44Z",
+      "number": 32,
+      "state": "MERGED",
+      "title": "[REAL-HAND] Fail-closed TARGET-S confirmation and receipt validation",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/32"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-critical-perception-boundary",
+      "headRefOid": "41507e65ad988ab7de79c4931a9e2e9831a30e10",
+      "isDraft": false,
+      "mergedAt": "2026-09-21T18:05:15Z",
+      "number": 33,
+      "state": "MERGED",
+      "title": "[PERCEPTION] Source-bound critical fields and fail-closed TARGET-S screening",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/33"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/strategy-evaluation-foundation",
+      "headRefOid": "5ce954e28c8b2328224fb95c8000d3ff8855f9b5",
+      "isDraft": false,
+      "mergedAt": "2026-09-23T03:23:17Z",
+      "number": 34,
+      "state": "MERGED",
+      "title": "Freeze AA river baseline and add offline strategy evaluation",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/34"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/range-posterior-v1",
+      "headRefOid": "cd2502ad3f67c2060e45569df6d8e00603348508",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 35,
+      "state": "CLOSED",
+      "title": "RANGE_POSTERIOR_V1: prospective synthetic calibration and baseline comparison",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/35"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/opponent-action-likelihood-v1",
+      "headRefOid": "136aa06938466e519dcb78e8bd0e4b6316d7d616",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 36,
+      "state": "OPEN",
+      "title": "Audit A-poker action opportunities and evaluate synthetic likelihood controls",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/36"
+    },
+    {
+      "baseRefName": "main",
+      "headRefName": "codex/aa-ten-second-foundation",
+      "headRefOid": "674a63bab226702d1183eadc36122ea0c15459b2",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 37,
+      "state": "OPEN",
+      "title": "AA 十秒行动窗口工程预览与离线全手验证底座",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/37"
+    },
+    {
+      "baseRefName": "codex/aa-ten-second-foundation",
+      "headRefName": "codex/aa-policy-readiness-v2",
+      "headRefOid": "4e7ceae02e19116f62576442f61a1bdc906d500a",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 38,
+      "state": "OPEN",
+      "title": "AA策略可执行性V2：可复现学习通过，新牌局覆盖未通过",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/38"
+    },
+    {
+      "baseRefName": "codex/aa-policy-readiness-v2",
+      "headRefName": "codex/aa-table-settings",
+      "headRefOid": "15d5895d1a0721a0ddb603a69deb9acaab29930c",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 39,
+      "state": "OPEN",
+      "title": "AA本桌设置：手动填写、摘要与筹码范围",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/39"
+    },
+    {
+      "baseRefName": "codex/aa-table-settings",
+      "headRefName": "codex/aa-local-policy-screen",
+      "headRefOid": "adfc1efb7f5f93a0d2ec7a37f086336225c37698",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 40,
+      "state": "OPEN",
+      "title": "AA本地候选筛查：固定权重、四街查询与高精度截止",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/40"
+    },
+    {
+      "baseRefName": "codex/aa-local-policy-screen",
+      "headRefName": "codex/aa-local-fullhand-study",
+      "headRefOid": "d3f70522c38014ea280b38af5127bc50ad5070d3",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 41,
+      "state": "OPEN",
+      "title": "AA本地策略：完整牌局评估与双候选 NO_GO 结论",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/41"
+    },
+    {
+      "baseRefName": "codex/aa-local-fullhand-study",
+      "headRefName": "codex/aa-preflop-support-audit",
+      "headRefOid": "f05d804ba701e8041552327867e4ac9e2d6420fd",
+      "isDraft": true,
+      "mergedAt": null,
+      "number": 42,
+      "state": "OPEN",
+      "title": "AA策略：有限翻前支持集审计与平均策略缺口定位",
+      "url": "https://github.com/xiaoyangpeng1994-create/PokerSense/pull/42"
+    }
+  ],
+  "work_group_pr_assignment": {
+    "repository_and_ci": [
+      1,
+      13,
+      26,
+      30
+    ],
+    "capture_intake_and_device": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12
+    ],
+    "aa_observation_and_development_replay": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      14,
+      15,
+      16,
+      17,
+      18,
+      20
+    ],
+    "annotation_and_fact_boundaries": [
+      19,
+      31,
+      32,
+      33
+    ],
+    "conditional_analysis_and_forms": [
+      24,
+      28
+    ],
+    "open_source_research": [
+      29
+    ],
+    "frozen_river_baseline": [
+      34
+    ],
+    "opponent_research": [
+      35,
+      36
+    ],
+    "deadline_arena_and_evaluation_binding": [
+      37
+    ],
+    "v2_learning_readiness": [
+      38
+    ],
+    "manual_table_settings": [
+      39
+    ],
+    "local_model_diagnostics": [
+      40,
+      41
+    ],
+    "preflop_support_audit": [
+      42
+    ]
+  },
+  "recent_head_checks": [
+    {
+      "pr": 37,
+      "head": "674a63bab226702d1183eadc36122ea0c15459b2",
+      "base": "main",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36306458260/job/108583962555"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36306458260/job/108583962653"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36306458260/job/108583962680"
+        }
+      ]
+    },
+    {
+      "pr": 38,
+      "head": "4e7ceae02e19116f62576442f61a1bdc906d500a",
+      "base": "codex/aa-ten-second-foundation",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36311817446/job/108599108070"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36311817446/job/108599108049"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36311817446/job/108599107917"
+        }
+      ]
+    },
+    {
+      "pr": 39,
+      "head": "15d5895d1a0721a0ddb603a69deb9acaab29930c",
+      "base": "codex/aa-policy-readiness-v2",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36318114836/job/108616577656"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36318114836/job/108616577452"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36318114836/job/108616577645"
+        }
+      ]
+    },
+    {
+      "pr": 40,
+      "head": "adfc1efb7f5f93a0d2ec7a37f086336225c37698",
+      "base": "codex/aa-table-settings",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36330453585/job/108651294180"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36330453585/job/108651294243"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36330453585/job/108651294827"
+        }
+      ]
+    },
+    {
+      "pr": 41,
+      "head": "d3f70522c38014ea280b38af5127bc50ad5070d3",
+      "base": "codex/aa-local-policy-screen",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36339070865/job/108675459051"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36339070865/job/108675459172"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36339070865/job/108675459197"
+        }
+      ]
+    },
+    {
+      "pr": 42,
+      "head": "f05d804ba701e8041552327867e4ac9e2d6420fd",
+      "base": "codex/aa-local-fullhand-study",
+      "checks": [
+        {
+          "name": "review-hygiene",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36408605036/job/108883154276"
+        },
+        {
+          "name": "test (macos-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36408605036/job/108883154606"
+        },
+        {
+          "name": "test (windows-latest)",
+          "status": "COMPLETED",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/xiaoyangpeng1994-create/PokerSense/actions/runs/36408605036/job/108883154577"
+        }
+      ]
+    }
+  ],
+  "formal_release_count": 0,
+  "evidence_limits": [
+    "This index is a derived summary, not raw observations or independent reexecution.",
+    "Public code and public committed synthetic fixtures can be reviewed independently.",
+    "Local-only raw studies require separate local evidence review; a matching hash by itself does not validate conclusions.",
+    "No model weights, media, player identities, credentials, raw private logs or machine paths are published."
+  ],
+  "experiments": {
+    "v2_readiness": {
+      "source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "075befd4cc5b08dab8fc886bd696db6182714076ee5da1793b1775a29d5c6ad7",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "experiment_commit": "40a42f5ad4dac88585ff7138a1a3856677fd0280",
+      "manifest_sha256": "0b5750b503460cd11624289e12631d723da07b6ddc47d101cc6229674d3972cd",
+      "expected_pairs": 11340,
+      "complete_pairs": 695,
+      "blocked_pairs": 10645,
+      "unexecuted_pairs": 0,
+      "expected_queries": 3150,
+      "executed_queries": 3150,
+      "gate3": "NO_GO",
+      "metrics": null,
+      "cases": [
+        {
+          "id": "v1_fixed-n6-seed1103",
+          "version": "V1_FIXED",
+          "players": 6,
+          "training_seed": 1103,
+          "expected_pairs": 540,
+          "complete_pairs": 46,
+          "blocked_pairs": 494,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.08518518518518518,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 98,
+            "repeated_exported_nonuniform_infosets": 58,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n6-seed2207",
+          "version": "V1_FIXED",
+          "players": 6,
+          "training_seed": 2207,
+          "expected_pairs": 540,
+          "complete_pairs": 34,
+          "blocked_pairs": 506,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.06296296296296296,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 91,
+            "repeated_exported_nonuniform_infosets": 43,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n6-seed3301",
+          "version": "V1_FIXED",
+          "players": 6,
+          "training_seed": 3301,
+          "expected_pairs": 540,
+          "complete_pairs": 30,
+          "blocked_pairs": 510,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.05555555555555555,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 94,
+            "repeated_exported_nonuniform_infosets": 49,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n7-seed1103",
+          "version": "V1_FIXED",
+          "players": 7,
+          "training_seed": 1103,
+          "expected_pairs": 630,
+          "complete_pairs": 39,
+          "blocked_pairs": 591,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.06190476190476191,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 100,
+            "repeated_exported_nonuniform_infosets": 59,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n7-seed2207",
+          "version": "V1_FIXED",
+          "players": 7,
+          "training_seed": 2207,
+          "expected_pairs": 630,
+          "complete_pairs": 36,
+          "blocked_pairs": 594,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.05714285714285714,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 96,
+            "repeated_exported_nonuniform_infosets": 60,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n7-seed3301",
+          "version": "V1_FIXED",
+          "players": 7,
+          "training_seed": 3301,
+          "expected_pairs": 630,
+          "complete_pairs": 39,
+          "blocked_pairs": 591,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.06190476190476191,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 97,
+            "repeated_exported_nonuniform_infosets": 57,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n8-seed1103",
+          "version": "V1_FIXED",
+          "players": 8,
+          "training_seed": 1103,
+          "expected_pairs": 720,
+          "complete_pairs": 43,
+          "blocked_pairs": 677,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.059722222222222225,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 102,
+            "repeated_exported_nonuniform_infosets": 63,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n8-seed2207",
+          "version": "V1_FIXED",
+          "players": 8,
+          "training_seed": 2207,
+          "expected_pairs": 720,
+          "complete_pairs": 38,
+          "blocked_pairs": 682,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.05277777777777778,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 98,
+            "repeated_exported_nonuniform_infosets": 57,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v1_fixed-n8-seed3301",
+          "version": "V1_FIXED",
+          "players": 8,
+          "training_seed": 3301,
+          "expected_pairs": 720,
+          "complete_pairs": 45,
+          "blocked_pairs": 675,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.0625,
+          "gate3": "NOT_ASSESSED",
+          "training_diagnostics": {
+            "completed_sweeps": 98,
+            "repeated_exported_nonuniform_infosets": 51,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n6-seed1103",
+          "version": "V2",
+          "players": 6,
+          "training_seed": 1103,
+          "expected_pairs": 540,
+          "complete_pairs": 48,
+          "blocked_pairs": 492,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.08888888888888889,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 91,
+            "repeated_exported_nonuniform_infosets": 54,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n6-seed2207",
+          "version": "V2",
+          "players": 6,
+          "training_seed": 2207,
+          "expected_pairs": 540,
+          "complete_pairs": 34,
+          "blocked_pairs": 506,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.06296296296296296,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 85,
+            "repeated_exported_nonuniform_infosets": 41,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n6-seed3301",
+          "version": "V2",
+          "players": 6,
+          "training_seed": 3301,
+          "expected_pairs": 540,
+          "complete_pairs": 32,
+          "blocked_pairs": 508,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.05925925925925926,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 86,
+            "repeated_exported_nonuniform_infosets": 45,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n7-seed1103",
+          "version": "V2",
+          "players": 7,
+          "training_seed": 1103,
+          "expected_pairs": 630,
+          "complete_pairs": 29,
+          "blocked_pairs": 601,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.046031746031746035,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 93,
+            "repeated_exported_nonuniform_infosets": 54,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n7-seed2207",
+          "version": "V2",
+          "players": 7,
+          "training_seed": 2207,
+          "expected_pairs": 630,
+          "complete_pairs": 30,
+          "blocked_pairs": 600,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.047619047619047616,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 91,
+            "repeated_exported_nonuniform_infosets": 53,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n7-seed3301",
+          "version": "V2",
+          "players": 7,
+          "training_seed": 3301,
+          "expected_pairs": 630,
+          "complete_pairs": 28,
+          "blocked_pairs": 602,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.044444444444444446,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 92,
+            "repeated_exported_nonuniform_infosets": 52,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n8-seed1103",
+          "version": "V2",
+          "players": 8,
+          "training_seed": 1103,
+          "expected_pairs": 720,
+          "complete_pairs": 52,
+          "blocked_pairs": 668,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.07222222222222222,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 97,
+            "repeated_exported_nonuniform_infosets": 56,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n8-seed2207",
+          "version": "V2",
+          "players": 8,
+          "training_seed": 2207,
+          "expected_pairs": 720,
+          "complete_pairs": 45,
+          "blocked_pairs": 675,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.0625,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 92,
+            "repeated_exported_nonuniform_infosets": 51,
+            "update_regrets": true
+          }
+        },
+        {
+          "id": "v2-n8-seed3301",
+          "version": "V2",
+          "players": 8,
+          "training_seed": 3301,
+          "expected_pairs": 720,
+          "complete_pairs": 47,
+          "blocked_pairs": 673,
+          "unexecuted_pairs": 0,
+          "complete_hand_fraction": 0.06527777777777778,
+          "gate3": "NO_GO",
+          "training_diagnostics": {
+            "completed_sweeps": 92,
+            "repeated_exported_nonuniform_infosets": 47,
+            "update_regrets": true
+          }
+        }
+      ]
+    },
+    "local_model_sanity": {
+      "source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "e7aacf78df56c206c2f82be17b5df7d53c57ad932b8f0ad74954c9c980e12093",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "experiment_commit": "2dfe5a57c4f274f5401319c7a6170fac1b1182ec",
+      "manifest_sha256": "3b5db1348ed9d05b3309aba50cf4e105b85c6a6b255ae3bc1c3bc6316187859c",
+      "expected_rows": 18,
+      "models": [
+        {
+          "id": "Mapika/decider-0.8b",
+          "summary": {
+            "correct": 6,
+            "incorrect": 3,
+            "planned": 9,
+            "unresolved": 0,
+            "verdict": "FAIL_BASIC_CHECKS"
+          }
+        },
+        {
+          "id": "Mapika/decider-2b",
+          "summary": {
+            "correct": 3,
+            "incorrect": 6,
+            "planned": 9,
+            "unresolved": 0,
+            "verdict": "FAIL_BASIC_CHECKS"
+          }
+        }
+      ]
+    },
+    "local_model_fullhand": {
+      "source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "10e218bbd4c4e5266193ec08ec8d6ccb116bf1e3fba4978571aad1177cf000ce",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "independent_review_source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "536acb06d1376df447a222bc4410922e761bb6a41aa69e7fd6872d3528e2a189",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "experiment_commit": "2dfe5a57c4f274f5401319c7a6170fac1b1182ec",
+      "manifest_sha256": "27f20f7cf7e409b386c42580b6e97559eecdc4290816f4e8cb6dbc822e61263b",
+      "expected_pairs": 3780,
+      "complete_pairs": 3297,
+      "timely_complete_pairs": 1901,
+      "overall_ev": null,
+      "execution_status": "PARTIAL",
+      "strategy_qualification": "NOT_ASSESSED_REQUIRES_SEPARATE_SANITY_AND_STRENGTH",
+      "blocked_pairs": 3,
+      "not_run_pairs": 480,
+      "supervisor_seconds": [
+        2382.3758523,
+        2387.2227213
+      ],
+      "groups": [
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -25.0,
+            -25.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 180,
+          "delta_net_bb100": -25.0,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 109,
+              "timely": 109,
+              "valid": 109
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 180,
+              "timely": 180,
+              "valid": 180
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 1.0,
+          "timely_complete_pairs": 180
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -496.11111111111114,
+            8.88888888888889
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 180,
+          "delta_net_bb100": -161.66666666666666,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 1258,
+              "timely": 924,
+              "valid": 1258
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 0.4666666666666667,
+          "timely_complete_pairs": 84
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            0.0,
+            0.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 180,
+          "delta_net_bb100": 0.0,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 300,
+              "timely": 299,
+              "valid": 300
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 0.9944444444444445,
+          "timely_complete_pairs": 179
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -21.428571428571427,
+            -21.428571428571427
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": -21.428571428571427,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 150,
+              "timely": 150,
+              "valid": 150
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 210,
+              "timely": 210,
+              "valid": 210
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 1,
+              "timely": 1,
+              "valid": 1
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 1.0,
+          "timely_complete_pairs": 210
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -7262.380952380952,
+            -3778.095238095238
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": -5588.571428571428,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 1799,
+              "timely": 1077,
+              "valid": 1799
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 0.08095238095238096,
+          "timely_complete_pairs": 17
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            0.0,
+            0.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": 0.0,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 328,
+              "timely": 328,
+              "valid": 328
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 1.0,
+          "timely_complete_pairs": 210
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -18.75,
+            -18.75
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 240,
+          "delta_net_bb100": -18.75,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 149,
+              "timely": 149,
+              "valid": 149
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 240,
+              "timely": 239,
+              "valid": 240
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.9958333333333333,
+          "timely_complete_pairs": 239
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -8965.0,
+            -6310.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 240,
+          "delta_net_bb100": -7646.666666666667,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 1888,
+              "timely": 1063,
+              "valid": 1888
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.0,
+          "timely_complete_pairs": 0
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -2752.5,
+            73.75
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 240,
+          "delta_net_bb100": -1256.25,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-0.8b",
+          "not_run_pairs": 0,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 330,
+              "timely": 328,
+              "valid": 330
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.9916666666666667,
+          "timely_complete_pairs": 238
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            0.0,
+            0.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 180,
+          "delta_net_bb100": 0.0,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 180,
+              "timely": 180,
+              "valid": 180
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 180,
+              "timely": 179,
+              "valid": 180
+            },
+            "river": {
+              "failed": 0,
+              "observed": 180,
+              "timely": 177,
+              "valid": 180
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 180,
+              "timely": 180,
+              "valid": 180
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 0.9777777777777777,
+          "timely_complete_pairs": 176
+        },
+        {
+          "blocked_pairs": 1,
+          "ci95_delta_net_bb100": null,
+          "complete_fraction": 0.9944444444444445,
+          "complete_pairs": 179,
+          "delta_net_bb100": null,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 1,
+              "observed": 1903,
+              "timely": 621,
+              "valid": 1902
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 0.005555555555555556,
+          "timely_complete_pairs": 1
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -1551.111111111111,
+            -1161.111111111111
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 180,
+          "delta_net_bb100": -1352.2222222222224,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 180,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 272,
+              "timely": 271,
+              "valid": 272
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 6,
+          "timely_complete_fraction": 0.9944444444444445,
+          "timely_complete_pairs": 179
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            0.0,
+            0.0
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": 0.0,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 210,
+              "timely": 210,
+              "valid": 210
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 210,
+              "timely": 208,
+              "valid": 210
+            },
+            "river": {
+              "failed": 0,
+              "observed": 210,
+              "timely": 2,
+              "valid": 210
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 210,
+              "timely": 99,
+              "valid": 210
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 0.009523809523809525,
+          "timely_complete_pairs": 2
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -9442.857142857143,
+            -9442.857142857143
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": -9442.857142857143,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 1920,
+              "timely": 421,
+              "valid": 1920
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 0.0,
+          "timely_complete_pairs": 0
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": [
+            -2464.285714285714,
+            -2464.285714285714
+          ],
+          "complete_fraction": 1.0,
+          "complete_pairs": 210,
+          "delta_net_bb100": -2464.285714285714,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 210,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 330,
+              "timely": 305,
+              "valid": 330
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 7,
+          "timely_complete_fraction": 0.8857142857142857,
+          "timely_complete_pairs": 186
+        },
+        {
+          "blocked_pairs": 2,
+          "ci95_delta_net_bb100": null,
+          "complete_fraction": 0.9916666666666667,
+          "complete_pairs": 238,
+          "delta_net_bb100": null,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 0,
+          "opponent": "check_call",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 1,
+              "observed": 239,
+              "timely": 137,
+              "valid": 238
+            },
+            "preflop": {
+              "failed": 1,
+              "observed": 240,
+              "timely": 238,
+              "valid": 239
+            },
+            "river": {
+              "failed": 0,
+              "observed": 238,
+              "timely": 0,
+              "valid": 238
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 238,
+              "timely": 0,
+              "valid": 238
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.0,
+          "timely_complete_pairs": 0
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": null,
+          "complete_fraction": 0.0,
+          "complete_pairs": 0,
+          "delta_net_bb100": null,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 240,
+          "opponent": "min_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.0,
+          "timely_complete_pairs": 0
+        },
+        {
+          "blocked_pairs": 0,
+          "ci95_delta_net_bb100": null,
+          "complete_fraction": 0.0,
+          "complete_pairs": 0,
+          "delta_net_bb100": null,
+          "evidence": "SYNTHETIC_DIAGNOSTIC_NOT_STRENGTH_ACCEPTANCE",
+          "expected_pairs": 240,
+          "model": "Mapika/decider-2b",
+          "not_run_pairs": 240,
+          "opponent": "pot_raise",
+          "prior_failed_or_interrupted_attempts": 0,
+          "streets": {
+            "flop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "preflop": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "river": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            },
+            "turn": {
+              "failed": 0,
+              "observed": 0,
+              "timely": 0,
+              "valid": 0
+            }
+          },
+          "table_size": 8,
+          "timely_complete_fraction": 0.0,
+          "timely_complete_pairs": 0
+        }
+      ],
+      "per_model_n": [
+        {
+          "m": 0,
+          "n": 6,
+          "planned": 540,
+          "complete": 540,
+          "blocked": 0,
+          "not_run": 0,
+          "timely_complete": 443
+        },
+        {
+          "m": 0,
+          "n": 7,
+          "planned": 630,
+          "complete": 630,
+          "blocked": 0,
+          "not_run": 0,
+          "timely_complete": 437
+        },
+        {
+          "m": 0,
+          "n": 8,
+          "planned": 720,
+          "complete": 720,
+          "blocked": 0,
+          "not_run": 0,
+          "timely_complete": 477
+        },
+        {
+          "m": 1,
+          "n": 6,
+          "planned": 540,
+          "complete": 539,
+          "blocked": 1,
+          "not_run": 0,
+          "timely_complete": 356
+        },
+        {
+          "m": 1,
+          "n": 7,
+          "planned": 630,
+          "complete": 630,
+          "blocked": 0,
+          "not_run": 0,
+          "timely_complete": 188
+        },
+        {
+          "m": 1,
+          "n": 8,
+          "planned": 720,
+          "complete": 238,
+          "blocked": 2,
+          "not_run": 480,
+          "timely_complete": 0
+        }
+      ],
+      "local_timing_and_opportunities": [
+        {
+          "m": 0,
+          "first_opportunities": 6942,
+          "valid": 6942,
+          "failed": 0,
+          "timely_first_decisions": 5057,
+          "worker_ipc_within300": 5416,
+          "repeat_cache_calls": 6942,
+          "streets": {
+            "preflop": {
+              "observed": 6533,
+              "valid": 6533,
+              "timely": 4648
+            },
+            "flop": {
+              "observed": 408,
+              "valid": 408,
+              "timely": 408
+            },
+            "turn": {
+              "observed": 1,
+              "valid": 1,
+              "timely": 1
+            },
+            "river": {
+              "observed": 0
+            }
+          },
+          "first_decision_ms": {
+            "p50": 189.8946,
+            "p95": 416.0509,
+            "p99": 439.485
+          },
+          "worker_ipc_ms": {
+            "p50": 172.7874,
+            "p95": 391.755,
+            "p99": 411.7988
+          },
+          "inference_ms": {
+            "n": 6942,
+            "p50": 169.0081,
+            "p95": 384.9808,
+            "p99": 404.1317
+          },
+          "actions": {
+            "check_call": 5729,
+            "fold": 338,
+            "raise_to": 875,
+            "allin_within_raises": 775
+          }
+        },
+        {
+          "m": 1,
+          "first_opportunities": 6940,
+          "valid": 6937,
+          "failed": 3,
+          "timely_first_decisions": 3228,
+          "worker_ipc_within300": 3527,
+          "repeat_cache_calls": 6937,
+          "streets": {
+            "preflop": {
+              "observed": 5055,
+              "valid": 5053,
+              "timely": 2243
+            },
+            "flop": {
+              "observed": 629,
+              "valid": 628,
+              "timely": 527
+            },
+            "turn": {
+              "observed": 628,
+              "valid": 628,
+              "timely": 279
+            },
+            "river": {
+              "observed": 628,
+              "valid": 628,
+              "timely": 179
+            }
+          },
+          "first_decision_ms": {
+            "p50": 315.5249,
+            "p95": 647.1649,
+            "p99": 734.3595
+          },
+          "worker_ipc_ms": {
+            "n": 6939,
+            "p50": 296.9106,
+            "p95": 614.5302,
+            "p99": 696.5717
+          },
+          "inference_ms": {
+            "n": 6937,
+            "p50": 292.4893,
+            "p95": 607.1609,
+            "p99": 686.8514
+          },
+          "actions": {
+            "check_call": 6158,
+            "fold": 779,
+            "raise_to": 0
+          }
+        }
+      ],
+      "timing_semantics": {
+        "first_decision_ms": "validation+request preparation+pre-forward journal fsync+worker IPC/inference; not pure NN; excludes final result journal persistence",
+        "worker_ipc_ms": "worker call elapsed including local transport and scorer; no pre-forward journal",
+        "inference_ms": "measured model scoring segment only on returned successful forwards",
+        "cache": "determinism reread separated, never counted as independent inference/timely coverage",
+        "all": "local synthetic chain, not capture-to-display"
+      }
+    },
+    "preflop_support": {
+      "source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "11707fa9f28a68f807335353b977cc3a71ceca11c2613086f852c1dc9ba56b35",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "independent_review_source": {
+        "visibility": "LOCAL_ONLY_ORIGINAL",
+        "sha256": "638fe73ee07fd51c359e361df8a1abf499f19f44ced6c798580782e540b4ea5a",
+        "publication": "WHITELISTED_DERIVED_AGGREGATE",
+        "raw_evidence_reproducible_from_this_index_alone": false
+      },
+      "experiment_commit": "4ca7bc093140ddd3eaa822897b11e880e9c71c82",
+      "manifest_sha256": "6f72bbdd94855b0f7acb534524840dafc146dbb744c479130e23b50d18b36b00",
+      "planned_asset_rows": 31941,
+      "planned_support_slots": 10647,
+      "support_status_counts": {
+        "NOT_APPLICABLE": 1014,
+        "READY": 9633
+      },
+      "overall_counts": {
+        "HIT": 2833,
+        "NOT_APPLICABLE": 3042,
+        "REGRET_ONLY_NONZERO": 872,
+        "REGRET_TABLE_ONLY_ZERO": 1990,
+        "UNVISITED": 23204
+      },
+      "execution_complete": true,
+      "ev": null,
+      "training_updates": 0,
+      "cases": {
+        "v2-n6-seed1103": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 164,
+              "REGRET_ONLY_NONZERO": 49,
+              "REGRET_TABLE_ONLY_ZERO": 86,
+              "UNVISITED": 715
+            },
+            "fold_to_first": {
+              "HIT": 161,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 43,
+              "REGRET_TABLE_ONLY_ZERO": 112,
+              "UNVISITED": 529
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 845
+            }
+          },
+          "counts": {
+            "HIT": 325,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 92,
+            "REGRET_TABLE_ONLY_ZERO": 198,
+            "UNVISITED": 2089
+          },
+          "distinct_exact_per_abstract": {
+            "1": 2535
+          },
+          "export_nonuniform_hits": 54,
+          "hit_fraction_of_constructible": 0.1201923076923077,
+          "hit_fraction_of_planned": 0.10683760683760683,
+          "planned": 3042,
+          "planned_constructible": 2704,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 255,
+            "REGRET_ONLY_NONZERO": 60,
+            "REGRET_TABLE_ONLY_ZERO": 147,
+            "UNVISITED": 2073
+          },
+          "unique_abstract_keys": 2535,
+          "unique_exact_keys": 2535
+        },
+        "v2-n6-seed2207": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 143,
+              "REGRET_ONLY_NONZERO": 51,
+              "REGRET_TABLE_ONLY_ZERO": 85,
+              "UNVISITED": 735
+            },
+            "fold_to_first": {
+              "HIT": 144,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 52,
+              "REGRET_TABLE_ONLY_ZERO": 98,
+              "UNVISITED": 551
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 845
+            }
+          },
+          "counts": {
+            "HIT": 287,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 103,
+            "REGRET_TABLE_ONLY_ZERO": 183,
+            "UNVISITED": 2131
+          },
+          "distinct_exact_per_abstract": {
+            "1": 2535
+          },
+          "export_nonuniform_hits": 40,
+          "hit_fraction_of_constructible": 0.10613905325443787,
+          "hit_fraction_of_planned": 0.09434582511505589,
+          "planned": 3042,
+          "planned_constructible": 2704,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 224,
+            "REGRET_ONLY_NONZERO": 63,
+            "REGRET_TABLE_ONLY_ZERO": 138,
+            "UNVISITED": 2110
+          },
+          "unique_abstract_keys": 2535,
+          "unique_exact_keys": 2535
+        },
+        "v2-n6-seed3301": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 145,
+              "REGRET_ONLY_NONZERO": 36,
+              "REGRET_TABLE_ONLY_ZERO": 92,
+              "UNVISITED": 741
+            },
+            "fold_to_first": {
+              "HIT": 161,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 50,
+              "REGRET_TABLE_ONLY_ZERO": 110,
+              "UNVISITED": 524
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 845
+            }
+          },
+          "counts": {
+            "HIT": 306,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 86,
+            "REGRET_TABLE_ONLY_ZERO": 202,
+            "UNVISITED": 2110
+          },
+          "distinct_exact_per_abstract": {
+            "1": 2535
+          },
+          "export_nonuniform_hits": 41,
+          "hit_fraction_of_constructible": 0.11316568047337278,
+          "hit_fraction_of_planned": 0.10059171597633136,
+          "planned": 3042,
+          "planned_constructible": 2704,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 241,
+            "REGRET_ONLY_NONZERO": 57,
+            "REGRET_TABLE_ONLY_ZERO": 150,
+            "UNVISITED": 2087
+          },
+          "unique_abstract_keys": 2535,
+          "unique_exact_keys": 2535
+        },
+        "v2-n7-seed1103": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 165,
+              "REGRET_ONLY_NONZERO": 54,
+              "REGRET_TABLE_ONLY_ZERO": 109,
+              "UNVISITED": 855
+            },
+            "fold_to_first": {
+              "HIT": 166,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 54,
+              "REGRET_TABLE_ONLY_ZERO": 114,
+              "UNVISITED": 680
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1014
+            }
+          },
+          "counts": {
+            "HIT": 331,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 108,
+            "REGRET_TABLE_ONLY_ZERO": 223,
+            "UNVISITED": 2549
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3042
+          },
+          "export_nonuniform_hits": 53,
+          "hit_fraction_of_constructible": 0.10308315166614762,
+          "hit_fraction_of_planned": 0.09326570865032403,
+          "planned": 3549,
+          "planned_constructible": 3211,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 264,
+            "REGRET_ONLY_NONZERO": 68,
+            "REGRET_TABLE_ONLY_ZERO": 177,
+            "UNVISITED": 2533
+          },
+          "unique_abstract_keys": 3042,
+          "unique_exact_keys": 3042
+        },
+        "v2-n7-seed2207": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 152,
+              "REGRET_ONLY_NONZERO": 36,
+              "REGRET_TABLE_ONLY_ZERO": 105,
+              "UNVISITED": 890
+            },
+            "fold_to_first": {
+              "HIT": 168,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 44,
+              "REGRET_TABLE_ONLY_ZERO": 138,
+              "UNVISITED": 664
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1014
+            }
+          },
+          "counts": {
+            "HIT": 320,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 80,
+            "REGRET_TABLE_ONLY_ZERO": 243,
+            "UNVISITED": 2568
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3042
+          },
+          "export_nonuniform_hits": 55,
+          "hit_fraction_of_constructible": 0.09965742759265027,
+          "hit_fraction_of_planned": 0.09016624401239785,
+          "planned": 3549,
+          "planned_constructible": 3211,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 252,
+            "REGRET_ONLY_NONZERO": 53,
+            "REGRET_TABLE_ONLY_ZERO": 184,
+            "UNVISITED": 2553
+          },
+          "unique_abstract_keys": 3042,
+          "unique_exact_keys": 3042
+        },
+        "v2-n7-seed3301": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 151,
+              "REGRET_ONLY_NONZERO": 52,
+              "REGRET_TABLE_ONLY_ZERO": 96,
+              "UNVISITED": 884
+            },
+            "fold_to_first": {
+              "HIT": 161,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 55,
+              "REGRET_TABLE_ONLY_ZERO": 107,
+              "UNVISITED": 691
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1014
+            }
+          },
+          "counts": {
+            "HIT": 312,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 107,
+            "REGRET_TABLE_ONLY_ZERO": 203,
+            "UNVISITED": 2589
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3042
+          },
+          "export_nonuniform_hits": 62,
+          "hit_fraction_of_constructible": 0.09716599190283401,
+          "hit_fraction_of_planned": 0.08791208791208792,
+          "planned": 3549,
+          "planned_constructible": 3211,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 244,
+            "REGRET_ONLY_NONZERO": 71,
+            "REGRET_TABLE_ONLY_ZERO": 154,
+            "UNVISITED": 2573
+          },
+          "unique_abstract_keys": 3042,
+          "unique_exact_keys": 3042
+        },
+        "v2-n8-seed1103": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 162,
+              "REGRET_ONLY_NONZERO": 49,
+              "REGRET_TABLE_ONLY_ZERO": 105,
+              "UNVISITED": 1036
+            },
+            "fold_to_first": {
+              "HIT": 167,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 51,
+              "REGRET_TABLE_ONLY_ZERO": 128,
+              "UNVISITED": 837
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1183
+            }
+          },
+          "counts": {
+            "HIT": 329,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 100,
+            "REGRET_TABLE_ONLY_ZERO": 233,
+            "UNVISITED": 3056
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3549
+          },
+          "export_nonuniform_hits": 48,
+          "hit_fraction_of_constructible": 0.0884884346422808,
+          "hit_fraction_of_planned": 0.08111439842209073,
+          "planned": 4056,
+          "planned_constructible": 3718,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 261,
+            "REGRET_ONLY_NONZERO": 63,
+            "REGRET_TABLE_ONLY_ZERO": 177,
+            "UNVISITED": 3048
+          },
+          "unique_abstract_keys": 3549,
+          "unique_exact_keys": 3549
+        },
+        "v2-n8-seed2207": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 148,
+              "REGRET_ONLY_NONZERO": 46,
+              "REGRET_TABLE_ONLY_ZERO": 131,
+              "UNVISITED": 1027
+            },
+            "fold_to_first": {
+              "HIT": 157,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 47,
+              "REGRET_TABLE_ONLY_ZERO": 147,
+              "UNVISITED": 832
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1183
+            }
+          },
+          "counts": {
+            "HIT": 305,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 93,
+            "REGRET_TABLE_ONLY_ZERO": 278,
+            "UNVISITED": 3042
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3549
+          },
+          "export_nonuniform_hits": 50,
+          "hit_fraction_of_constructible": 0.0820333512641205,
+          "hit_fraction_of_planned": 0.07519723865877712,
+          "planned": 4056,
+          "planned_constructible": 3718,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 243,
+            "REGRET_ONLY_NONZERO": 59,
+            "REGRET_TABLE_ONLY_ZERO": 213,
+            "UNVISITED": 3034
+          },
+          "unique_abstract_keys": 3549,
+          "unique_exact_keys": 3549
+        },
+        "v2-n8-seed3301": {
+          "by_scenario": {
+            "call_to_first": {
+              "HIT": 156,
+              "REGRET_ONLY_NONZERO": 51,
+              "REGRET_TABLE_ONLY_ZERO": 107,
+              "UNVISITED": 1038
+            },
+            "fold_to_first": {
+              "HIT": 162,
+              "NOT_APPLICABLE": 169,
+              "REGRET_ONLY_NONZERO": 52,
+              "REGRET_TABLE_ONLY_ZERO": 120,
+              "UNVISITED": 849
+            },
+            "limp_then_min_raise": {
+              "NOT_APPLICABLE": 169,
+              "UNVISITED": 1183
+            }
+          },
+          "counts": {
+            "HIT": 318,
+            "NOT_APPLICABLE": 338,
+            "REGRET_ONLY_NONZERO": 103,
+            "REGRET_TABLE_ONLY_ZERO": 227,
+            "UNVISITED": 3070
+          },
+          "distinct_exact_per_abstract": {
+            "1": 3549
+          },
+          "export_nonuniform_hits": 51,
+          "hit_fraction_of_constructible": 0.085529854760624,
+          "hit_fraction_of_planned": 0.07840236686390532,
+          "planned": 4056,
+          "planned_constructible": 3718,
+          "support_status": "INCOMPLETE_SUPPORT",
+          "unique_abstract_counts": {
+            "HIT": 245,
+            "REGRET_ONLY_NONZERO": 63,
+            "REGRET_TABLE_ONLY_ZERO": 180,
+            "UNVISITED": 3061
+          },
+          "unique_abstract_keys": 3549,
+          "unique_exact_keys": 3549
+        }
+      },
+      "deduplicated_asset_abstract_keys": {
+        "total": 27378,
+        "HIT": 2229,
+        "UNVISITED": 23072,
+        "REGRET_TABLE_ONLY_ZERO": 1520,
+        "REGRET_ONLY_NONZERO": 557
+      },
+      "specified_limp_then_min_raise": {
+        "constructible_rows": 9126,
+        "HIT": 0,
+        "UNVISITED": 9126,
+        "NOT_APPLICABLE": 1521,
+        "scope": "Only this exact scripted prefix, not all second decisions"
+      },
+      "supervisor_seconds": 107.6212732
+    }
+  }
+}
