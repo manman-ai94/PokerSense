@@ -6,9 +6,9 @@
   "required": ["schema_version", "asset_id", "asset_version", "asset_status", "rule_fingerprint", "source", "limitations", "nodes"],
   "properties": {
     "schema_version": {"const": 2},
-    "asset_id": {"type": "string", "minLength": 1},
-    "asset_version": {"type": "string", "minLength": 1},
-    "asset_status": {"enum": ["test_only", "shadow_reviewed", "live_approved"]},
+    "asset_id": {"type": "string", "minLength": 1, "pattern": "^[^:@\\s](?:[^:@]*[^:@\\s])?$"},
+    "asset_version": {"type": "string", "minLength": 1, "pattern": "^[^:@\\s](?:[^:@]*[^:@\\s])?$"},
+    "asset_status": {"enum": ["test_only", "simulation_only", "shadow_reviewed", "live_approved"]},
     "rule_fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "source": {
       "type": "object",
