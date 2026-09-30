@@ -154,6 +154,9 @@ Windows 的 `launch/aa/START-AA.cmd` 优先使用当前 checkout 的 `.venv`，�
 选择受支持的系统 Python（只有 3.12 也可启动）。源码优先于旧 EXE，控制台显示
 实际路径和依赖缺失错误。最简准备见 [AA 启动说明](launch/aa/README.zh-CN.md)。
 
+V1/V2 冻结研究工件与影子 worker 共用严格概率校验，非法分布直接拒绝、不自动
+修复。兼容性与边缘行为见 [概率合同](docs/AA-POLICY-READINESS-V2.zh-CN.md#冻结概率验证合同)。
+
 ```bash
 # 安装开发依赖
 pip install -e ".[dev,desktop,perceptual]"

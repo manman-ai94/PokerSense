@@ -33,6 +33,21 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-30 AA FROZEN PROBABILITY CONTRACT:** scoped interface fix from
+  review branch44cb0b28, version unchanged. V1/V2 loaders and shadow worker
+  share native finite [0,1] probabilities, exact nonempty string menus and
+  fsum mass with rel_tol0/abs_tol1e-12, without normalization or repair.
+  Worker validates raw keys before JSON copying. Loader's old ~1e-9 tolerance
+  is deliberately tightened; empty policy tables remain coverage misses.
+  54new regressions; Python3.12.14/Node24.19.0 focused103passed; full
+  5183passed/8platform skips/0failed in658.32s with isolated workspace
+  basetemp and >25GiB free. Full lint,57JS and11independent reference cases
+  PASS. Public synthetic compatibility18/18artifacts,504/504distributions,
+  0failures; not private historical acceptance. Independent read-only code
+  review and34boundary/raw-key/scope probes PASS; Draft PR/CI and final owner
+  review tracked in PR evidence. Does not supply missing average keys or
+  explain prior coverage refusals. Scope/legal/time gates, shadow encoding,
+  sampling and training unchanged; no private bundle, release or live change.
 - **2026-09-30 AA SOURCE LAUNCHER:** scoped fix from d6bfebd, version unchanged.
   Source checkouts prefer their own `.venv` over stale EXEs; system Python
   3.11-3.13 includes a 3.12-only setup and supported-version fallback when the

@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation
 
 ENCODER_VERSION = "aa_rank_texture_v1"
 POLICY_KIND = "AA_FROZEN_POLICY_V1"
+POLICY_PROBABILITY_MASS_ABS_TOL = 1e-12
 FORBIDDEN = {"seed", "deck", "opponent_hole", "all_hole_cards", "future_board",
              "terminal_returns", "actual_action", "showdown"}
 
@@ -104,13 +105,28 @@ def action_ids(observation):
 
 
 def validate_distribution(distribution, ids):
-    if not isinstance(distribution, dict) or set(distribution) != set(ids):
+    """Validate native probabilities without repair, shared with shadow workers.
+
+    Mass uses a stable sum and absolute-only tolerance for float serialization.
+    Each value must still be in [0, 1]; tolerance never permits invalid weights.
+    """
+    if not isinstance(distribution, dict):
+        raise ValueError("policy_action_menu_mismatch")
+    try:
+        ids = tuple(ids)
+    except TypeError as exc:
+        raise ValueError("invalid_legal_menu") from exc
+    if (not ids or any(not isinstance(action, str) or not action for action in ids)
+            or len(ids) != len(set(ids))):
+        raise ValueError("invalid_legal_menu")
+    if set(distribution) != set(ids):
         raise ValueError("policy_action_menu_mismatch")
     values = list(distribution.values())
-    if any(type(value) not in (float, int) or not math.isfinite(value)
-           or value < 0 for value in values):
+    if any(type(value) not in (float, int) or not 0 <= value <= 1
+           or not math.isfinite(value) for value in values):
         raise ValueError("invalid_policy_probability")
-    if not math.isclose(sum(values), 1, abs_tol=1e-9):
+    if not math.isclose(math.fsum(values), 1, rel_tol=0,
+                        abs_tol=POLICY_PROBABILITY_MASS_ABS_TOL):
         raise ValueError("policy_probability_mass")
 
 
@@ -157,7 +173,7 @@ class FrozenResearchPolicy:
         for key, dist in data["policy"].items():
             if not isinstance(key, str) or len(key) != 64:
                 raise ValueError("invalid_information_key")
-            validate_distribution(dist, tuple(dist))
+            validate_distribution(dist, dist)
         self._data = data
         self.sha256 = checksum
 

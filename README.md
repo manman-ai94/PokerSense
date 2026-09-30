@@ -207,6 +207,10 @@ then a supported system Python (including a 3.12-only installation). Source
 checkouts take precedence over old EXEs; the console shows the selected path
 and dependency errors. See the [AA launcher setup](launch/aa/README.zh-CN.md).
 
+Frozen V1/V2 research loaders and the shadow worker share strict probability
+validation. Invalid distributions are refused without repair; see the
+[probability contract](docs/AA-POLICY-READINESS-V2.zh-CN.md#冻结概率验证合同).
+
 ```bash
 # Install development dependencies
 pip install -e ".[dev,desktop,perceptual]"
