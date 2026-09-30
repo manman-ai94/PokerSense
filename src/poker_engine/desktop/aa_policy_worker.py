@@ -3,10 +3,11 @@
 from dataclasses import asdict
 import hashlib
 import json
-import math
 import multiprocessing
 import threading
 import time
+
+from poker_engine.strategy.aa_frozen_policy import validate_distribution
 
 
 def _canonical(value):
@@ -55,21 +56,13 @@ class AAIsolatedPolicyWorker:
     def __init__(self, policy, *, seed=0):
         if type(seed) is not int or not isinstance(policy, dict):
             raise ValueError("policy mapping and integer seed required")
-        self._policy = json.loads(_canonical(policy))
-        for key, distribution in self._policy.items():
+        # Validate before JSON copying can coerce invalid integer/bool keys.
+        for key, distribution in policy.items():
             if (not isinstance(key, str) or not key
                     or not isinstance(distribution, dict)):
                 raise ValueError("invalid policy information key")
-            invalid = any(
-                not isinstance(action, str) or not action
-                or isinstance(probability, bool)
-                or not isinstance(probability, (int, float))
-                or not math.isfinite(probability) or probability < 0
-                for action, probability in distribution.items())
-            if (not distribution or invalid
-                    or not math.isclose(sum(distribution.values()), 1.0,
-                                        rel_tol=0, abs_tol=1e-12)):
-                raise ValueError("policy probabilities must sum to one")
+            validate_distribution(distribution, distribution)
+        self._policy = json.loads(_canonical(policy))
         self.policy_sha256 = hashlib.sha256(_canonical(self._policy)).hexdigest()
         self.seed = seed
         self._process = self._connection = None
