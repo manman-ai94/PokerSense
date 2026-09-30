@@ -33,6 +33,17 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-30 AA SOURCE LAUNCHER:** scoped fix from d6bfebd, version unchanged.
+  Source checkouts prefer their own `.venv` over stale EXEs; system Python
+  3.11-3.13 includes a 3.12-only setup and supported-version fallback when the
+  launcher default is newer. Actual interpreter/entry paths and missing desktop
+  dependencies are explicit; no automatic install or broken-venv fallback.
+  Python3.12.14/Node24.19.0: focused39passed/4Windows-only skipped; full
+  5129passed/8platform skips in669.69s with isolated workspace basetemp and
+  >25GiB free. Full lint,57JS cases,11independent reference tests and index/diff
+  hygiene PASS. Actual source bootstrap HTTP/manual spawn analysis and capture
+  refusal403 PASS. Four new cmd.exe cases require Windows CI; independent PR
+  review remains required. Strategy source unchanged; no release/live acceptance.
 - **2026-09-28 CONSOLIDATED WORK REPORT:** documentation-only successor to
   f05d804. One canonical report groups all37pre-report PRs exactly once,
   distinguishes main af67b4b from Draft37-42, closed research and local-only
