@@ -27,6 +27,10 @@ Windows 的标准 `pokersense.spec` 转到 AA spec，生成
 
 `--no-browser` 供脚本检查；`--help` 列出参数，`--self-check` 只检查公开资源且
 不创建状态目录。源码方式使用 `python packaging/aa_live_entry.py`。
+`START-AA.cmd` 在源码 checkout 中优先本项目 `.venv`，其次使用受支持的系统
+Python 3.11–3.13；不会先启动旧 EXE。无源码的便携目录才选择同目录或 `dist`
+中的 EXE。解释器、实际入口和依赖缺失都会明确显示；准备命令见
+[启动说明](../launch/aa/README.zh-CN.md)。
 现有 AA 参数（包括外部 profile、bundle 摘要及显式 replay）保留；
 `--allow-capture` 必须同时提供 `--profile`，且只解锁页面控制，不自动启动采集。
 真实采集和实战仍须明确授权。

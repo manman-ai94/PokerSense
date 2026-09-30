@@ -150,6 +150,10 @@ PR 或安装包。真实标定原图同样属于私有离线数据，只保留�
 
 支持 Python 3.11–3.13。
 
+Windows 的 `launch/aa/START-AA.cmd` 优先使用当前 checkout 的 `.venv`，然后
+选择受支持的系统 Python（只有 3.12 也可启动）。源码优先于旧 EXE，控制台显示
+实际路径和依赖缺失错误。最简准备见 [AA 启动说明](launch/aa/README.zh-CN.md)。
+
 ```bash
 # 安装开发依赖
 pip install -e ".[dev,desktop,perceptual]"

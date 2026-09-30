@@ -202,6 +202,11 @@ explicit local archive supplied by the operator.
 
 Python 3.11–3.13 is supported.
 
+On Windows, `launch/aa/START-AA.cmd` uses this checkout's `.venv` first,
+then a supported system Python (including a 3.12-only installation). Source
+checkouts take precedence over old EXEs; the console shows the selected path
+and dependency errors. See the [AA launcher setup](launch/aa/README.zh-CN.md).
+
 ```bash
 # Install development dependencies
 pip install -e ".[dev,desktop,perceptual]"
