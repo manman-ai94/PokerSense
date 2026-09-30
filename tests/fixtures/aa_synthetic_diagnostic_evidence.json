@@ -1,0 +1,298 @@
+{
+  "schema": "public_synthetic_diagnostic_history_v1",
+  "scope": "Three historical finite synthetic experiments; new CI regressions are recorded separately. No raw trace, real hand, private artifact, policy checkpoint or personal data is included.",
+  "research_budget": {
+    "limits_nodes": 200000,
+    "limits_seconds": 180,
+    "cumulative_nodes": 58455,
+    "cumulative_seconds": 13.324054048996913,
+    "unchanged_during_portable_CI": true
+  },
+  "historical_rounds": [
+    {
+      "round": 1,
+      "baseline": "44cb0b28ae2e60aafc7cb419f7d96160179fc56b",
+      "evidence_commit": "6a98fbbb5436022fdd8f40f466fbc77fb731dabc",
+      "top_cases": {
+        "PASS": 12,
+        "FAIL": 0,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "NOT_RUN": 0
+      },
+      "categorical_trajectories": {
+        "planned": 1584,
+        "PASS": 1512,
+        "FAIL": 0,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "zero_probability_NOT_RUN": 72
+      },
+      "classification": [
+        "SIMPLE_COLLECTOR_LIMIT",
+        "RECALL_COLLISION"
+      ],
+      "nodes": 19106,
+      "ledger_seconds": 1.7864275200008706,
+      "raw_trace_sha256": "a2a72f32fcf06b2bb43f769138b324d3c449069b07495230d386f79228e51165",
+      "raw_trace_bytes": 11402676,
+      "known_limit": "ZERO_PREFIX30visited/20SIMPLEaveragekeys; KsJs/KsTs different preflop classes collide on fixed legal2c4d8h flop in48/48 historicalpairs."
+    },
+    {
+      "round": 2,
+      "baseline": "511156ade6a13c67c908bf204b5fd42a2c738a9f",
+      "executed_code": "27016c88ea22761e8a7e5c192e3cd4b92168b35d",
+      "evidence_commit": "9f6c74438d9d062e11a8f85f65042cce794dd5fc",
+      "top_cases": {
+        "PASS": 36,
+        "FAIL": 0,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "NOT_RUN": 0
+      },
+      "categorical_trajectories": {
+        "planned": 2112,
+        "PASS": 1704,
+        "FAIL": 0,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "zero_probability_NOT_RUN": 408
+      },
+      "nodes_added": 34500,
+      "whole_pytest_seconds": 9.198691345998668,
+      "candidate": "test-onlyOWN and two-token retained-preflop representation; production unchanged",
+      "quality_toy_BR_gain_sum": {
+        "FULL_POSITIVE": {
+          "SIMPLE": 3.991363854356,
+          "OWN": 3.956481481481
+        },
+        "SMALL_PREFIX": {
+          "SIMPLE": 3.980453733777,
+          "OWN": 4.016145230517
+        },
+        "conclusion": "mixed_direction_no_strength_claim"
+      },
+      "memory": {
+        "legal_trajectories": 96,
+        "observations": 384,
+        "postflop_pairs": 144,
+        "candidate_keys": 8,
+        "baseline_keys": 6,
+        "max_split_per_key": 2,
+        "candidate_tokens": 2
+      },
+      "raw_trace_sha256": "ed43b6c5949d6088bfe119183918024833de8d05171e44c28b8fa1761039c0c2",
+      "raw_trace_bytes": 40659235
+    },
+    {
+      "round": 3,
+      "baseline": "511156ade6a13c67c908bf204b5fd42a2c738a9f",
+      "executed_code": "3aa7c46098e7dae1b178b123a8efbe2fec0ed18b",
+      "evidence_commit": "4c4c5b3b469586fb759e8aa3eb3649a44935cb98",
+      "top_cases": {
+        "PASS": 24,
+        "FAIL": 0,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "NOT_RUN": 0
+      },
+      "physical_state_denominator": {
+        "planned": 3844,
+        "PASS": 3347,
+        "expected_negative_FAIL": 6,
+        "ERROR": 0,
+        "INTERRUPTED": 0,
+        "guarded_suffix_NOT_RUN": 491
+      },
+      "nodes_added": 4849,
+      "whole_pytest_seconds": 2.338935182997375,
+      "shared_info": {
+        "unique_information_sets": 16,
+        "own_mass_formula": "14*weight",
+        "naive_physical_mass_formula": "44*weight",
+        "max_raw_error": 4.440892098500626e-16
+      },
+      "populated_rollback": {
+        "OWN_keys": 30,
+        "positive_OWN_action_quantities": 60,
+        "OWN_mass": 66,
+        "SIMPLE_keys": 12,
+        "SIMPLE_mass": 18,
+        "faults": 2,
+        "continuation_groups": 4,
+        "continuation_arms": 12,
+        "full_checkpoint_rng_export_equal": true
+      },
+      "raw_metadata_limitation": "36PASS objects retain initial reason NOT_REACHED,25 added by recovery; original artifacts unchanged. Only new portable code repairs this.",
+      "raw_trace_sha256": "0e5ff060e3ee177bfc3a1b93a19a17721b8415d96e1c6be84423067c70c47bfe",
+      "raw_trace_bytes": 9445933
+    }
+  ],
+  "portable_regression_plan": {
+    "baseline": "511156ade6a13c67c908bf204b5fd42a2c738a9f",
+    "source_commit": "5ed6ca6aa8f63ffd7a2f7f10107c84af153744b3",
+    "cases": 83,
+    "SIMPLE_profiles": 6,
+    "categorical_planned": 1056,
+    "positive_categorical": 920,
+    "zero_probability_NOT_RUN": 136,
+    "memory_trajectories": 6,
+    "memory_steps": 108,
+    "memory_encodes": 24,
+    "workspace_independent": true,
+    "not_same_as_historical_experiment": true,
+    "counted_calls_full_selection": 14030
+  },
+  "production_gate": {
+    "portable_tests": "eligible_for_independent_review",
+    "inactive_isolated_components": "conditional_separate_draft_only",
+    "production_OWN_replacement": "HOLD_mixed_quality_and_collection_complexity",
+    "production_retained_memory_encoding": "HOLD_artifact_compatibility_quality_and_integration_unproven"
+  },
+  "limitations": [
+    "Finite tests do not prove a production accounting defect outside the frozen fixture.",
+    "Known recall collision proves forgetting, not quality harm.",
+    "More average keys do not imply better strategy.",
+    "No real poker strength or end-to-end latency claim.",
+    "No production collector, encoding or policy change."
+  ],
+  "portable_regression_verification_history": [
+    {
+      "executed_source_commit": "8feea0823d093b2e838fe45e1936032ef0501606",
+      "source_sha256": {
+        "tests/strategy/aa_regression_own_component.py": "3af5b87639a17e26448a956301ec0a18a287a1d9c9ae27d69cab61bf29a7990d",
+        "tests/strategy/aa_synthetic_exact_reference.py": "77813d4e41222e3fe4d9486f5bd997b52ebe8b6a4adb46baefcc3d9be3afc25c",
+        "tests/strategy/aa_synthetic_regression_support.py": "75d70f99dacad0709952ce26e4421beb5d6ae30bdd6d9f7149007151855bc1e0",
+        "tests/strategy/aa_synthetic_shared_component.py": "e3ce1eaa058b1990ad7cf456544e0af6b891fd1548a1a7042e9ef8a7cd17bb1f",
+        "tests/strategy/aa_synthetic_shared_reference.py": "c02571b8565c238092b1021435e3c767a1ba7011cf814924f1e982e123f445d5",
+        "tests/strategy/aa_synthetic_status.py": "028f2b33d06ac5ab4585bd4a78560ae0225bd4ce10461f77b914a358056a9d6f",
+        "tests/strategy/test_aa_synthetic_accounting.py": "0348a51bb8d6dc86993ba72dac80b67567f7aca3eb4ea2693cf601da51e50a8d",
+        "tests/strategy/test_aa_synthetic_recall_limit.py": "a3c6a42233c3b94537a136f4a1d6d3f83a2c382d9968e28ee5b715ed9216b304",
+        "tests/strategy/test_aa_synthetic_shared_information.py": "4656bebe55b99a032cfe654a789b1e57c1b5a6986762cb649bbc043e6d0198b4",
+        "tests/strategy/test_aa_synthetic_status.py": "e1f1331d0cf5c0abd124016a2670ed62f21a7a9ec9d79379ffe98e3ab4b3c320",
+        "tests/strategy/test_aa_synthetic_transactions.py": "d2d15d825f130eb94f6bdd77b0d99636fda68c9ea9d8ab29b15beaad7a29b442"
+      },
+      "source_pre_post_hash_equal": true,
+      "runtime": {
+        "python": "3.12.14",
+        "node": "24.19.0",
+        "pokerkit": "0.7.5"
+      },
+      "focused": {
+        "PASS": 158,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0,
+        "new_cases": 47,
+        "counted_new_calls": 14030,
+        "whole_process_wall_seconds": 3.401486135000596,
+        "max_RSS_KiB": 87200
+      },
+      "full": {
+        "PASS": 5230,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 8,
+        "new_cases": 47,
+        "counted_new_calls": 14030,
+        "whole_process_wall_seconds": 634.7624637590015,
+        "max_RSS_KiB": 810744,
+        "platform_skips": {
+          "Windows_cmd": 4,
+          "Windows_ctypes_WinDLL": 3,
+          "macOS_Quartz": 1
+        }
+      },
+      "flake8_src_tests_tools_exit": 0,
+      "JavaScript_PASS": {
+        "realtime_TTL": 8,
+        "analysis_UI": 39,
+        "table_settings_UI": 10
+      },
+      "independent_reference": {
+        "PASS": 11,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0
+      },
+      "research_ledger_unchanged": true,
+      "CI_style_cost_separate_from_research": true,
+      "cross_platform_execution": "prior-head Python3.11 macOS/Windows CI success; not revised-source evidence",
+      "PR_head": "76e3fe004521ff9c3c47de37c0304bfc45a241d8",
+      "CI_run": 36786424037,
+      "CI_merge": "5f4e0ac6e305a1af210b5f1dd3c82c9d1cdeef84",
+      "CI_jobs": "three success; prior-head evidence only",
+      "known_gap": "list partial patch could drop omitted planned identities; old test supplied later in both snapshots"
+    }
+  ],
+  "portable_regression_verification": {
+    "executed_source_commit": "5ed6ca6aa8f63ffd7a2f7f10107c84af153744b3",
+    "source_sha256": {
+      "tests/strategy/aa_regression_own_component.py": "3af5b87639a17e26448a956301ec0a18a287a1d9c9ae27d69cab61bf29a7990d",
+      "tests/strategy/aa_synthetic_exact_reference.py": "77813d4e41222e3fe4d9486f5bd997b52ebe8b6a4adb46baefcc3d9be3afc25c",
+      "tests/strategy/aa_synthetic_regression_support.py": "75d70f99dacad0709952ce26e4421beb5d6ae30bdd6d9f7149007151855bc1e0",
+      "tests/strategy/aa_synthetic_shared_component.py": "e3ce1eaa058b1990ad7cf456544e0af6b891fd1548a1a7042e9ef8a7cd17bb1f",
+      "tests/strategy/aa_synthetic_shared_reference.py": "c02571b8565c238092b1021435e3c767a1ba7011cf814924f1e982e123f445d5",
+      "tests/strategy/aa_synthetic_status.py": "9d0350bd05ef690bd0feeb11b103503d75cda40c414564a6d3253dbf113e4a51",
+      "tests/strategy/test_aa_synthetic_accounting.py": "0348a51bb8d6dc86993ba72dac80b67567f7aca3eb4ea2693cf601da51e50a8d",
+      "tests/strategy/test_aa_synthetic_recall_limit.py": "a3c6a42233c3b94537a136f4a1d6d3f83a2c382d9968e28ee5b715ed9216b304",
+      "tests/strategy/test_aa_synthetic_shared_information.py": "4656bebe55b99a032cfe654a789b1e57c1b5a6986762cb649bbc043e6d0198b4",
+      "tests/strategy/test_aa_synthetic_status.py": "569efde18fe389b135d2593fb29b1929d91d84731675b9fd298175e28d265d5c",
+      "tests/strategy/test_aa_synthetic_transactions.py": "d2d15d825f130eb94f6bdd77b0d99636fda68c9ea9d8ab29b15beaad7a29b442"
+    },
+    "contract_revision": "stable-id partial planned-list patches; omit keeps row/base order; unknown/duplicate ids and unsupported shapes rejected",
+    "new_metadata_cases_added": 36,
+    "runtime": {
+      "python": "3.12.14",
+      "node": "24.19.0",
+      "pokerkit": "0.7.5"
+    },
+    "focused": {
+      "PASS": 194,
+      "FAIL": 0,
+      "ERROR": 0,
+      "SKIP": 0,
+      "new_cases": 83,
+      "counted_new_calls": 14030,
+      "whole_process_wall_seconds": 3.2398678209974605,
+      "max_RSS_KiB": 88336
+    },
+    "source_pre_post_hash_equal": true,
+    "full": {
+      "PASS": 5266,
+      "FAIL": 0,
+      "ERROR": 0,
+      "SKIP": 8,
+      "new_cases": 83,
+      "counted_new_calls": 14030,
+      "whole_process_wall_seconds": 636.9663329670002,
+      "max_RSS_KiB": 802916,
+      "platform_skips": {
+        "Windows_cmd": 4,
+        "Windows_ctypes_WinDLL": 3,
+        "macOS_Quartz": 1
+      },
+      "independent_reference_cases_in_full_suite": 11
+    },
+    "research_ledger_unchanged": true,
+    "CI_style_cost_separate_from_research": true,
+    "cross_platform_execution": "pending_new_PR_head_CI",
+    "flake8_src_tests_tools_exit": 0,
+    "reused_unmodified_checks": {
+      "from_executed_source": "8feea0823d093b2e838fe45e1936032ef0501606",
+      "production_JS_test_and_independent_test_sources_unchanged": true,
+      "JavaScript_PASS": {
+        "realtime_TTL": 8,
+        "analysis_UI": 39,
+        "table_settings_UI": 10
+      },
+      "standalone_independent_reference": {
+        "PASS": 11,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0
+      },
+      "note": "no unrelated rerun; revised full pytest includes the independent reference cases"
+    }
+  }
+}
