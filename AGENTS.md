@@ -33,6 +33,23 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-09-30 PORTABLE SYNTHETIC REGRESSIONS:** test/documentation-only batch
+  from511156ad, executed source8feea082; version and production src unchanged.
+  47 deterministic checks cover actual SIMPLE accounting against independent
+  Fraction references, shared-info own-reach deduplication, populated transaction
+  rollback/RNG/export, known cross-street recall limits and P3 status handling.
+  Historical raw traces/hash/ledger preserved; new regressions do not rerun or
+  revalidate revised historical harnesses. Python3.12.14/Node24.19.0 focused
+  158passed; full5230passed/8platform skips/0failed,634.762s whole process;
+  14,030 counted calls per full new selection, separate from research ledger
+  58,455nodes/13.324054s. Full lint,57JS cases and11independent reference tests
+  PASS. Public batch contains11Python test/helper files,
+  small synthetic aggregate JSON,2docs and this state note; raw traces remain
+  local. Independent source/math/privacy review PASS; Draft CI remains pending.
+  OWN replacement and retained-memory production encoding remain HOLD: mixed
+  finite-tree quality, unproven scale/artifact compatibility/actual integration.
+  No strategy strength, real-poker refusal cause or end-to-end latency claim.
+  Report:docs/reports/POKERSENSE-THREE-ROUND-SYNTHETIC-SUMMARY-20260930.zh-CN.md.
 - **2026-09-30 AA FROZEN PROBABILITY CONTRACT:** scoped interface fix from
   review branch44cb0b28, version unchanged. V1/V2 loaders and shadow worker
   share native finite [0,1] probabilities, exact nonempty string menus and
