@@ -34,21 +34,22 @@ changing desktop capture, recognition, packaging, or project documentation.
 
 ## Current state
 - **2026-09-30 PORTABLE SYNTHETIC REGRESSIONS:** test/documentation-only batch
-  from511156ad, executed source8feea082; version and production src unchanged.
-  47 deterministic checks cover actual SIMPLE accounting against independent
-  Fraction references, shared-info own-reach deduplication, populated transaction
-  rollback/RNG/export, known cross-street recall limits and P3 status handling.
-  Historical raw traces/hash/ledger preserved; new regressions do not rerun or
-  revalidate revised historical harnesses. Python3.12.14/Node24.19.0 focused
-  158passed; full5230passed/8platform skips/0failed,634.762s whole process;
-  14,030 counted calls per full new selection, separate from research ledger
-  58,455nodes/13.324054s. Full lint,57JS cases and11independent reference tests
-  PASS. Public batch contains11Python test/helper files,
-  small synthetic aggregate JSON,2docs and this state note; raw traces remain
-  local. Independent source/math/privacy review PASS; Draft CI remains pending.
-  OWN replacement and retained-memory production encoding remain HOLD: mixed
-  finite-tree quality, unproven scale/artifact compatibility/actual integration.
-  No strategy strength, real-poker refusal cause or end-to-end latency claim.
+  from511156ad, revised executed source5ed6ca6; version/production src unchanged.
+  83 deterministic checks cover actual SIMPLE/Fraction references, shared-info
+  own-reach deduplication, populated rollback/RNG/export, known recall limits
+  and P3 statuses. Parent review found initial list replacement could drop
+  omitted planned rows despite47old tests passing;36metadata cases now cover
+  stable local-id partial merges, frozen order/denominators and invalid shapes.
+  Old8feea082/head76e3fe0 tests/CI are historical evidence only; original raw
+  traces/hash/ledger preserved. Revised Python3.12.14 focused194passed with
+  83newcases/14,030counted calls; revised full5266passed/8platform skips/0failed
+  in636.966s. Revised full lint PASS; unchanged57JS/11standalone reference
+  results reused, full pytest again includes11reference cases. CI-style
+  cost remains separate from research58,455nodes/13.324054s. Public batch is
+  11Python test/helper files, small synthetic aggregate JSON,2docs and this note;
+  raw traces remain local. Production OWN/retained-memory encoding remain HOLD:
+  mixed finite-tree quality, unproven scale/compatibility/actual integration.
+  No strategy strength, historical refusal-cause or end-to-end latency claim.
   Report:docs/reports/POKERSENSE-THREE-ROUND-SYNTHETIC-SUMMARY-20260930.zh-CN.md.
 - **2026-09-30 AA FROZEN PROBABILITY CONTRACT:** scoped interface fix from
   review branch44cb0b28, version unchanged. V1/V2 loaders and shadow worker

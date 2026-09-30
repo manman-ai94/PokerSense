@@ -130,8 +130,8 @@
   ],
   "portable_regression_plan": {
     "baseline": "511156ade6a13c67c908bf204b5fd42a2c738a9f",
-    "source_commit": "8feea0823d093b2e838fe45e1936032ef0501606",
-    "cases": 47,
+    "source_commit": "5ed6ca6aa8f63ffd7a2f7f10107c84af153744b3",
+    "cases": 83,
     "SIMPLE_profiles": 6,
     "categorical_planned": 1056,
     "positive_categorical": 920,
@@ -156,66 +156,143 @@
     "No real poker strength or end-to-end latency claim.",
     "No production collector, encoding or policy change."
   ],
+  "portable_regression_verification_history": [
+    {
+      "executed_source_commit": "8feea0823d093b2e838fe45e1936032ef0501606",
+      "source_sha256": {
+        "tests/strategy/aa_regression_own_component.py": "3af5b87639a17e26448a956301ec0a18a287a1d9c9ae27d69cab61bf29a7990d",
+        "tests/strategy/aa_synthetic_exact_reference.py": "77813d4e41222e3fe4d9486f5bd997b52ebe8b6a4adb46baefcc3d9be3afc25c",
+        "tests/strategy/aa_synthetic_regression_support.py": "75d70f99dacad0709952ce26e4421beb5d6ae30bdd6d9f7149007151855bc1e0",
+        "tests/strategy/aa_synthetic_shared_component.py": "e3ce1eaa058b1990ad7cf456544e0af6b891fd1548a1a7042e9ef8a7cd17bb1f",
+        "tests/strategy/aa_synthetic_shared_reference.py": "c02571b8565c238092b1021435e3c767a1ba7011cf814924f1e982e123f445d5",
+        "tests/strategy/aa_synthetic_status.py": "028f2b33d06ac5ab4585bd4a78560ae0225bd4ce10461f77b914a358056a9d6f",
+        "tests/strategy/test_aa_synthetic_accounting.py": "0348a51bb8d6dc86993ba72dac80b67567f7aca3eb4ea2693cf601da51e50a8d",
+        "tests/strategy/test_aa_synthetic_recall_limit.py": "a3c6a42233c3b94537a136f4a1d6d3f83a2c382d9968e28ee5b715ed9216b304",
+        "tests/strategy/test_aa_synthetic_shared_information.py": "4656bebe55b99a032cfe654a789b1e57c1b5a6986762cb649bbc043e6d0198b4",
+        "tests/strategy/test_aa_synthetic_status.py": "e1f1331d0cf5c0abd124016a2670ed62f21a7a9ec9d79379ffe98e3ab4b3c320",
+        "tests/strategy/test_aa_synthetic_transactions.py": "d2d15d825f130eb94f6bdd77b0d99636fda68c9ea9d8ab29b15beaad7a29b442"
+      },
+      "source_pre_post_hash_equal": true,
+      "runtime": {
+        "python": "3.12.14",
+        "node": "24.19.0",
+        "pokerkit": "0.7.5"
+      },
+      "focused": {
+        "PASS": 158,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0,
+        "new_cases": 47,
+        "counted_new_calls": 14030,
+        "whole_process_wall_seconds": 3.401486135000596,
+        "max_RSS_KiB": 87200
+      },
+      "full": {
+        "PASS": 5230,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 8,
+        "new_cases": 47,
+        "counted_new_calls": 14030,
+        "whole_process_wall_seconds": 634.7624637590015,
+        "max_RSS_KiB": 810744,
+        "platform_skips": {
+          "Windows_cmd": 4,
+          "Windows_ctypes_WinDLL": 3,
+          "macOS_Quartz": 1
+        }
+      },
+      "flake8_src_tests_tools_exit": 0,
+      "JavaScript_PASS": {
+        "realtime_TTL": 8,
+        "analysis_UI": 39,
+        "table_settings_UI": 10
+      },
+      "independent_reference": {
+        "PASS": 11,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0
+      },
+      "research_ledger_unchanged": true,
+      "CI_style_cost_separate_from_research": true,
+      "cross_platform_execution": "prior-head Python3.11 macOS/Windows CI success; not revised-source evidence",
+      "PR_head": "76e3fe004521ff9c3c47de37c0304bfc45a241d8",
+      "CI_run": 36786424037,
+      "CI_merge": "5f4e0ac6e305a1af210b5f1dd3c82c9d1cdeef84",
+      "CI_jobs": "three success; prior-head evidence only",
+      "known_gap": "list partial patch could drop omitted planned identities; old test supplied later in both snapshots"
+    }
+  ],
   "portable_regression_verification": {
-    "executed_source_commit": "8feea0823d093b2e838fe45e1936032ef0501606",
+    "executed_source_commit": "5ed6ca6aa8f63ffd7a2f7f10107c84af153744b3",
     "source_sha256": {
       "tests/strategy/aa_regression_own_component.py": "3af5b87639a17e26448a956301ec0a18a287a1d9c9ae27d69cab61bf29a7990d",
       "tests/strategy/aa_synthetic_exact_reference.py": "77813d4e41222e3fe4d9486f5bd997b52ebe8b6a4adb46baefcc3d9be3afc25c",
       "tests/strategy/aa_synthetic_regression_support.py": "75d70f99dacad0709952ce26e4421beb5d6ae30bdd6d9f7149007151855bc1e0",
       "tests/strategy/aa_synthetic_shared_component.py": "e3ce1eaa058b1990ad7cf456544e0af6b891fd1548a1a7042e9ef8a7cd17bb1f",
       "tests/strategy/aa_synthetic_shared_reference.py": "c02571b8565c238092b1021435e3c767a1ba7011cf814924f1e982e123f445d5",
-      "tests/strategy/aa_synthetic_status.py": "028f2b33d06ac5ab4585bd4a78560ae0225bd4ce10461f77b914a358056a9d6f",
+      "tests/strategy/aa_synthetic_status.py": "9d0350bd05ef690bd0feeb11b103503d75cda40c414564a6d3253dbf113e4a51",
       "tests/strategy/test_aa_synthetic_accounting.py": "0348a51bb8d6dc86993ba72dac80b67567f7aca3eb4ea2693cf601da51e50a8d",
       "tests/strategy/test_aa_synthetic_recall_limit.py": "a3c6a42233c3b94537a136f4a1d6d3f83a2c382d9968e28ee5b715ed9216b304",
       "tests/strategy/test_aa_synthetic_shared_information.py": "4656bebe55b99a032cfe654a789b1e57c1b5a6986762cb649bbc043e6d0198b4",
-      "tests/strategy/test_aa_synthetic_status.py": "e1f1331d0cf5c0abd124016a2670ed62f21a7a9ec9d79379ffe98e3ab4b3c320",
+      "tests/strategy/test_aa_synthetic_status.py": "569efde18fe389b135d2593fb29b1929d91d84731675b9fd298175e28d265d5c",
       "tests/strategy/test_aa_synthetic_transactions.py": "d2d15d825f130eb94f6bdd77b0d99636fda68c9ea9d8ab29b15beaad7a29b442"
     },
-    "source_pre_post_hash_equal": true,
+    "contract_revision": "stable-id partial planned-list patches; omit keeps row/base order; unknown/duplicate ids and unsupported shapes rejected",
+    "new_metadata_cases_added": 36,
     "runtime": {
       "python": "3.12.14",
       "node": "24.19.0",
       "pokerkit": "0.7.5"
     },
     "focused": {
-      "PASS": 158,
+      "PASS": 194,
       "FAIL": 0,
       "ERROR": 0,
       "SKIP": 0,
-      "new_cases": 47,
+      "new_cases": 83,
       "counted_new_calls": 14030,
-      "whole_process_wall_seconds": 3.401486135000596,
-      "max_RSS_KiB": 87200
+      "whole_process_wall_seconds": 3.2398678209974605,
+      "max_RSS_KiB": 88336
     },
+    "source_pre_post_hash_equal": true,
     "full": {
-      "PASS": 5230,
+      "PASS": 5266,
       "FAIL": 0,
       "ERROR": 0,
       "SKIP": 8,
-      "new_cases": 47,
+      "new_cases": 83,
       "counted_new_calls": 14030,
-      "whole_process_wall_seconds": 634.7624637590015,
-      "max_RSS_KiB": 810744,
+      "whole_process_wall_seconds": 636.9663329670002,
+      "max_RSS_KiB": 802916,
       "platform_skips": {
         "Windows_cmd": 4,
         "Windows_ctypes_WinDLL": 3,
         "macOS_Quartz": 1
-      }
-    },
-    "flake8_src_tests_tools_exit": 0,
-    "JavaScript_PASS": {
-      "realtime_TTL": 8,
-      "analysis_UI": 39,
-      "table_settings_UI": 10
-    },
-    "independent_reference": {
-      "PASS": 11,
-      "FAIL": 0,
-      "ERROR": 0,
-      "SKIP": 0
+      },
+      "independent_reference_cases_in_full_suite": 11
     },
     "research_ledger_unchanged": true,
     "CI_style_cost_separate_from_research": true,
-    "cross_platform_execution": "pending_corresponding_Draft_PR_CI"
+    "cross_platform_execution": "pending_new_PR_head_CI",
+    "flake8_src_tests_tools_exit": 0,
+    "reused_unmodified_checks": {
+      "from_executed_source": "8feea0823d093b2e838fe45e1936032ef0501606",
+      "production_JS_test_and_independent_test_sources_unchanged": true,
+      "JavaScript_PASS": {
+        "realtime_TTL": 8,
+        "analysis_UI": 39,
+        "table_settings_UI": 10
+      },
+      "standalone_independent_reference": {
+        "PASS": 11,
+        "FAIL": 0,
+        "ERROR": 0,
+        "SKIP": 0
+      },
+      "note": "no unrelated rerun; revised full pytest includes the independent reference cases"
+    }
   }
 }
