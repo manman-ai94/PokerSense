@@ -33,6 +33,20 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-10-01 PENDING INFOSET MENU GUARD:** scoped candidate from af267066;
+  preserves the PR48 shadow boundary fix and the local 57c8aeb evidence.
+  Two production lines reject a changed menu already seen in this attempt,
+  before visits, strategy computation or sampling. Existing iterate rollback
+  preserves checkpoint and RNG; last_attempt_nodes remains diagnostic.
+  Python3.12.10/Node24.19.0: frozen20/20, related215/215, full5394PASS/2SKIP
+  of5396/0FAIL/ERROR, independent reference11/11 and UI runner8/8 PASS;
+  full lint and index hygiene PASS. Skips are missing phevaluator and Quartz;
+  no dependencies installed. Eight legal full-checkpoint hashes match the
+  pre-fix baseline and the preserved local candidate. Fixed custom-encoder
+  collisions are negative contract witnesses, not native V2 collision or
+  strategy-strength evidence. Sampling, probability and live gates unchanged;
+  no private assets, capture, release or deployment. Exact Draft PR head,
+  independent review and CI merge candidate are tracked in PR evidence.
 - **2026-10-01 SHADOW LOOKUP BOUNDARIES:** integrated on3629953c with
   merged PR47 range/snapshot identity guard; tested source10380993. Original
   b171c7e/511156ad and9323c0dc/65a5a5b1 evidence retained separately.

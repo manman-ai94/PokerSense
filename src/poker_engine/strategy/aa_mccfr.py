@@ -138,6 +138,8 @@ class ExternalSamplingMCCFR:
         base = self.regrets.get(key, {a: 0.0 for a in actions})
         if set(base) != set(actions):
             raise ValueError("information_set_menu_changed")
+        if key in deltas and set(deltas[key]) != set(actions):
+            raise ValueError("information_set_menu_changed")
         if key not in self.regrets and key not in deltas:
             new_keys = sum(item not in self.regrets for item in deltas)
             if len(self.regrets) + new_keys >= self.budget.max_infosets:
