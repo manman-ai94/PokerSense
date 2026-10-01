@@ -143,9 +143,13 @@ class FrozenResearchPolicyV2:
         return report
 
     def distribution(self, observation):
+        return self.distribution_with_key(observation)[1]
+
+    def distribution_with_key(self, observation):
+        """Reuse the validated report's abstract key, never encode it again."""
         result = self.inspect_lookup(observation)
         if result["status"] in ("HIT", "UNKNOWN_INFORMATION_SET"):
-            return result["distribution"]
+            return result["information_key"], result["distribution"]
         raise ValueError(result["reason"])
 
     def sample(self, observation, rng: random.Random):

@@ -178,6 +178,14 @@ class FrozenResearchPolicy:
         self.sha256 = checksum
 
     def distribution(self, observation):
+        return self.distribution_with_key(observation)[1]
+
+    def distribution_with_key(self, observation):
+        """Validate one observation and return its key and detached distribution.
+
+        A caller cannot supply a precomputed key to bypass scope/encoding checks.
+        Coverage misses retain the existing V1 menu-validation ordering.
+        """
         if (observation.get("rules_fingerprint") != self._data["rules_fingerprint"]
                 or observation.get("table_size") != self._data["table_size"]):
             raise ValueError("policy_rule_scope_mismatch")
@@ -190,11 +198,12 @@ class FrozenResearchPolicy:
                 raise ValueError("policy_stack_scope_mismatch")
         except (KeyError, TypeError, InvalidOperation) as exc:
             raise ValueError("policy_stack_scope_mismatch") from exc
-        dist = self._data["policy"].get(information_key(observation))
+        key = information_key(observation)
+        dist = self._data["policy"].get(key)
         if dist is None:
-            return None
+            return key, None
         validate_distribution(dist, action_ids(observation))
-        return dict(dist)
+        return key, dict(dist)
 
     def sample(self, observation, rng: random.Random):
         dist = self.distribution(observation)

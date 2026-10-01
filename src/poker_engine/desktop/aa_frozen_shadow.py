@@ -1,6 +1,6 @@
 """End-to-end synthetic frozen-policy adapter, deliberately absent from live UI."""
 from poker_engine.strategy.aa_frozen_policy import (
-    FrozenResearchPolicy, action_ids, canonical_hash, information_key,
+    FrozenResearchPolicy, action_ids, canonical_hash,
 )
 from .aa_policy_worker import AAIsolatedPolicyWorker
 
@@ -9,12 +9,9 @@ class AAFrozenShadowSession:
     def __init__(self, artifact, *, seed=0):
         if artifact.get("kind") == "AA_FROZEN_POLICY_V2":
             from poker_engine.strategy.aa_frozen_policy_v2 import FrozenResearchPolicyV2
-            from poker_engine.strategy.aa_policy_encoding_v2 import information_key_v2
             self.policy = FrozenResearchPolicyV2(artifact)
-            self._information_key = information_key_v2
         else:
             self.policy = FrozenResearchPolicy(artifact)
-            self._information_key = information_key
         self.worker = AAIsolatedPolicyWorker(self.policy.frozen_map(), seed=seed)
 
     def preload(self):
@@ -29,15 +26,26 @@ class AAFrozenShadowSession:
                 or observation.get("strategy_eligible") is not False
                 or observation.get("arena_version") != "aa-full-hand-arena-v1"):
             raise ValueError("shadow_adapter_requires_synthetic_arena")
+
+        def abstain(reason):
+            return {"status": "ABSTAIN", "reason": reason, "action": None,
+                    "strategy_eligible": False, "advice_emitted": False}
+
+        # Parent preprocessing consumes the existing absolute source/turn window,
+        # not the separate 300ms allowance that starts at worker lookup entry.
+        reason = window.check(now=clock(), identity=identity, source_at=source_at)
+        if reason != "WITHIN_BUDGET":
+            return abstain(reason)
         # Validate artifact scope and menu before dispatch; missing coverage is
         # an abstention, never a default fold or a forced random action.
-        distribution = self.policy.distribution(observation)
+        key, distribution = self.policy.distribution_with_key(observation)
+        reason = window.check(now=clock(), identity=identity, source_at=source_at)
+        if reason != "WITHIN_BUDGET":
+            return abstain(reason)
         if distribution is None:
-            return {"status": "ABSTAIN", "reason": "POLICY_COVERAGE_MISS",
-                    "action": None, "strategy_eligible": False,
-                    "advice_emitted": False}
+            return abstain("POLICY_COVERAGE_MISS")
         return self.worker.lookup(
-            self._information_key(observation), identity=identity,
+            key, identity=identity,
             state_key=canonical_hash(observation),
             rules_fingerprint=observation["rules_fingerprint"],
             legal_actions=action_ids(observation), window=window,
