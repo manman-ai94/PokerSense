@@ -37,6 +37,7 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONUTF8: "1"
+      CI_EVIDENCE_NAME: pytest-${{ matrix.os }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -57,14 +58,57 @@ jobs:
       - name: Install pinned offline reference
         run: python -m pip install pokerkit==0.7.5
 
+      - name: Test evidence identity and scope
+        env:
+          CI_EVIDENCE_DIR: ${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}
+          CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          python -c "import json, os, subprocess, sys, tomllib, pytest;
+          from pathlib import Path;
+          directory = Path(os.environ['CI_EVIDENCE_DIR']);
+          directory.mkdir(parents=True, exist_ok=True);
+          config = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['tool']['pytest']['ini_options'];
+          data = {'checkout_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+          'event_sha': os.environ['GITHUB_SHA'], 'pr_head_sha': os.environ.get('CI_PR_HEAD_SHA') or None,
+          'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+          'runner_os': os.environ['RUNNER_OS'], 'python': sys.version, 'pytest': pytest.__version__,
+          'node': subprocess.check_output(['node', '--version'], text=True).strip(),
+          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra']},
+          'reference_scope': 'tests/tools/test_strategy_eval_independent_oracle_v1.py'};
+          payload = json.dumps(data, ensure_ascii=True, indent=2);
+          (directory / 'identity.json').write_text(payload + '\n', encoding='utf-8');
+          print(payload)"
+
       - name: pytest
-        run: python -m pytest -q
+        id: full_pytest
+        run: >-
+          python -m pytest -v -ra
+          --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/full.xml"
 
       - name: AA realtime UI deadline regression
         run: node tests/ui/test_aa_turn_runtime_ui.js
 
       - name: Independent strategy evaluation reference
-        run: python -m pytest -q tests/tools/test_strategy_eval_independent_oracle_v1.py
+        id: reference_pytest
+        run: >-
+          python -m pytest -v -ra tests/tools/test_strategy_eval_independent_oracle_v1.py
+          --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/reference.xml"
 
       - name: flake8
         run: python -m flake8 src tests tools
+
+      - name: Record pytest step outcomes
+        if: ${{ always() }}
+        env:
+          CI_EVIDENCE_DIR: ${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}
+          CI_FULL_OUTCOME: ${{ steps.full_pytest.outcome }}
+          CI_REFERENCE_OUTCOME: ${{ steps.reference_pytest.outcome }}
+        run: >-
+          python -c "import json, os; from pathlib import Path;
+          directory = Path(os.environ['CI_EVIDENCE_DIR']);
+          directory.mkdir(parents=True, exist_ok=True);
+          data = {'full': os.environ.get('CI_FULL_OUTCOME') or 'unknown',
+          'reference': os.environ.get('CI_REFERENCE_OUTCOME') or 'unknown'};
+          payload = json.dumps(data, indent=2);
+          (directory / 'outcomes.json').write_text(payload + '\n', encoding='utf-8');
+          print(payload)"

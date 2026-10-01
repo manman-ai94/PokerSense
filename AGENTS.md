@@ -33,6 +33,25 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-10-01 CI PYTEST OBSERVABILITY:** original local1dec0580/af267066
+  retained; integrated on8bd45e9e with PR49 menu guard. Version unchanged.
+  CI uses -v/-ra to offset configured -q and report
+  collection/summary/skip reasons; builtin JUnit paths separate OS, phase,
+  run and attempt. Checkout SHA, event SHA, PR head, runtime, configured scope
+  and step outcomes are recorded without an environment/context dump.
+  Existing test gates, matrix, dependencies, timeouts and permissions retained.
+  New-base Python3.12.14/pytest9.1.1:8static groups,9synthetic pytest processes with
+  20declared fixture items,2metadata groups;19verification groups PASS.
+  Expected failures/errors/signals retained; original incorrect SIGINT XML
+  expectation corrected against retained output without rerunning passed work.
+  Interrupted JUnit can contain a nameless unfinished case or be absent;
+  XML alone is not completion evidence. Owner excludes artifact upload;
+  the original proposed patch stays outside this batch. Runner-local reports
+  lack post-run retention; normal Actions logs retain console/status evidence.
+  Product full suite, Python3.11/Windows/macOS/PowerShell and GitHub execution
+  NOT_RUN locally; new-head PR CI and actual checkout identities are tracked
+  separately. No production/default/global settings, new dependencies or
+  user docs; no new action, upload, permission expansion or merge.
 - **2026-10-01 PENDING INFOSET MENU GUARD:** scoped candidate from af267066;
   preserves the PR48 shadow boundary fix and the local 57c8aeb evidence.
   Two production lines reject a changed menu already seen in this attempt,
