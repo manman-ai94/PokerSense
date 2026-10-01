@@ -33,6 +33,30 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-10-01 SHADOW LOOKUP BOUNDARIES:** integrated on3629953c with
+  merged PR47 range/snapshot identity guard; tested source10380993. Original
+  b171c7e/511156ad and9323c0dc/65a5a5b1 evidence retained separately.
+  Version unchanged. V1/V2 HIT duplicate encoding, expired binding dispatch
+  and final record clock gaps are repaired: reuse one validated encoding,
+  preserve the existing absolute source/turn window, freeze worker allowance
+  at entry, check binding/IPC/results against it, and record one checked time.
+  400ms preprocessing still permits300ms worker when the source window allows;
+  950ms leaves50ms under1s source TTL. Menu/probability/scope/freshness and
+  identity refusal gates remain strict; production collector/strategy unchanged.
+  New-base Python3.12.14/Node24.19.0: related277PASS; full5376planned=
+  5368PASS/8platform SKIP/0FAIL/ERROR/INTERRUPTED/NOT_RUN, pytest621.92s,
+  command623.962615s. Full lint,57JS,11independent reference PASS, rerun on new base.
+  All63shadow and50identity-related cases PASS;775source/test/tool hashes
+  match the frozen tested code.1138tracked-file snapshot belongs to the tested
+  commit; final edits update only this note and runtime documentation.
+  Isolated workspace basetemp, minimum28.7926GiB free;125warnings retained.
+  Eight local skips:4Windows cmd,3WinDLL DPI,1Quartz. CI/owner review and
+  exact remote identity are tracked separately in PR evidence; no merge/deploy.
+  Independent source/identity compatibility/public-content/raw-evidence reviews
+  PASS. Public batch remains7paths; toy learning diagnostic remains local.
+  Synchronous work cannot be preempted; admission checks are not camera-to-
+  display, strategy-strength, real capture, packaging or live-play acceptance.
+  Contract and reproduction:docs/AA-TEN-SECOND-RUNTIME.zh-CN.md.
 - **2026-09-30 PORTABLE SYNTHETIC REGRESSIONS:** test/documentation-only batch
   from511156ad, revised executed source5ed6ca6; version/production src unchanged.
   83 deterministic checks cover actual SIMPLE/Fraction references, shared-info

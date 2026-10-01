@@ -129,13 +129,25 @@ class AAIsolatedPolicyWorker:
                 or any(not isinstance(value, str) or not value or len(value) > 128
                        for value in legal_actions)):
             return abstain("INVALID_LEGAL_MENU")
+        # One absolute worker deadline includes binding, IPC and result checks.
+        # Encoding performed by the caller does not restart the turn/source TTL.
+        deadline = now + window.computation_budget_seconds(
+            now=now, identity=identity, source_at=source_at)
         binding = {"turn": asdict(identity), "state": state_key,
                    "information": information_key, "rules": rules_fingerprint,
                    "policy": self.policy_sha256, "legal": sorted(legal_actions),
                    "seed": self.seed}
         request_key = hashlib.sha256(_canonical(binding)).hexdigest()
-        deadline = now + window.computation_budget_seconds(
-            now=now, identity=identity, source_at=source_at)
+        dispatch_at = clock()
+        reason = window.check(now=dispatch_at, identity=identity, source_at=source_at)
+        if reason != "WITHIN_BUDGET":
+            return abstain(reason)
+        # Further turn evidence may tighten the window during binding. It can
+        # shorten this request's deadline, never replenish its entry allowance.
+        deadline = min(deadline, dispatch_at + window.computation_budget_seconds(
+            now=dispatch_at, identity=identity, source_at=source_at))
+        if dispatch_at >= deadline:
+            return abstain("COMPUTATION_DEADLINE")
         try:
             self._connection.send((request_key, information_key))
             if not self._connection.poll(max(0, deadline - clock())):
@@ -157,9 +169,10 @@ class AAIsolatedPolicyWorker:
         # to its own copy after the process has finished.
         if not callable(is_current) or is_current(binding) is not True:
             return abstain("STATE_CHANGED")
-        if clock() >= deadline:
+        completed_at = clock()
+        if completed_at >= deadline:
             return abstain("COMPUTATION_DEADLINE")
-        reason = window.record_first_result(now=clock(), identity=identity,
+        reason = window.record_first_result(now=completed_at, identity=identity,
                                             source_at=source_at,
                                             legal=action in legal_actions)
         if reason != "WITHIN_BUDGET":
