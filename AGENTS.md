@@ -33,33 +33,30 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
-- **2026-10-01 SHADOW LOOKUP BOUNDARIES (LOCAL ACCEPTANCE):** integrated on
-  65a5a5b1; original b171c7e/511156ad candidate and evidence retained, version
-  unchanged. Four frozen public synthetic baseline probes
-  confirmed V1/V2 HIT double encoding, dispatch after binding exhausted the
-  worker budget, and a second final clock sample recording an expired result.
-  The adapter now obtains key/distribution from one validated encoding and
-  checks the existing absolute source/turn window before/after preprocessing.
-  Worker entry freezes its own deadline; binding/IPC/result checks consume it,
-  later window evidence only tightens it, and acceptance records one checked
-  timestamp. The existing staged allowance remains: 400ms preprocessing can
-  still leave 300ms for the worker; 950ms leaves 50ms under the 1s source TTL.
-  Python3.12.14/Node24.19.0: full5337planned = 5329passed/8platform skips,
-  0failed/errors/interrupted/notrun in629.86s (command632.496s); includes all
-  63new cases and merged PR46 tests. Full lint,57JS and11standalone reference
-  cases PASS under the original command freeze; full pytest used the corrected
-  freeze. Isolated workspace basetemp, minimum28.97GiB free. Independent
-  read-only integration/source/test/evidence reviews PASS. Initial optional
-  /usr/bin/time wrapper was absent: pytest did not start (0executed/5337notrun).
-  This startup error is retained separately; final run used stdlib metering,
-  unchanged code/denominator and no suppressed thresholds. Full log125warnings
-  retained, including JUnit record_property/xunit2 metadata warnings.
-  No Windows/macOS/package/release acceptance for this candidate. Synchronous
-  calls cannot be preempted; timestamp admission is not a hard return deadline
-  or camera-to-display result. Probability/menu/scope gates, encoding, sampling,
-  collector and live-advice eligibility remain unchanged. No coverage or quality
-  gain claimed; local only, no push/PR/merge/deploy. Contract and reproduction:
-  docs/AA-TEN-SECOND-RUNTIME.zh-CN.md.
+- **2026-10-01 SHADOW LOOKUP BOUNDARIES:** integrated on3629953c with
+  merged PR47 range/snapshot identity guard; tested source10380993. Original
+  b171c7e/511156ad and9323c0dc/65a5a5b1 evidence retained separately.
+  Version unchanged. V1/V2 HIT duplicate encoding, expired binding dispatch
+  and final record clock gaps are repaired: reuse one validated encoding,
+  preserve the existing absolute source/turn window, freeze worker allowance
+  at entry, check binding/IPC/results against it, and record one checked time.
+  400ms preprocessing still permits300ms worker when the source window allows;
+  950ms leaves50ms under1s source TTL. Menu/probability/scope/freshness and
+  identity refusal gates remain strict; production collector/strategy unchanged.
+  New-base Python3.12.14/Node24.19.0: related277PASS; full5376planned=
+  5368PASS/8platform SKIP/0FAIL/ERROR/INTERRUPTED/NOT_RUN, pytest621.92s,
+  command623.962615s. Full lint,57JS,11independent reference PASS, rerun on new base.
+  All63shadow and50identity-related cases PASS;775source/test/tool hashes
+  match the frozen tested code.1138tracked-file snapshot belongs to the tested
+  commit; final edits update only this note and runtime documentation.
+  Isolated workspace basetemp, minimum28.7926GiB free;125warnings retained.
+  Eight local skips:4Windows cmd,3WinDLL DPI,1Quartz. CI/owner review and
+  exact remote identity are tracked separately in PR evidence; no merge/deploy.
+  Independent source/identity compatibility/public-content/raw-evidence reviews
+  PASS. Public batch remains7paths; toy learning diagnostic remains local.
+  Synchronous work cannot be preempted; admission checks are not camera-to-
+  display, strategy-strength, real capture, packaging or live-play acceptance.
+  Contract and reproduction:docs/AA-TEN-SECOND-RUNTIME.zh-CN.md.
 - **2026-09-30 PORTABLE SYNTHETIC REGRESSIONS:** test/documentation-only batch
   from511156ad, revised executed source5ed6ca6; version/production src unchanged.
   83 deterministic checks cover actual SIMPLE/Fraction references, shared-info

@@ -82,16 +82,23 @@ worker 冻结一次绝对计算截止，在绑定计算后、发送前复核窗�
 
 首轮本地候选 `b171c7e` 以 `511156ad` 为固定基线；63 项新增固定回归和 164 项
 相关既有回归全部通过，0 失败／错误／跳过／未执行。旧源码和证据保留。
-2026-10-01 独立分支衔接 `65a5a5b1`，保留已合并 PR46；候选源码和测试不变。
-最终本地全量分母 5,337：5,329 passed、8 skipped，失败／错误／中断／未执行均为 0；
-pytest 内部 629.86s，命令墙钟 632.496s。全仓 lint、57 项 JS 和 11 项独立参考
-沿用第一版冻结的各自独立实测通过记录。
-Python 3.12.14、Node 24.19.0，使用既有 CPU 和依赖，workspace 独立 basetemp，
-最低可用空间 28.97GiB。8 项跳过为 4 项 Windows cmd、3 项 Windows ctypes DPI
-及 1 项 Quartz；Windows/macOS 与打包须另行验收。完整日志保留 125 项警告，
-包括 JUnit record_property 与 xunit2 元数据兼容警告，未屏蔽警告或放宽门槛。
-首次可选资源包装 `/usr/bin/time` 缺失导致 pytest 未启动（0 执行／5,337 未执行）；
-启动错误独立保留，移除包装后完整运行一次，代码和测试分母未变。
+`65a5a5b1` 上的 `9323c0dc` 本地验收为历史证据：分母5,337，5,329 passed、
+8 skipped；pytest629.86s、命令632.496s。其第一版独立JS/reference/lint记录和
+首次可选 `/usr/bin/time` 包装缺失的启动ERROR（0执行/5,337未执行）独立保留。
+2026-10-01 新独立分支安全衔接 `3629953c`，包含已合并PR47的range/snapshot身份
+保护；shadow生产代码与63项测试保持原候选字节一致。新基线执行源码`10380993`：
+相关277/277通过，完整分母5,376，5,368 passed、8平台skipped，失败/错误/中断/
+未执行均0；pytest621.92s、命令623.962615s。全仓lint、57项JS及11项独立参考
+在新基线重新执行并通过；63项shadow及50项身份相关用例全部通过。
+新分母相对旧计划新增40身份、移除1个由两个边界参数替代的旧expired_request身份，
+净增39；完整身份和跳过原因逐项核对。775个源码/测试/tool文件哈希与冻结执行保持
+一致；1,138个tracked文件快照属于执行提交，后续只更新AGENTS与本说明两份文档。
+Python3.12.14、Node24.19.0，既有CPU/依赖、workspace独立basetemp，最低空间
+28.7926GiB。8项跳过为4项Windows cmd、3项WinDLL DPI、1项Quartz；本地记录
+不代表Windows/macOS或安装包通过，跨平台CI与远端SHA在PR证据中单列。
+完整日志125项警告保留，包括Starlette/PokerKit与JUnit record_property/xunit2；
+没有过滤警告或放宽门槛。公开提交严格限原7个工程代码/合成测试/说明路径；
+独立玩具质量实验保留本地，不随本候选发布，策略或实时资格没有因此提升。
 新增用例是合成 clock/IPC，既有 worker/session 测试另覆盖真实 spawn 和超时终止。
 复现相关检查：
 
@@ -103,12 +110,13 @@ PYTHONPATH=src:. UV_CACHE_DIR=/workspace/.uv-cache python -m pytest -q \
   tests/desktop/test_aa_turn_runtime.py tests/strategy/test_aa_frozen_policy.py \
   tests/strategy/test_aa_frozen_policy_v2.py \
   tests/strategy/test_aa_policy_encoding_v2.py \
-  tests/strategy/test_aa_probability_contract.py
+  tests/strategy/test_aa_probability_contract.py \
+  tests/strategy/test_aa_equity_shadow_v2.py \
+  tests/tools/test_run_aa_equity_shadow_synthetic.py
 python -m flake8 src tests tools
 ```
 
-完整 pytest 使用修正后的第二版命令冻结；JS／独立参考／lint 使用第一版冻结各自
-独立实测的记录，未重复运行。以下命令供复现：
+新基线的完整pytest、JS、独立参考和lint均按新的命令冻结执行。以下命令供复现：
 `python -m pytest -q --basetemp=/workspace/pytest-shadow-full`，
 `node tests/ui/test_aa_turn_runtime_ui.js`、
 `node tests/ui/test_aa_analysis_ui.js`、`node tests/ui/test_aa_table_settings_ui.mjs`、
