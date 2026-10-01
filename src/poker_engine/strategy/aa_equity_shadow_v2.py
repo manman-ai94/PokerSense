@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 import math
@@ -12,6 +13,7 @@ from typing import Mapping
 
 from poker_engine.core.enums import Street
 from poker_engine.core.errors import InvalidStateError
+from poker_engine.core._freeze import _require_aware_dt
 
 from .aa_rules_v2 import (
     AARuleProfileV2,
@@ -32,6 +34,8 @@ from .aa_range_assets_v2 import (
     AARangeReadinessV2,
     AARangeShadowSnapshotV2,
     assess_aa_range_readiness,
+    is_explicitly_unbound_range,
+    parse_range_identity,
 )
 
 
@@ -178,6 +182,19 @@ def evaluate_aa_equity_shadow(
         reasons.append("opening_forced_bets_not_exact")
     if not context.is_decision_ready:
         reasons.append("decision_context_not_ready")
+    # Mirror the existing adaptive-equity expiry predicate before any math;
+    # deadline_ms and sampling budgets keep their existing semantics.
+    try:
+        if not isinstance(now, datetime):
+            raise TypeError("now must be a datetime")
+        _require_aware_dt(now)
+        if (context.request.expires_at is not None
+                and now >= context.request.expires_at):
+            reasons.append(
+                "equity_input_or_computation_error:equity_deadline_expired"
+            )
+    except (TypeError, ValueError) as exc:
+        reasons.append(f"equity_input_or_computation_error:{exc}")
     readiness = assess_aa_range_readiness(
         context.villain_ranges,
         hero_seat=context.hero_seat,
@@ -186,16 +203,54 @@ def evaluate_aa_equity_shadow(
         minimum_confidence=minimum_range_confidence,
     )
     reasons.extend(readiness.reasons)
+    explicitly_unbound = bool(context.villain_ranges) and all(
+        is_explicitly_unbound_range(item, rules.fingerprint)
+        for item in context.villain_ranges
+    )
     if range_snapshot is None:
         if not allow_untracked_ranges:
             reasons.append("range_tracker_snapshot_missing")
+        if not simulation:
+            reasons.append("missing_range_snapshot_with_non_simulation_rules")
+        if not explicitly_unbound:
+            reasons.append("missing_snapshot_cannot_wrap_bound_ranges")
+            reasons.append("untracked_range_source_not_explicitly_unbound")
     elif not isinstance(range_snapshot, AARangeShadowSnapshotV2):
         raise TypeError("range_snapshot must be AARangeShadowSnapshotV2 or None")
     else:
+        if range_snapshot.asset_status == "unbound":
+            if not simulation:
+                reasons.append("unbound_range_snapshot_with_non_simulation_rules")
+            if not allow_untracked_ranges:
+                reasons.append("unbound_range_snapshot_requires_test_opt_in")
+            if any(getattr(range_snapshot, name) is not None for name in (
+                "asset_id", "asset_version", "asset_sha256", "rule_fingerprint",
+            )) or not explicitly_unbound:
+                reasons.append("unbound_snapshot_cannot_wrap_bound_ranges")
+        else:
+            identity = (
+                range_snapshot.rule_fingerprint, range_snapshot.asset_status,
+                range_snapshot.asset_id, range_snapshot.asset_version,
+                range_snapshot.asset_sha256,
+            )
+            if any(value is None for value in identity):
+                reasons.append("range_snapshot_asset_identity_missing")
+            if range_snapshot.asset_status not in ("shadow_reviewed", "live_approved"):
+                reasons.append("snapshot_asset_status_not_shadow_permitted")
+            if (not context.villain_ranges or any(
+                parse_range_identity(item.source_version) != identity
+                or item.source != range_snapshot.asset_id
+                for item in context.villain_ranges
+            )):
+                reasons.append("range_snapshot_asset_identity_mismatch")
+            if range_snapshot.rule_fingerprint != rules.fingerprint:
+                reasons.append("range_snapshot_rule_fingerprint_mismatch")
         if not range_snapshot.equity_permitted or range_snapshot.blockers:
             reasons.append("range_tracker_snapshot_not_permitted")
         if range_snapshot.distributions != context.villain_ranges:
             reasons.append("range_tracker_context_mismatch")
+        if range_snapshot.advice_emitted or range_snapshot.strategy_eligible:
+            reasons.append("range_tracker_snapshot_claims_strategy")
     if reasons:
         return AAEquityShadowResult(
             AAEquityShadowStatus.BLOCKED, rules.fingerprint,
@@ -239,7 +294,7 @@ def evaluate_aa_equity_shadow(
     disclosures = []
     if simulation:
         disclosures.append("simulation_rules_only")
-    if range_snapshot is None:
+    if range_snapshot is None or range_snapshot.asset_status == "unbound":
         disclosures.append("untracked_ranges_explicit_test_only")
     return AAEquityShadowResult(
         status=status,
