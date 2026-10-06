@@ -38,11 +38,17 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 - 前端 JS 测试需要 Node.js（`brew install node`），没装时会自动跳过。
 - 2026-10-06 在 M1 Pro 上跑过全量测试：5593 个通过，8 个跳过（都是只能在 Windows 上跑的），0 个失败。
 - 采集卡在 macOS 上走 AVFoundation，这是默认接口；Windows 上仍是 MSMF。
-  macOS 上的采集卡只做过模拟测试，还没接真机验证。
+  2026-10-06 真机验证通过：UGREEN 25854 采集卡（AVFoundation 设备 0），1920×1080、30 帧，
+  手机画面位置和 Windows 录像一致（裁切第 711–1208 列），实时识别正常。
+- 采集卡注意事项：
+  - macOS 的摄像头权限给的是 Mac 自带的“终端”应用。要用 `launch/mac/*.command` 启动，
+    它们会在“终端”里运行；从 Claude 的命令行直接读采集卡会被系统拒绝。
+  - 三星手机接 HDMI 后要切换到“屏幕镜像”，不能用 DeX 桌面模式。
 
 ## 在 Mac 上运行
 
 ```bash
+launch/mac/start-aa-capture.command           # 接采集卡实时识别（观察页里选“实体采集卡”）
 launch/mac/start-aa-video.command             # 录像实时回放：按录像节奏送画面，模拟采集卡
 launch/mac/start-aa-replay.command            # 逐帧回放第一手牌的帧（不按真实速度）
 
