@@ -157,7 +157,7 @@ function render(row, state) {
   clearPreview();
   const observed = row.observed_state_v2 || {};
   cards("hero", row.cards?.hero, 2); cards("board", row.cards?.board_slots, 5); seatCards(row);
-  el("pot").textContent = text(row.pot?.value); el("street").textContent = translated(observed.street_candidate);
+  el("pot").textContent = text(row.pot?.value); el("street").textContent = translated(row.street_v1 ? row.street_v1.street : observed.street_candidate);
   el("actor").textContent = Number.isInteger(row.current_actor) ? `座位 ${row.current_actor}` : "未知";
   el("dealer").textContent = Number.isInteger(row.dealer_seat) ? `座位 ${row.dealer_seat}` : Number.isInteger(row.dealer_observation_v2?.dealer_seat) ? `单帧候选 ${row.dealer_observation_v2.dealer_seat}（等待开局）` : "未知";
   el("state-closure").textContent = phaseDescription(row);

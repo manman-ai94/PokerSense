@@ -269,7 +269,9 @@ def frame_summary(payload):
         "scene_supported": payload.get("scene_supported"),
         "hero": cards.get("hero"),
         "board": cards.get("board_slots"),
-        "street": observed.get("street_candidate"),
+        "street": ((payload.get("street_v1") or {}).get("street")
+                   if "street_v1" in payload else observed.get("street_candidate")),
+        "street_legacy": observed.get("street_candidate"),
         "pot": (payload.get("pot") or {}).get("value"),
         "actor": payload.get("current_actor"),
         "dealer": payload.get("dealer_seat"),

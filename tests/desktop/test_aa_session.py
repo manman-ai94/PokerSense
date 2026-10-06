@@ -277,3 +277,21 @@ def test_table_math_enriches_payload_and_frames_are_logged(tmp_path):
     assert rows[0]["source_frame"] == 97 and rows[0]["source_kind"] == "fake"
     assert rows[0]["fields"]["table_math"] == {"seen": True}
     assert rows[0]["timing"]["recognition_ms"] >= 0
+
+
+def test_frame_summary_prefers_current_evidence_and_keeps_legacy_fields():
+    from poker_engine.desktop.aa_session import frame_summary
+
+    legacy = {"observed_state_v2": {"street_candidate": None, "participants": {
+        "1": {"state": "folded"}}}}
+    assert frame_summary(legacy)["street"] is None
+    assert frame_summary(legacy)["participants"] == {"1": "folded"}
+    current = {**legacy, "street_v1": {"street": "turn"},
+               "seat_states_v1": {"seats": {"1": {"state": "active"}}},
+               "hero_controls_v1": {"visible": True, "button": "check",
+                                    "call_amount": "0"}}
+    summary = frame_summary(current)
+    assert summary["street"] == "turn" and summary["street_legacy"] is None
+    assert summary["participants"] == {"1": "active"}
+    assert summary["participants_legacy"] == {"1": "folded"}
+    assert summary["hero_controls"]["button"] == "check"
