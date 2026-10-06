@@ -161,7 +161,8 @@ function render(row, state) {
   el("actor").textContent = Number.isInteger(row.current_actor) ? `座位 ${row.current_actor}` : "未知";
   el("dealer").textContent = Number.isInteger(row.dealer_seat) ? `座位 ${row.dealer_seat}` : Number.isInteger(row.dealer_observation_v2?.dealer_seat) ? `单帧候选 ${row.dealer_observation_v2.dealer_seat}（等待开局）` : "未知";
   el("state-closure").textContent = phaseDescription(row);
-  el("call-price").textContent = text(row.hero_controls_v1?.call_amount);
+  const controls = row.hero_controls_v1 || {};
+  el("call-price").textContent = controls.call_amount == null ? "未知" : controls.button === "check" ? "0（可以让牌）" : controls.button === "all_in" ? `${controls.call_amount}（跟注即全下）` : text(controls.call_amount);
   renderTableMath(row.table_math_v1);
   renderRiverStudy(row.river_strategy_v1);
   el("sequence").textContent = text(state.sequence); el("source-frame").textContent = text(state.source_frame ?? row.frame);

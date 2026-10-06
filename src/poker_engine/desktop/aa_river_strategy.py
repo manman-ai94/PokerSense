@@ -21,6 +21,8 @@ def current_river_study(row):
         result["reasons"].append("等待完整河牌")
     if row.get("current_actor") != 4 or controls.get("price_confirmed") is not True:
         result["reasons"].append("等待Hero行动及稳定的跟注按钮金额")
+    elif controls.get("button") == "check":
+        result["reasons"].append("当前可以让牌，不需要跟注")
     stacks, wagers = row.get("stacks") or {}, row.get("street_wagers") or {}
     participants = (row.get("participation") or {}).get("slots") or {}
     empty = row.get("empty_seats_v1") or []

@@ -45,6 +45,7 @@ def test_summary_counts_drops_latency_and_coverage():
     assert summary["coverage"]["all_participants"] == 1.0
     assert summary["hero_turn_frames"] == 2
     assert summary["call_amount_read_on_hero_turn"] == 0.5
+    assert summary["hero_turn_buttons"] == {"None": 2}
     assert summary["table_math"]["pot_odds"] == {
         "available": 0.0, "reasons": {"not_hero_turn": 3}}
     assert summary["all_participants_known"] == {

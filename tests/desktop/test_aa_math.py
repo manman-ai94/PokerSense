@@ -58,6 +58,12 @@ def test_pot_odds_only_on_hero_turn_with_a_read_call(math):
     odds = math.compute(payload(controls={"visible": True, "call_amount": "25"}))[
         "pot_odds"]
     assert odds["available"] and odds["ratio"] == pytest.approx(4.0)
+    assert odds["all_in"] is False
+    check = payload(controls={"visible": True, "button": "check", "call_amount": "0"})
+    assert math.compute(check)["pot_odds"]["reason"] == "nothing_to_call"
+    shove = payload(controls={"visible": True, "button": "all_in",
+                              "call_amount": "250"})
+    assert math.compute(shove)["pot_odds"]["all_in"] is True
     assert odds["required_equity"] == pytest.approx(0.2)
     check = payload(controls={"visible": True, "call_amount": "0"})
     assert math.compute(check)["pot_odds"]["reason"] == "nothing_to_call"
