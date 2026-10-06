@@ -23,6 +23,7 @@ PokerSense 是一个德州扑克**实时策略分析**工具：用采集卡读�
 ## 开发环境（macOS Apple Silicon）
 
 ```bash
+export PATH="/opt/homebrew/bin:$PATH"   # Homebrew（gh、node）不在默认 PATH 里
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev,desktop,solver-tools,perceptual]"
 
@@ -32,10 +33,19 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 ```
 
 - 支持 Python 3.11–3.13，本机用 3.12。依赖版本在 `pyproject.toml` 里精确锁定，不要放宽。
-- 已知问题：在 Mac 本机上，`tests/desktop/test_aa_hand_input_ui.py` 和
-  `tests/perceptual/test_quartz_capture.py` 共 13 个测试失败（大扫除前就存在，GitHub CI 上通过）。
-  没装 Node 时，JS 相关测试会自动跳过。
-- 采集卡后端目前只支持 Windows 的 MSMF/DSHOW，macOS 支持待做（ROADMAP 里程碑 0）。
+- 前端 JS 测试需要 Node.js（`brew install node`），没装时会自动跳过。
+- 2026-10-06 在 M1 Pro 上跑过全量测试：5593 个通过，8 个跳过（都是只能在 Windows 上跑的），0 个失败。
+- 采集卡在 macOS 上走 AVFoundation，这是默认接口；Windows 上仍是 MSMF。
+  macOS 上的采集卡只做过模拟测试，还没接真机验证。
+
+## 在 Mac 上运行
+
+```bash
+launch/mac/start-aa-replay.command            # 打开观察页并回放第一手牌的帧
+launch/mac/start-aa-replay.command <帧目录>     # 回放别的帧（目录里要有 samples.json）
+```
+
+浏览器会自动打开观察页，点“开始观察”。详见 [launch/mac/README.md](launch/mac/README.md)。
 
 ## 代码地图
 
@@ -54,17 +64,20 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 | `configs/` | 识别标定、策略资产、规则配置 |
 | `third_party/` | 只放第三方许可证和来源说明，不放源码或二进制 |
 
-现有入口：`packaging/aa_live_entry.py` → `poker_engine.desktop.aa_server`
-（Windows 上由 `launch/aa/START-AA.cmd` 启动）。Mac 上的启动方式还没验证。
+入口：`packaging/aa_live_entry.py` → `poker_engine.desktop.aa_server`。
+Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa-replay.command` 启动。
+私有数据位置统一由 `src/poker_engine/data_paths.py` 决定。
 
 子系统合同见 `docs/`：`core-contracts.md`、`state-engine.md`、`confidence-gate.md`、
 `orchestrator.md`、`vision-engine.md`、`capture-replay.md`、`hand-memory.md`、`serialization.md`。
 
 ## 私有数据
 
-- 录像、截图帧、标注和模型都在仓库外：`~/Projects/PokerSense_data/drive-G/`，
-  目录结构对应原 Windows 的 `G:\PokerSense_archive` 和 `G:\PokerSense_private`。
-- 旧代码和配置里写死的 `G:/...`、`C:/...` 路径需要改成可配置的，不能直接用。
+- 录像、截图帧、标注和模型都在仓库外的数据目录里，默认是 `~/Projects/PokerSense_data`，
+  可以用环境变量 `POKERSENSE_DATA_ROOT` 改；Windows 上默认仍是 `G:/`。
+  数据目录下面是 `PokerSense_private/` 和 `PokerSense_archive/`，对应原 Windows 的 `G:\` 结构。
+- 旧配置里写的 `G:/...` 和旧仓库路径 `C:/Users/Administrator/WorkBuddy/扑克/PokerSense/...`，
+  会被 `data_paths.resolve_legacy_path` 自动映射到本机。新代码请直接用 `data_paths`，不要再写死路径。
 - **仓库是公开的。**录像、截图、模型权重、第三方求解器源码或二进制、密钥、`.venv`
   一律不提交。
 
