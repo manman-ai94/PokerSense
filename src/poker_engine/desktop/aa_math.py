@@ -56,8 +56,14 @@ def _hero_and_board(payload):
 
 
 def _participants(payload):
-    """Seat -> state for all eight seats, or None when any seat is unknown."""
-    raw = (payload.get("observed_state_v2") or {}).get("participants") or {}
+    """Seat -> state for all eight seats, or None when any seat is unknown.
+
+    Uses the current-evidence seat states when the reader provides them, else
+    the older history-based participants.
+    """
+    raw = (payload.get("seat_states_v1") or {}).get("seats")
+    if raw is None:
+        raw = (payload.get("observed_state_v2") or {}).get("participants") or {}
     states = {}
     for slot in SLOTS:
         state = (raw.get(slot) or {}).get("state")

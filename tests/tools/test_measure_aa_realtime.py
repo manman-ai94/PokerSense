@@ -7,13 +7,14 @@ ALL_IN = {str(slot): "active" for slot in range(8)}
 
 def row(processed, frame, pts, *, received, published, hero=("Ah", "Kd"),
         board=(None,) * 5, street="preflop", pot="30", visible=False,
-        call=None, math=None):
+        call=None, math=None, participants=None):
     return {
         "processed": processed, "source_frame": frame, "source_video_pts": pts,
         "timing": {"host_source_received_at": received, "published_at": published,
                    "recognition_ms": 50.0, "math_ms": 1.0},
         "fields": {"hero": list(hero), "board": list(board), "street": street,
-                   "pot": pot, "actor": 4, "participants": dict(ALL_IN),
+                   "pot": pot, "actor": 4,
+                   "participants": dict(participants or ALL_IN),
                    "stacks": {"4": "100"},
                    "hero_controls": {"visible": visible, "call_amount": call},
                    "table_math": math or {
@@ -46,10 +47,15 @@ def test_summary_counts_drops_latency_and_coverage():
     assert summary["call_amount_read_on_hero_turn"] == 0.5
     assert summary["table_math"]["pot_odds"] == {
         "available": 0.0, "reasons": {"not_hero_turn": 3}}
+    assert summary["all_participants_known"] == {
+        "hero_card_frames": 1.0, "hero_card_frames_with_actor": 1.0,
+        "hero_turn_frames": 1.0}
+    assert summary["equity_available_hero_in_hand"] == 1.0
 
 
 def test_gold_agreement_counts_correct_wrong_unknown_and_unmatched():
-    rows = [row(0, 0, 50.0, received=1.0, published=1.1),
+    rows = [row(0, 0, 50.0, received=1.0, published=1.1,
+                participants={**ALL_IN, "1": "unknown", "2": "waiting"}),
             row(1, 1, 80.0, received=2.0, published=2.1,
                 board=("5h", "6c", "6s", None, None), street=None, pot="99")]
     known = {"status": "KNOWN"}
@@ -61,7 +67,8 @@ def test_gold_agreement_counts_correct_wrong_unknown_and_unmatched():
             "pot": {**known, "value": "30"},
             "actor": {**known, "value": 4},
             "stacks": {**known, "value": {"4": "100", "6": {"status": "NA"}}},
-            "participation": {**known, "value": {"4": "active", "0": None}}}},
+            "participation": {**known, "value": {
+                "4": "active", "0": None, "1": "folded", "2": "empty"}}}},
         {"pts_seconds": "80.000000", "fields": {
             "hero_cards": {**known, "value": ["Ah", "Kd"]},
             "board_cards": {**known, "value": ["5h", "6c", "6s"]},
@@ -79,6 +86,10 @@ def test_gold_agreement_counts_correct_wrong_unknown_and_unmatched():
     assert fields["pot"] == {"correct": 1, "wrong": 1}
     assert fields["actor"] == {"correct": 1}
     assert fields["stacks"] == {"correct": 1}
+    assert fields["participation"] == {"correct": 1, "unknown": 1, "wrong": 1}
+    assert result["checkpoints"][0]["mismatches"] == {
+        "participation:1": {"expected": "folded", "actual": "unknown"},
+        "participation:2": {"expected": "empty", "actual": "waiting"}}
     assert fields["hero_cards"] == {"correct": 2, "no_frame": 1}
     assert result["checkpoints"][1]["mismatches"]["pot"] == {
         "expected": "173", "actual": "99"}

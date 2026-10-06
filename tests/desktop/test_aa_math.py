@@ -71,3 +71,14 @@ def test_spr_uses_the_effective_stack(math):
     missing = payload(stacks={"1": "300", "4": "250"})
     assert math.compute(missing)["spr"]["reason"] == "opponent_stack_unknown"
     assert math.compute(payload(pot="0"))["spr"]["reason"] == "pot_unknown"
+
+
+def test_current_evidence_seat_states_take_precedence(math):
+    current = payload(board=("5h", "6c", "6s", None, None))
+    current["seat_states_v1"] = {"seats": {
+        slot: {"state": "folded"} for slot in "01235667"}}
+    current["seat_states_v1"]["seats"].update(
+        {"4": {"state": "active"}, "1": {"state": "active"}})
+    assert math.compute(current)["equity"]["opponents"] == 1
+    current["seat_states_v1"]["seats"]["7"] = {"state": "unknown"}
+    assert math.compute(current)["equity"]["reason"] == "participants_unknown"

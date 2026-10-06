@@ -41,6 +41,7 @@ function realtimeWatchdog() {
 const known = value => value !== null && value !== undefined && value !== "UNKNOWN";
 const text = value => !known(value) ? "未知" : typeof value === "object" ? JSON.stringify(value) : String(value);
 const translated = value => labels[value] || text(value);
+const SEAT_STATES = {active:"在局", folded:"已弃牌", all_in:"全下", empty:"空位", waiting:"等待 / 离座", unknown:"未知"};
 function error(message = "") { el("error").textContent = message; el("error").hidden = !message; }
 function indicator(label, type = "neutral") { el("connection").textContent = label; el("connection").className = `status ${type}`; }
 function clearPreview(message = "当前无可用预览") {
@@ -81,8 +82,8 @@ function seatCards(row = {}) {
       dt.textContent = name; dd.textContent = text(value); pair.append(dt, dd); list.append(pair);
     }
     const participation = document.createElement("p"); participation.className = "participation";
-    const state = row.participation?.slots?.[seat];
-    participation.textContent = state?.conflict ? "参与线索冲突" : translated(state?.current);
+    const seatState = row.seat_states_v1?.seats?.[seat]?.state, state = row.participation?.slots?.[seat];
+    participation.textContent = seatState ? (SEAT_STATES[seatState] || text(seatState)) : state?.conflict ? "参与线索冲突" : translated(state?.current);
     box.append(heading, list, participation); nodes.push(box);
   }
   el("seats").replaceChildren(...nodes);
