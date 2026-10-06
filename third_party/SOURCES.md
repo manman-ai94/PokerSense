@@ -8,6 +8,7 @@ No upstream solver implementation or binary is bundled or executed by lookup.
 | --- | --- | --- | --- |
 | [ucsandman/postflop](https://github.com/ucsandman/postflop/tree/5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de) | `5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de` | Existing synthetic saved frequency assets | [MIT at that exact source pin](postflop/LICENSE-5fc7ee3.txt) |
 | [PokerKit](https://github.com/uoftcprg/pokerkit) | `0.7.5` | Native legal-menu/state replay and range expansion | [Installed distribution MIT notice](pokerkit/LICENSE-0.7.5.txt) |
+| [A Dataset of Poker Hand Histories](https://doi.org/10.5281/zenodo.13997158), Juho Kim (University of Toronto) | Zenodo record `13997158` (v2), zip MD5 `0918a30f97bda0129897b7e0f1ec895a` | Aggregate decision frequencies of real players in `src/poker_engine/scoreboard/phh_population_stats_v1.json`, counted by `tools/phh_population_stats.py`; no hand history is stored | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 
 The existing `solver-tools` extra already pins PokerKit 0.7.5. Its existing CI
 installation step is moved before pytest so the saved-asset tests execute.

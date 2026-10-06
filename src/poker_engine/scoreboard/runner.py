@@ -26,7 +26,10 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .allin_ev import runout_ev
 from .bots import make_policy
 
-DEFAULT_POOL = ("tag", "lag", "rock", "station")
+# Opponent pools by name. "population" plays like real players (see
+# population.py) and is the default; "styles" is the first version's mix.
+POOLS = {"population": ("population",), "styles": ("tag", "lag", "rock", "station")}
+DEFAULT_POOL = POOLS["population"]
 MAX_ACTIONS = 400
 
 
@@ -157,5 +160,5 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     }
 
 
-__all__ = ["DEFAULT_POOL", "lineup", "play_hand", "run_scoreboard", "score_deals",
-           "summarize"]
+__all__ = ["DEFAULT_POOL", "POOLS", "lineup", "play_hand", "run_scoreboard",
+           "score_deals", "summarize"]

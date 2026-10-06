@@ -205,7 +205,29 @@ class RfiTablePolicy(StyleBot):
         return super().preflop(observation, rng)
 
 
+class Split(_Policy):
+    """One policy before the flop and another after it, named ``before/after``.
+
+    Scoring ``rfi_table/population`` next to ``rfi_table`` shows how much of a
+    strategy's result comes from its play after the flop.
+    """
+
+    def __init__(self, before, after):
+        self.name = f"{before.name}/{after.name}"
+        self.before, self.after = before, after
+
+    def decide(self, observation, rng):
+        part = self.before if observation["street"] == "preflop" else self.after
+        return part.decide(observation, rng)
+
+
 def make_policy(name):
+    if "/" in name:
+        before, after = name.split("/", 1)
+        return Split(make_policy(before), make_policy(after))
+    if name == "population":
+        from .population import PopulationBot   # imports this module
+        return PopulationBot()
     if name == "always_call":
         return AlwaysCall()
     if name == "random":
@@ -217,7 +239,7 @@ def make_policy(name):
     raise ValueError(f"unknown policy: {name}")
 
 
-POLICY_NAMES = ("always_call", "random", "rfi_table", *STYLES)
+POLICY_NAMES = ("always_call", "random", "rfi_table", *STYLES, "population")
 
-__all__ = ["POLICY_NAMES", "STYLES", "StyleBot", "make_policy", "position",
+__all__ = ["POLICY_NAMES", "STYLES", "Split", "StyleBot", "make_policy", "position",
            "raise_toward"]
