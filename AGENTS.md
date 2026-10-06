@@ -16,9 +16,11 @@ PokerSense 是一个德州扑克**实时策略分析**工具：用采集卡读�
 
 ## 当前阶段
 
-目标是“实时分析 v1”，按 [ROADMAP](docs/ROADMAP.md) 的里程碑推进。
-已确定的方向：不自研全街策略，也不自研求解器；单挑翻后用现成开源求解器，
-多人底池先给数学参考并明确标注。
+总目标：做一个胜率高的扑克 AI，人通过它的实时分析学习。按 [ROADMAP](docs/ROADMAP.md)
+的里程碑推进，当前顺序是：识别补缺 → 策略记分牌 → 翻前范围表 → 单挑翻后求解 → 多人底池 → 界面重做。
+已确定的方向：
+- 不自研全街策略，也不自研求解器；单挑翻后用现成开源求解器，多人底池先给数学参考并明确标注。
+- 每项策略改进都必须在“策略记分牌”（模拟牌桌上的 bb/100）上看到提升，不能凭感觉。
 
 ## 开发环境（macOS Apple Silicon）
 
@@ -36,13 +38,23 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 - 前端 JS 测试需要 Node.js（`brew install node`），没装时会自动跳过。
 - 2026-10-06 在 M1 Pro 上跑过全量测试：5593 个通过，8 个跳过（都是只能在 Windows 上跑的），0 个失败。
 - 采集卡在 macOS 上走 AVFoundation，这是默认接口；Windows 上仍是 MSMF。
-  macOS 上的采集卡只做过模拟测试，还没接真机验证。
+  2026-10-06 真机验证通过：UGREEN 25854 采集卡（AVFoundation 设备 0），1920×1080、30 帧，
+  手机画面位置和 Windows 录像一致（裁切第 711–1208 列），实时识别正常。
+- 采集卡注意事项：
+  - macOS 的摄像头权限给的是 Mac 自带的“终端”应用。要用 `launch/mac/*.command` 启动，
+    它们会在“终端”里运行；从 Claude 的命令行直接读采集卡会被系统拒绝。
+  - 三星手机接 HDMI 后要切换到“屏幕镜像”，不能用 DeX 桌面模式。
 
 ## 在 Mac 上运行
 
 ```bash
-launch/mac/start-aa-replay.command            # 打开观察页并回放第一手牌的帧
-launch/mac/start-aa-replay.command <帧目录>     # 回放别的帧（目录里要有 samples.json）
+launch/mac/start-aa-capture.command           # 接采集卡实时识别（观察页里选“实体采集卡”）
+launch/mac/start-aa-video.command             # 录像实时回放：按录像节奏送画面，模拟采集卡
+launch/mac/start-aa-replay.command            # 逐帧回放第一手牌的帧（不按真实速度）
+
+# 测量实时链路：延迟、丢帧、字段覆盖率、和人工标注的对比
+PYTHONPATH=src:. .venv/bin/python tools/measure_aa_realtime.py --video <录像> --out <目录> \
+    [--exclude 300-820] [--gold tests/fixtures/aa_reference_hands/eight_dev_checkpoint_gold_v1.json]
 ```
 
 浏览器会自动打开观察页，点“开始观察”。详见 [launch/mac/README.md](launch/mac/README.md)。
@@ -57,7 +69,7 @@ launch/mac/start-aa-replay.command <帧目录>     # 回放别的帧（目录里
 | `src/poker_engine/equity/` | 胜率计算：枚举、蒙特卡洛、范围对范围 |
 | `src/poker_engine/strategy/` | 通用策略路由/Provider/建议；AA 规则、研究用 MCCFR；`frozen_postflop.py` 查询已保存的翻后求解结果 |
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
-| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话、回合截止、分析和复查 |
+| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 观察页前端（原生 HTML/JS，无构建步骤） |
 | `research/` | `hu_root`（单挑已保存策略查询）、`coverage_bridge` |
 | `tools/` | 离线命令行工具，其中不少是一次性研究脚本 |
@@ -79,7 +91,11 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa
 - 旧配置里写的 `G:/...` 和旧仓库路径 `C:/Users/Administrator/WorkBuddy/扑克/PokerSense/...`，
   会被 `data_paths.resolve_legacy_path` 自动映射到本机。新代码请直接用 `data_paths`，不要再写死路径。
 - **仓库是公开的。**录像、截图、模型权重、第三方求解器源码或二进制、密钥、`.venv`
-  一律不提交。
+  一律不提交。测量产生的逐帧日志也放在数据目录里，报告只写汇总数字。
+- **保留区间不能碰**：9 月 9 日 AA 录像（`aa_phone_record_20260909_031030_54322c62`）的
+  300–600 秒从未被看过，留作独立验收；600–820 秒以前评估时用过。开发、调参、测量时
+  一律跳过 300–820 秒（`--exclude 300-820`）。9 月 4 日的 `session_001` 是 9 座布局，
+  和现在的 8 座识别不匹配。
 
 ## Git 与 GitHub 规则
 

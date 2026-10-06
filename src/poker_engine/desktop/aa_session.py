@@ -25,7 +25,7 @@ class AARecognitionSession:
     """
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
-                 interval_seconds=0.1):
+                 interval_seconds=0.1, table_math=None, frame_log=None):
         if not callable(source_factory) or not callable(reader_factory):
             raise TypeError("source_factory and reader_factory must be callable")
         for name, value in (("stale_after", stale_after),
@@ -39,6 +39,10 @@ class AARecognitionSession:
         self._reader_factory = reader_factory
         self._stale_after = stale_after
         self._interval = interval_seconds
+        # Optional payload -> dict enrichment (table math) and a JSONL file
+        # receiving one timing/field record per processed frame.
+        self._table_math = table_math
+        self._frame_log = frame_log
         self._lock = threading.RLock()
         self._worker = None
         self._cancel = threading.Event()
@@ -192,6 +196,9 @@ class AARecognitionSession:
                 recognition_finished = time.monotonic()
                 if not isinstance(payload, dict):
                     raise ValueError("reader must return a JSON object")
+                if self._table_math is not None:
+                    payload["table_math_v1"] = self._table_math(payload)
+                math_finished = time.monotonic()
                 # Detach mutable reader results and reject NaN/non-JSON values.
                 payload = json.loads(json.dumps(payload, allow_nan=False))
                 ok, encoded = cv2.imencode(".jpg", image)
@@ -220,12 +227,17 @@ class AARecognitionSession:
                         "recognition_started_at": started,
                         "recognition_finished_at": recognition_finished,
                         "recognition_ms": (recognition_finished - started) * 1000,
+                        "math_ms": (math_finished - recognition_finished) * 1000,
                         "published_at": self._last_result,
                         "physical_source_timestamp": None,
                         "end_to_end_latency_ms": None,
                     }
                     # A late first result must not receive a fresh stale window.
                     self._expire()
+                    timing = dict(self._timing)
+                if self._frame_log is not None:
+                    _append_frame_log(self._frame_log, processed, record, timing,
+                                      payload)
                 processed += 1
                 cancel.wait(self._interval)
         except Exception as exc:
@@ -243,6 +255,42 @@ class AARecognitionSession:
             with self._lock:
                 if self._cancel is cancel and self._status == "STOPPING":
                     self._status = "STOPPED"
+
+
+def frame_summary(payload):
+    """The compact per-frame fields used for measurement, not the raw payload."""
+    cards = payload.get("cards") or {}
+    observed = payload.get("observed_state_v2") or {}
+    controls = payload.get("hero_controls_v1") or {}
+    return {
+        "scene_supported": payload.get("scene_supported"),
+        "hero": cards.get("hero"),
+        "board": cards.get("board_slots"),
+        "street": observed.get("street_candidate"),
+        "pot": (payload.get("pot") or {}).get("value"),
+        "actor": payload.get("current_actor"),
+        "dealer": payload.get("dealer_seat"),
+        "participants": {slot: (value or {}).get("state") for slot, value in (
+            observed.get("participants") or {}).items()},
+        "stacks": {slot: (value or {}).get("value") for slot, value in (
+            payload.get("stacks") or {}).items()},
+        "hero_controls": {key: controls.get(key)
+                          for key in ("visible", "call_amount", "reason")},
+        "table_math": payload.get("table_math_v1"),
+    }
+
+
+def _append_frame_log(path, processed, record, timing, payload):
+    """One JSON line per processed frame: source, timing and key fields."""
+    row = {"processed": processed,
+           "source_frame": record.get("source_frame"),
+           "source_kind": record.get("source_kind"),
+           "pts_seconds": record.get("pts_seconds"),
+           "source_video_pts": record.get("source_video_pts"),
+           "timing": timing,
+           "fields": frame_summary(payload)}
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 
 
 __all__ = ["AARecognitionSession"]

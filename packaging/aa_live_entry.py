@@ -60,6 +60,15 @@ def parser():
     result.add_argument("--replay-first", type=int)
     result.add_argument("--replay-last", type=int)
     result.add_argument("--replay-playlist", type=Path)
+    result.add_argument("--replay-video", type=Path,
+                        help="Recording file, or a segment folder with segments.csv")
+    result.add_argument("--replay-video-start", type=float, default=0.0)
+    result.add_argument("--replay-video-exclude", action="append", default=[],
+                        metavar="START-END",
+                        help="Recording window in seconds to skip; repeatable")
+    result.add_argument("--replay-video-speed", type=float, default=1.0)
+    result.add_argument("--frame-log", type=Path,
+                        help="Append one JSON line per processed frame")
     result.add_argument("--allow-capture", action="store_true",
                         help="Explicitly enable UI capture controls; no auto-start")
     result.add_argument("--port", type=int, default=8771)
@@ -88,7 +97,7 @@ def package_report(args):
 
 
 def create_app(args):
-    from poker_engine.desktop.aa_server import create_app as aa_app
+    from poker_engine.desktop.aa_server import create_app as aa_app, video_options
 
     state = args.state.resolve()
     state.mkdir(parents=True, exist_ok=True)
@@ -98,7 +107,8 @@ def create_app(args):
     app = aa_app(
         profile, replay_pool=args.replay_pool, replay_first=args.replay_first,
         replay_last=args.replay_last, replay_playlist=args.replay_playlist,
-        allow_capture=args.allow_capture, bundle_sha256=args.bundle_sha256,
+        **video_options(args), allow_capture=args.allow_capture,
+        bundle_sha256=args.bundle_sha256,
         rules_path=args.rules_path or state / "table-rules.json",
         records_dir=args.records_dir or state / "records")
 

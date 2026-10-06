@@ -18,7 +18,7 @@ from .aa_device_lock import AACaptureDeviceLock
 
 class AACaptureSource:
     def __init__(self, options, *, backend_factory=CaptureCardBackend,
-                 device_lock_factory=None):
+                 device_lock_factory=None, source_kind="capture-card"):
         index = options.get("device_index", 0)
         api = options.get("api", default_capture_api())
         if type(index) is not int or not 0 <= index <= 20:
@@ -33,6 +33,7 @@ class AACaptureSource:
                 output_size=(498, 1080), version="aa8-capture-canvas-v1"),
         )
         self.target = CaptureTarget(f"uvc-{index}")
+        self.source_kind = source_kind
         self.started = time.monotonic()
         self.condition = threading.Condition()
         self.cancel = threading.Event()
@@ -57,7 +58,8 @@ class AACaptureSource:
                         "host_source_received_at": host_received,
                         "physical_source_timestamp": None,
                         "source_clock": "host_monotonic_capture_call",
-                        "source_kind": "capture-card"}
+                        "source_kind": self.source_kind,
+                        **self._frame_extras()}
                     self.condition.notify_all()
         except Exception as exc:
             with self.condition:
@@ -76,6 +78,10 @@ class AACaptureSource:
                     self.condition.notify_all()
             else:
                 self.device_lock.release()
+
+    def _frame_extras(self):
+        """Extra per-frame fields, read on the pump thread right after capture."""
+        return {}
 
     def read(self):
         with self.condition:
@@ -273,7 +279,9 @@ class AADevelopmentSequenceSource:
 
 
 def source_factory(profile_path, *, replay_pool=None, replay_first=None,
-                   replay_last=None, replay_playlist=None, allow_capture=False):
+                   replay_last=None, replay_playlist=None, allow_capture=False,
+                   replay_video=None, replay_video_start=0.0,
+                   replay_video_exclude=(), replay_video_speed=1.0):
     """Browser cannot supply a filesystem path, normalization or audit identity."""
     if replay_playlist is not None and any(value is not None for value in (
             replay_pool, replay_first, replay_last)):
@@ -292,6 +300,11 @@ def source_factory(profile_path, *, replay_pool=None, replay_first=None,
                 return AADevelopmentSequenceSource(replay_playlist, spec["audit"])
             return AADevelopmentSource(replay_pool, spec["audit"],
                                        first=replay_first, last=replay_last)
+        if mode == "video-replay" and replay_video is not None:
+            from .aa_video_source import AAVideoSource
+            return AAVideoSource(replay_video, start=replay_video_start,
+                                 exclude=replay_video_exclude,
+                                 speed=replay_video_speed)
         raise ValueError("请选择本次启动已配置的来源")
 
     return create

@@ -75,46 +75,61 @@ class MonteCarloRandomRangeEquity:
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]
-        deck = remaining_deck(hero + board)
-        rng = random.Random(self._seed)
-        need = 5 - len(board)
-        wins = ties = 0
-        shares = squares = 0.0
-        for _ in range(self._trials):
-            draw = rng.sample(deck, need + 2 * count)
-            full_board = board + tuple(draw[:need])
-            hero_value = self._evaluate(hero + full_board)
-            tied = 0
-            lost = False
-            for opponent in range(count):
-                offset = need + 2 * opponent
-                value = self._evaluate(tuple(draw[offset:offset + 2]) + full_board)
-                if value > hero_value:
-                    lost = True
-                    break
-                tied += value == hero_value
-            share = 0.0
-            if not lost:
-                wins += tied == 0
-                ties += tied > 0
-                share = 1.0 / (tied + 1)
-            shares += share
-            squares += share * share
-        mean = shares / self._trials
-        error = None
-        if self._trials > 1:
-            variance = max(0.0, (squares - shares * mean) / (self._trials - 1))
-            error = math.sqrt(variance / self._trials)
-        result = EquitySnapshot(
-            win_rate=wins / self._trials, tie_rate=ties / self._trials,
-            opponent_count=count, samples=self._trials,
-            expected_share=mean, standard_error=error,
-            basis="uniform_random_active_opponents",
-        )
+        result = uniform_random_equity(hero, board, count, trials=self._trials,
+                                       seed=self._seed, evaluate=self._evaluate)
         self._cache[key] = result
         if len(self._cache) > 128:
             self._cache.popitem(last=False)
         return result
+
+
+def uniform_random_equity(hero, board, opponent_count, *, trials=2000, seed=0,
+                          evaluate=None) -> EquitySnapshot:
+    """Seeded Monte Carlo hero equity against uniformly random opponent hands.
+
+    Deals all unknown cards without replacement. ``hero`` is two cards,
+    ``board`` 0/3/4/5 cards and ``opponent_count`` the number of opponents
+    still holding cards.
+    """
+    hero, board = tuple(hero), tuple(board)
+    if evaluate is None:
+        evaluate, _ = select_evaluator("auto")
+    deck = remaining_deck(hero + board)
+    rng = random.Random(seed)
+    need = 5 - len(board)
+    wins = ties = 0
+    shares = squares = 0.0
+    for _ in range(trials):
+        draw = rng.sample(deck, need + 2 * opponent_count)
+        full_board = board + tuple(draw[:need])
+        hero_value = evaluate(hero + full_board)
+        tied = 0
+        lost = False
+        for opponent in range(opponent_count):
+            offset = need + 2 * opponent
+            value = evaluate(tuple(draw[offset:offset + 2]) + full_board)
+            if value > hero_value:
+                lost = True
+                break
+            tied += value == hero_value
+        share = 0.0
+        if not lost:
+            wins += tied == 0
+            ties += tied > 0
+            share = 1.0 / (tied + 1)
+        shares += share
+        squares += share * share
+    mean = shares / trials
+    error = None
+    if trials > 1:
+        variance = max(0.0, (squares - shares * mean) / (trials - 1))
+        error = math.sqrt(variance / trials)
+    return EquitySnapshot(
+        win_rate=wins / trials, tie_rate=ties / trials,
+        opponent_count=opponent_count, samples=trials,
+        expected_share=mean, standard_error=error,
+        basis="uniform_random_active_opponents",
+    )
 
 
 class ExactRandomRangeEquity:

@@ -253,3 +253,27 @@ def test_session_reports_separate_host_timing_without_physical_claim():
     finally:
         session.stop()
         wait_until(lambda: source.closed.is_set())
+
+
+def test_table_math_enriches_payload_and_frames_are_logged(tmp_path):
+    import json
+
+    source = Source()
+    log = tmp_path / "frames.jsonl"
+    session = AARecognitionSession(
+        lambda _: source, Reader, table_math=lambda payload: {"seen": True},
+        frame_log=log)
+    session.start({})
+    try:
+        wait_until(lambda: log.exists() and len(log.read_text().splitlines()) >= 2)
+        result = session.snapshot()
+        assert result["payload"]["table_math_v1"] == {"seen": True}
+        assert result["timing"]["math_ms"] >= 0
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [row["processed"] for row in rows[:2]] == [0, 1]
+    assert rows[0]["source_frame"] == 97 and rows[0]["source_kind"] == "fake"
+    assert rows[0]["fields"]["table_math"] == {"seen": True}
+    assert rows[0]["timing"]["recognition_ms"] >= 0
