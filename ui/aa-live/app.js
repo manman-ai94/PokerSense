@@ -6,7 +6,7 @@ const labels = {preflop:"翻前", flop:"翻牌", turn:"转牌", river:"河牌", 
 let localEpoch = 0, requestId = 0, serverGeneration = -1, sequence = -1;
 let serverInstance = null;
 let lastProgress = 0, statusData = {}, pending = false, pollAbort = null;
-let previewAbort = null, previewUrl = null, previewId = 0, modeTouched = false;
+let previewAbort = null, previewUrl = null, previewId = 0, modeTouched = false, apiTouched = false;
 let realtimeExpiresAt = null;
 const monotonicNow = () => globalThis.performance?.now?.() ?? Date.now();
 function clearRealtime(reason = "本次无法建议：等待可信的回合计时与已验证策略。") {
@@ -120,8 +120,9 @@ function controls() {
   if (active && ["capture-card", "development-replay"].includes(runningOptions.mode)) {
     el("mode").value = runningOptions.mode; modeTouched = true;
     if (Number.isInteger(runningOptions.device_index)) el("device").value = runningOptions.device_index;
-    if (["MSMF", "DSHOW"].includes(runningOptions.api)) el("api").value = runningOptions.api;
+    if (["MSMF", "DSHOW", "AVFOUNDATION"].includes(runningOptions.api)) el("api").value = runningOptions.api;
   }
+  if (!apiTouched && !active && !pending && ["MSMF", "DSHOW", "AVFOUNDATION"].includes(statusData.capture_api_default)) el("api").value = statusData.capture_api_default;
   el("mode").options[0].disabled = !replay; el("mode").options[1].disabled = !capture;
   if (!modeTouched && !active && !pending) el("mode").value = replay ? "development-replay" : capture ? "capture-card" : "development-replay";
   const useCapture = el("mode").value === "capture-card";
@@ -264,6 +265,7 @@ async function command(action) {
 el("start-form").addEventListener("submit", event => { event.preventDefault(); if (!el("start").disabled) command("start"); });
 el("stop").addEventListener("click", () => command("stop"));
 el("mode").addEventListener("change", () => { modeTouched = true; controls(); });
+el("api").addEventListener("change", () => { apiTouched = true; });
 el("preview").addEventListener("error", () => clearPreview("当前预览解码失败"));
 el("preview-large").addEventListener("error", () => clearPreview("当前预览解码失败"));
 el("preview-expand").addEventListener("click", () => {

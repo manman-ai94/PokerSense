@@ -26,6 +26,7 @@ from .aa_saved_strategy import SavedStrategyInputs
 from .aa_analysis_records import AAAnalysisRecordStore, AnalysisRecordError
 from .aa_hand_input import AAHandInput, HandInputError, digest
 from .aa_study_records import AAStudyRecordStore, StudyRecordError
+from poker_engine.perceptual.capture.capture_card_backend import default_capture_api
 from poker_engine.strategy.river_bounds_v1 import river_payoff_bounds
 
 
@@ -336,6 +337,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                       replay_available=replay_pool is not None or (
                           replay_playlist is not None),
                       capture_available=allow_capture,
+                      capture_api_default=default_capture_api(),
                       issue_recording_available=records_dir is not None,
                       table_rules=table_rules,
                       analysis=analysis_status,

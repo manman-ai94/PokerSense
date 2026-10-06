@@ -256,6 +256,31 @@ def test_backend_constructor_validation():
         CaptureCardBackend(normalization="not-a-config")
 
 
+@pytest.mark.parametrize("platform, expected", [
+    ("darwin", "AVFOUNDATION"), ("win32", "MSMF"), ("linux", "MSMF")])
+def test_default_capture_api_follows_the_platform(monkeypatch, platform, expected):
+    from poker_engine.perceptual.capture import capture_card_backend as module
+    monkeypatch.setattr(module.sys, "platform", platform)
+    assert module.default_capture_api() == expected
+
+
+@pytest.mark.parametrize("api, platform", [
+    ("AVFOUNDATION", "win32"),  # explicit choice wins on any platform
+    (None, "darwin"),           # no choice: macOS default
+])
+def test_backend_opens_avfoundation(monkeypatch, api, platform):
+    import cv2
+    from poker_engine.perceptual.capture import capture_card_backend as module
+    monkeypatch.setattr(module.sys, "platform", platform)
+    opened = []
+    cap = _FakeCap([np.full((8, 6, 3), 23, dtype=np.uint8)])
+    backend = CaptureCardBackend(
+        api=api,
+        video_capture_factory=lambda idx, api: opened.append(api) or cap)
+    backend.capture(CaptureTarget(window_id="uvc-0"))
+    assert opened == [cv2.CAP_AVFOUNDATION]
+
+
 def test_parse_device_index_forms():
     from poker_engine.perceptual.capture.capture_card_backend import (
         _parse_device_index,
