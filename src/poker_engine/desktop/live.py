@@ -433,7 +433,7 @@ def load_calibration(
     board_layout_path = vision_dir / "board_slot_layout.json"
     # 阈值默认保持 ADB 标定值；布局 JSON 可选携带平台实测阈值
     # （采集卡绿呢偏亮，empty 阈值需按测量下调，见
-    #  docs/DECISION-2026-09-06-pot-stack0-geometry.zh-CN.md）
+    #  docs/adr/DECISION-2026-09-06-pot-stack0-geometry.zh-CN.md）
     board_card_min_presence = 0.50
     board_empty_min_evidence = 0.55
     if board_layout_path.is_file():

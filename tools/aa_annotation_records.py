@@ -44,7 +44,7 @@ resolves to ``BLOCKED`` with ``trusted_consumer_registry_unavailable`` and
 annotation revision history and the exposure history, not a pass for a training
 system. False negatives are acceptable; a false ``ALLOWED`` is not.
 
-Explicit non-goals of P0 (see ``docs/AA-FIELD-ANNOTATIONS-V1.zh-CN.md``):
+Explicit non-goals of P0 (see ``docs/archive/AA-FIELD-ANNOTATIONS-V1.zh-CN.md``):
 
 * No per-event hash chain (``previous_sha256`` / ``entry_sha256`` linkage) was
   migrated. Source / frame / artifact / snapshot hashes are retained as
