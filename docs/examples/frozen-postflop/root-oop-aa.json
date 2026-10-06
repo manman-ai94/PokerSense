@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "type": "FrozenPostflopRequest",
+  "execution_mode": "offline",
+  "identity": {
+    "hand_id": "synthetic-hu-river",
+    "state_version": 0,
+    "request_id": "root-oop-aa"
+  },
+  "source_engine": "ucsandman/postflop",
+  "engine_pin": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+  "solution_sha256": "17144742e1597990b74070d3652f47fad015a74a2c00e357a7cbe8f36c72314b",
+  "model": {
+    "street": "river",
+    "board": [
+      "2c",
+      "3d",
+      "7h",
+      "9s",
+      "Jc"
+    ],
+    "unit": "chips",
+    "big_blind_chips": null,
+    "dealt_player_count": 2,
+    "active_player_count": 2,
+    "oop_seat": 0,
+    "ip_seat": 1,
+    "starting_pot_chips": "10",
+    "initial_stacks_chips": [
+      "20",
+      "20"
+    ],
+    "ranges": {
+      "oop": [
+        {
+          "combo": "AsAh",
+          "weight": "1"
+        },
+        {
+          "combo": "8c6c",
+          "weight": "1"
+        }
+      ],
+      "ip": [
+        {
+          "combo": "AsKd",
+          "weight": "1"
+        },
+        {
+          "combo": "TsTh",
+          "weight": "1"
+        }
+      ]
+    },
+    "rules": {
+      "variant": "NLHE",
+      "rake_percent": "0",
+      "rake_cap_chips": "0",
+      "ante_chips": "0",
+      "straddle": false,
+      "icm": false,
+      "locks": [],
+      "raise_cap": 0,
+      "allow_all_in": false
+    }
+  },
+  "decision": {
+    "path": [],
+    "hero_seat": 0,
+    "hero_combo": "AsAh",
+    "pot_chips": "10",
+    "stacks_chips": [
+      "20",
+      "20"
+    ],
+    "street_committed_chips": [
+      "0",
+      "0"
+    ],
+    "legal_actions": [
+      {
+        "action": "CHECK",
+        "amount_chips": "0",
+        "amount_semantics": "none"
+      },
+      {
+        "action": "BET",
+        "amount_chips": "5",
+        "amount_semantics": "total_street"
+      }
+    ]
+  }
+}

@@ -379,7 +379,9 @@ async function main() {
     assert.deepEqual(atRequest, {disabled: true, rows: ""}); cleared(h); cases++;
   }
   {
-    const h = harness(); seed(h); h.run('rulesRevision="r1"'); let atRequest;
+    // This harness deliberately stalls initial GETs. Seed a loaded form as well
+    // as its revision before checking save-time invalidation.
+    const h = harness(); seed(h); h.run('rulesRevision="r1";setRulesBusy(false)'); let atRequest;
     h.fetchImpl = url => { if (url === "/api/rules") atRequest = h.el("analysis-export").disabled; return new Promise(() => {}); };
     h.run("saveRules(false)"); assert.equal(atRequest, true); cleared(h); cases++;
   }

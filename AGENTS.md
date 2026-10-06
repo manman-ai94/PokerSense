@@ -33,6 +33,275 @@ changing desktop capture, recognition, packaging, or project documentation.
    real capture and live play still require explicit user authorization.
 
 ## Current state
+- **2026-10-06 SAVED-HU DRAFT PR QUALIFICATION:** independent review of8b4d304
+  accepted28runtime/53static checks, separate from author785. Documentation
+  corrects frozen-v1 to4distinct combos/8node-combo query rows, verified from
+  unchanged asset; no runtime/test change or rerun. Authorized clean-chain
+  Draft PR targets codex/work-report-20260928; exact remote/CI status is
+  recorded separately. No merge or production release.
+- **2026-10-06 SAVED-HU CANDIDATE ON DESIGNATED MAINLINE:** scoped child of
+  codex/work-report-20260928 at8f158e2; old b807386/af67 evidence retained.
+  Reuse First: existing Provider/Router/StrategyCandidate/context and accepted
+  saved-tree/money/history helpers only; no new Solver Core or parallel framework.
+  Synthetic saved HU OOP/IP paths and declared river projection remain offline;
+  frequency-only candidates abstain in shared Advice, future provenance refuses.
+  Mainline CI steps, principles, versions and packaging are preserved; lint adds
+  the two research packages. New-base checks785/785, full lint and offline entries
+  PASS;25inherited paths sanitized only in3touched docs. Independent publication
+  acceptance is separate. No dependency install, solver,
+  training, real action, push, merge or release. See the offline entry and limits
+  in [HU stage guide](docs/HU-SAVED-DELIVERY-STAGE.zh-CN.md).
+- **2026-10-01 CI PYTEST OBSERVABILITY:** original local1dec0580/af267066
+  retained; integrated on8bd45e9e with PR49 menu guard. Version unchanged.
+  CI uses -v/-ra to offset configured -q and report
+  collection/summary/skip reasons; builtin JUnit paths separate OS, phase,
+  run and attempt. Checkout SHA, event SHA, PR head, runtime, configured scope
+  and step outcomes are recorded without an environment/context dump.
+  Existing test gates, matrix, dependencies, timeouts and permissions retained.
+  New-base Python3.12.14/pytest9.1.1:8static groups,9synthetic pytest processes with
+  20declared fixture items,2metadata groups;19verification groups PASS.
+  Expected failures/errors/signals retained; original incorrect SIGINT XML
+  expectation corrected against retained output without rerunning passed work.
+  Interrupted JUnit can contain a nameless unfinished case or be absent;
+  XML alone is not completion evidence. Owner excludes artifact upload;
+  the original proposed patch stays outside this batch. Runner-local reports
+  lack post-run retention; normal Actions logs retain console/status evidence.
+  Product full suite, Python3.11/Windows/macOS/PowerShell and GitHub execution
+  NOT_RUN locally; new-head PR CI and actual checkout identities are tracked
+  separately. No production/default/global settings, new dependencies or
+  user docs; no new action, upload, permission expansion or merge.
+- **2026-10-01 PENDING INFOSET MENU GUARD:** scoped candidate from af267066;
+  preserves the PR48 shadow boundary fix and the local 57c8aeb evidence.
+  Two production lines reject a changed menu already seen in this attempt,
+  before visits, strategy computation or sampling. Existing iterate rollback
+  preserves checkpoint and RNG; last_attempt_nodes remains diagnostic.
+  Python3.12.10/Node24.19.0: frozen20/20, related215/215, full5394PASS/2SKIP
+  of5396/0FAIL/ERROR, independent reference11/11 and UI runner8/8 PASS;
+  full lint and index hygiene PASS. Skips are missing phevaluator and Quartz;
+  no dependencies installed. Eight legal full-checkpoint hashes match the
+  pre-fix baseline and the preserved local candidate. Fixed custom-encoder
+  collisions are negative contract witnesses, not native V2 collision or
+  strategy-strength evidence. Sampling, probability and live gates unchanged;
+  no private assets, capture, release or deployment. Exact Draft PR head,
+  independent review and CI merge candidate are tracked in PR evidence.
+- **2026-10-01 SHADOW LOOKUP BOUNDARIES:** integrated on3629953c with
+  merged PR47 range/snapshot identity guard; tested source10380993. Original
+  b171c7e/511156ad and9323c0dc/65a5a5b1 evidence retained separately.
+  Version unchanged. V1/V2 HIT duplicate encoding, expired binding dispatch
+  and final record clock gaps are repaired: reuse one validated encoding,
+  preserve the existing absolute source/turn window, freeze worker allowance
+  at entry, check binding/IPC/results against it, and record one checked time.
+  400ms preprocessing still permits300ms worker when the source window allows;
+  950ms leaves50ms under1s source TTL. Menu/probability/scope/freshness and
+  identity refusal gates remain strict; production collector/strategy unchanged.
+  New-base Python3.12.14/Node24.19.0: related277PASS; full5376planned=
+  5368PASS/8platform SKIP/0FAIL/ERROR/INTERRUPTED/NOT_RUN, pytest621.92s,
+  command623.962615s. Full lint,57JS,11independent reference PASS, rerun on new base.
+  All63shadow and50identity-related cases PASS;775source/test/tool hashes
+  match the frozen tested code.1138tracked-file snapshot belongs to the tested
+  commit; final edits update only this note and runtime documentation.
+  Isolated workspace basetemp, minimum28.7926GiB free;125warnings retained.
+  Eight local skips:4Windows cmd,3WinDLL DPI,1Quartz. CI/owner review and
+  exact remote identity are tracked separately in PR evidence; no merge/deploy.
+  Independent source/identity compatibility/public-content/raw-evidence reviews
+  PASS. Public batch remains7paths; toy learning diagnostic remains local.
+  Synchronous work cannot be preempted; admission checks are not camera-to-
+  display, strategy-strength, real capture, packaging or live-play acceptance.
+  Contract and reproduction:docs/AA-TEN-SECOND-RUNTIME.zh-CN.md.
+- **2026-09-30 PORTABLE SYNTHETIC REGRESSIONS:** test/documentation-only batch
+  from511156ad, revised executed source5ed6ca6; version/production src unchanged.
+  83 deterministic checks cover actual SIMPLE/Fraction references, shared-info
+  own-reach deduplication, populated rollback/RNG/export, known recall limits
+  and P3 statuses. Parent review found initial list replacement could drop
+  omitted planned rows despite47old tests passing;36metadata cases now cover
+  stable local-id partial merges, frozen order/denominators and invalid shapes.
+  Old8feea082/head76e3fe0 tests/CI are historical evidence only; original raw
+  traces/hash/ledger preserved. Revised Python3.12.14 focused194passed with
+  83newcases/14,030counted calls; revised full5266passed/8platform skips/0failed
+  in636.966s. Revised full lint PASS; unchanged57JS/11standalone reference
+  results reused, full pytest again includes11reference cases. CI-style
+  cost remains separate from research58,455nodes/13.324054s. Public batch is
+  11Python test/helper files, small synthetic aggregate JSON,2docs and this note;
+  raw traces remain local. Production OWN/retained-memory encoding remain HOLD:
+  mixed finite-tree quality, unproven scale/compatibility/actual integration.
+  No strategy strength, historical refusal-cause or end-to-end latency claim.
+  Report:docs/reports/POKERSENSE-THREE-ROUND-SYNTHETIC-SUMMARY-20260930.zh-CN.md.
+- **2026-09-30 AA FROZEN PROBABILITY CONTRACT:** scoped interface fix from
+  review branch44cb0b28, version unchanged. V1/V2 loaders and shadow worker
+  share native finite [0,1] probabilities, exact nonempty string menus and
+  fsum mass with rel_tol0/abs_tol1e-12, without normalization or repair.
+  Worker validates raw keys before JSON copying. Loader's old ~1e-9 tolerance
+  is deliberately tightened; empty policy tables remain coverage misses.
+  54new regressions; Python3.12.14/Node24.19.0 focused103passed; full
+  5183passed/8platform skips/0failed in658.32s with isolated workspace
+  basetemp and >25GiB free. Full lint,57JS and11independent reference cases
+  PASS. Public synthetic compatibility18/18artifacts,504/504distributions,
+  0failures; not private historical acceptance. Independent read-only code
+  review and34boundary/raw-key/scope probes PASS; Draft PR/CI and final owner
+  review tracked in PR evidence. Does not supply missing average keys or
+  explain prior coverage refusals. Scope/legal/time gates, shadow encoding,
+  sampling and training unchanged; no private bundle, release or live change.
+- **2026-09-30 AA SOURCE LAUNCHER:** scoped fix from d6bfebd, version unchanged.
+  Source checkouts prefer their own `.venv` over stale EXEs; system Python
+  3.11-3.13 includes a 3.12-only setup and supported-version fallback when the
+  launcher default is newer. Actual interpreter/entry paths and missing desktop
+  dependencies are explicit; no automatic install or broken-venv fallback.
+  Python3.12.14/Node24.19.0: focused39passed/4Windows-only skipped; full
+  5129passed/8platform skips in669.69s with isolated workspace basetemp and
+  >25GiB free. Full lint,57JS cases,11independent reference tests and index/diff
+  hygiene PASS. Actual source bootstrap HTTP/manual spawn analysis and capture
+  refusal403 PASS. Four new cmd.exe cases require Windows CI; independent PR
+  review remains required. Strategy source unchanged; no release/live acceptance.
+- **2026-09-28 CONSOLIDATED WORK REPORT:** documentation-only successor to
+  f05d804. One canonical report groups all37pre-report PRs exactly once,
+  distinguishes main af67b4b from Draft37-42, closed research and local-only
+  work, and provides a ChatGPT read-only review brief. A whitelisted evidence
+  index binds public PR/CI snapshots and derived synthetic summaries to original
+  report hashes; it is not raw independent reproduction. Old documents/data
+  retained. Link/arithmetic/unique-PR/privacy checks and independent publication
+  review PASS; user-requested ChatGPT review is still pending.
+  No media, weights, credentials or raw private logs published; no
+  new experiment, runtime change, merge or release. Entry:
+  docs/reports/POKERSENSE-WORK-REPORT-20260928.zh-CN.md.
+- **2026-09-28 PREFLOP SUPPORT AUDIT COMPLETE: engineering PASS, support incomplete.**
+  Source4ca7bc0,manifest6f72bbdd; V2/MCCFR/nine assets unchanged. One supervised
+  batch107.621s completed63shards/10647slots/31941asset rows:2833HIT,3042NA,
+  23204UNVISITED,1990zero-regret-only,872nonzero-regret-only;0errors/notrun.
+  28899constructible rows9.80%HIT; after within-asset key dedup2229/27378=8.14%.
+  Fixed limp-then-minraise response prefix9126constructible rows allUNVISITED;
+  not a claim about every second decision. Original95o/8visit witness confirmed.
+  Regret membership is not learning/average export; old traverser roles UNKNOWN.
+  Independent raw result audit PASS;27input artifact hashes unchanged, old
+  primary retained. Fixed default physical geometry/169classes/3prefixes only,
+  not full-hand acceptance, natural frequency, profitability or live readiness.
+  FakeHIT/observation/NA/metadata/failed-nonuniform attacks rejected;30newtests,
+  84encoder/policy/MCCFR regressions and full lint pass. No fitting, capture,
+  paid API, package or live change. Next only: sampling coverage and correct
+  average weighting on enumerable small games before changing collection.
+  Results/commands:docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md.
+- **2026-09-28 LOCAL FULL-HAND CLOSEOUT: NO_GO, budget complete / samples PARTIAL.**
+  Experiment source2dfe5a5, DraftPR41 over PR40; manifest27f20f7c. Both fixed
+  Mapika models fail public-only decision checks (0.8b6/9,2b3/9); 2b folds all
+  three private royal-flush cases. Two capped batches2382.376/2387.223s finished:
+  480/540shards,3297complete+3blocked+480NOT_RUN=3780plannedpairs; timely1901.
+  Exactly one attempt per shard, no third batch. Three failures are batch-edge
+  remainder timeouts/terminated worker, not full10s neural timeouts. Smallmodel
+  completes1890/1890 but has1turn/0river decisions and substantial deterioration
+  against min_raise at7/8players. Large8p240-pair check_call group completes238;
+  its remaining480pairs unexecuted. Incomplete groups retain nullEV/CI.
+  Independent raw audit/recomputed18group intervals PASS;32recorded branches
+  replayed with60observation matches,6597terminal fee/conservation checks PASS.
+  Local first-decision p95 416.051/647.165ms,not capture-to-display.73focused
+  tests/full lint pass; experiment sourceCI36333561924 PASS. No realrules,
+  capture/training/paidcalls/live promotion/package/merge. Earlier0.8b timing
+  priority is superseded by this quality NO_GO. Next recommendation only:
+  poker-specific abstraction/average-policy coverage research, not started.
+  Results/commands:docs/AA-LOCAL-FULLHAND-20260928.zh-CN.md.
+- **2026-09-27 LOCAL CANDIDATE SCREEN:** isolated branch codex/aa-local-policy-screen
+  from15d5895; source9663038, screen-v3 manifest770b2551. Pinned Mapika0.8b/2b-v10
+  safetensors/licenses and separate Windows CUDA runtime; no desktop dependency
+  changes. Added synthetic-only exact-state/public-input external option adapter
+  and frozen48-query, preloaded-process screen with complete failures, no truncation,
+  actual loaded identity, high-resolution deadlines and no live registration.
+  Independent review repaired incomplete source/runtime binding and blocking IPC;
+  actual v1 wrongly rejected upstream empty temperature map (48NOT_RUN), preserved.
+  v2 returned48legal with coarse-clock timing; v3 sameinputs/scores/actions afterQPC
+  repair:0.8b24/24<=300ms,p95=210.051ms;2b22/24,p95=300.999ms. Longriverprobe
+  209.425/298.132ms. Prior slower v2 and two timeouts preserved; uncontrolled load
+  means no speedup claim.125focusedtests/full lint pass. Queries are not full-hand
+  model play, not quality/profit/end-to-end acceptance. Real rules still unsaved;
+  choose0.8b only as next offline evaluation priority, not promotion. No third
+  candidate/training/paid API/cloud/capture/reservedmedia/package/merge/release.
+  Details:docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md.
+- **2026-09-27 AA MANUAL TABLE SETTINGS:** observation header now exposes saved
+  settings and edit entry; empty tables open the existing form automatically.
+  Basic/advanced fields, explicit percent/BB units, optional usual stack range,
+  save/cancel/reset and bounded request recovery added. New range is metadata
+  only: no actual stacks, rule fingerprint, readiness or live promotion changes.
+  Legacy files load without rewrite; omitted legacyPOST metadata is preserved
+  under revision lock, explicitnull clears. Save/reset retain stop+invalidate.
+  Focused57pytest pass (including actual HTTP/hand-receipt lifecycle),10new UI
+  scenarios+39analysis+8TTL checks pass, scoped lint/diff clean. Independent
+  review reproduced oldrule identity, concurrentrevision refusal and no-rewrite
+  migration. Browser synthetic form/save/error/cancel/summary exercised; no
+  capture/private media/paid calls or new package. Follow setup contract in
+  docs/AA-TABLE-VALIDATION-V2.zh-CN.md. Old dirty primary/frozen studies retained.
+- **2026-09-27 POLICY READINESS V2 CLOSEOUT:** source40a42f5, manifest0b5750b5.
+  All99jobs complete:18train/18zero-update controls/54eval/9query. Training
+  1024.844s, evaluation258.156s under2400s supervised batch budgets. Independent
+  checkpoint/export recomputation confirms nineV2 85-97sweeps and41-56repeat
+  nonuniform infosets; all18controls two sweeps,zero regret,uniform. Numerical
+  recovery fixed and actual3.11/3.12 counterexamples pass; CI36310254293 green.
+  Gate3 NO_GO: V2 345/5670 complete(4.44-8.89% percase), V1 350/5670. All11340
+  pairs retained,10645UNKNOWN failures,EV null;3150queries complete,105preflop
+  hits,0/630 each postflopstreet,315expected out-of-scope refusals. Declared
+  malicious-input27/27 rejected,not universal leakage proof. Independent1620
+  shard audit agrees. V2misses4630unvisited+695regret-only/noaverage; no observed
+  exact/abstract collision in measured prefixes,not proof of global equivalence.
+  Actualnineassets passed shadow process load/repeat/legal/deadline probes using
+  already-seen preflop inputs; no physical latency/live/strength acceptance.
+  Stop this experiment; only next recommendation is finite preflop support-set
+  average-policy coverage study,not started. All old assets and dirty primary
+  preserved. Full result/commands:docs/AA-POLICY-READINESS-RESULTS-20260927.zh-CN.md.
+- **2026-09-27 POLICY READINESS V2, PRE-FIT FREEZE:** added explicit V2 suit/path
+  encoding, versioned research assets, shared shadow loader, committed-visit
+  learning diagnostics and bounded 18-case V1/V2 study with no-update controls.
+  Full denominators freeze11340pairs and3150 separate query opportunities.
+  Stage1 passed before fitting. First1024.86s training batch showed variation,
+  but Python3.11 CI exposed sorted-JSON continuation rounding drift; all149
+  files preserved and no new evaluation/query seed consumed in that batch.
+  Canonical action-order normalization repair independently reproduced on
+  Python3.11/3.12; exact checkpoint/JSON equality retained, no tolerance change.
+  Fresh source-bound matrix required; same algorithm, seeds, budgets and gates.
+  See docs/AA-POLICY-READINESS-V2.zh-CN.md and numerical reproducibility note.
+  No strength/live qualification, capture, paid calls, packaging or release.
+- **2026-09-27 FROZEN-POLICY EVALUATION CORRECTION (STAGE 1):** original
+  PR37 b796cce's 48/378 failures were independent_policy_salt_required during
+  binding, not measured coverage misses. Unified canonical 64-hex-string salts
+  and added actual artifact-loader/evaluator integration on 6/7/8 players.
+  Declared controls 42/42 complete with identical traces, settlements and
+  returns to direct check/call. Actual rerun of nine old assets now binds,
+  then records378 UNKNOWN_INFORMATION_SET at each first Hero decision; all
+  denominator rows retained, affected EV null. Original57JSON hashes unchanged.
+  All592 exported entries uniform after one sweep; no learned-strength claim.
+  Added explicit failure phase/actor and observed-prefix street diagnostics;
+  unseen suffix counts remain unknown. Independent review reproduced controls,
+  old/new failures and negative paths. No expanded training before this gate,
+  no live/capture/paid calls or packaging changes. See
+  docs/AA-EVALUATION-CORRECTION-V1.zh-CN.md; older performance attribution below
+  is historical and superseded by this correction, not rewritten raw evidence.
+- **2026-09-27 TEN-SECOND AA ENGINEERING PREVIEW:** isolated from exact
+  `af67b4bb3ba56da2d4fdb70e0731583afc7aaf40` on
+  `codex/aa-ten-second-foundation`, version `0.2.0.dev1`. Added monotonic
+  turn deadlines, source-age rejection, independent UI TTL and killable
+  preloaded shadow policy execution; actual AA HTTP remains observation-only
+  because verified physical turn timing and qualified live policy are absent.
+  Windows entry/package now AA; frozen EXE offline self-check, 13 endpoints,
+  actual spawn analysis and capture refusal passed, browser layout inspected.
+  Added PokerKit 0.7.5 full-hand 6/7/8 simulation, paired seat/deal evaluation,
+  SIMPLE external-sampling MCCFR, scope-bound transactional checkpoints,
+  research-only frozen policy and explicit synthetic recorded-Jev adapter.
+  Independent review repaired checkpoint scope, nested private-label forwarding
+  and partial-commit faults; original probes independently reverified.
+  Full local 4701 passed/2 skipped (471.96s), full lint/diff passed; existing
+  30-case baseline digest unchanged. Nine bounded 3s training probes retained:
+  two completed ten sweeps, seven budget-exhausted. Eight-player coverage probe
+  48/48 BLOCKED, zero paired EV: no strategy promotion. Physical p95/p99,
+  real hands, strong strategy and installer installation NOT accepted; local
+  Inno compiler absent. No capture, paid inference/cloud, merge/tag/release.
+  Old dirty primary and rejected experiments preserved. Start with
+  docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md; do not call this live readiness.
+  Follow-up adds one-command frozen nine-case study orchestration, with 15
+  focused tests and independent seed-domain counterexample review. Actual
+  one-sweep smoke retains all 9 cases and 378/378 blocked paired opportunities;
+  no EV/strategy promotion. Draft PR #37; initial head 5ce06ca CI36301773529
+  passed Windows/macOS/hygiene, build36301786735 produced AA Windows installer
+  and legacy macOS artifacts with release skipped. Later study-only changes
+  require their own latest-head checks; these runs are not relabeled.
+  Actual isolated install/EXE/uninstall on the first CI artifact passed
+  functionally and restored test registration, but /NOICONS was ignored.
+  Added AllowNoIcons=yes plus regression assertion; preserve the failed
+  installer audit and require rebuilt-artifact verification (tracked on PR37).
 - **2026-09-23 INDEPENDENT PR #34 EVALUATION GATE:** independently audited
   original head `4f59d723f20fab760b50c0f2de1ec88a5b9b1b8f` against exact main
   `d98084aba96eac6ff3bc0cf07dad99b00e36ff31`. Recompiled all six V1 books from
@@ -162,7 +431,7 @@ changing desktop capture, recognition, packaging, or project documentation.
 - **2026-09-17 USABLE-001 P0 FIRST REAL ORDINARY-RIVER HAND CLOSE - BOUNDED `river_frame` FIX, NOTHING RELAXED (Issue #27, PR #28):** authorized by `P0_FIRST_REAL_HAND_CLOSE` (`issuecomment-5713265121`) as a bounded code-gap repair and it supersedes the previous round's "REPORTED, NOT APPLIED". Failing tests first: the new sticky-river cases against head `f4b0298` gave **2 failed / 14 passed** (two further cases are anti-over-fix guards green on both sides). The fix in `src/poker_engine/desktop/aa_semantics.py` is exactly one combination wide: within an epoch, `not closed AND not full_river AND river_frame already set` used to CLEAR `river_frame` and now KEEPS it; clearing happens only on an epoch change, on `reset()` (source change or frame discontinuity, which still discards every cross-frame fact) and while `closed` (the all-in showdown explains the ending by itself) holds. **The previous round's root cause was mis-attributed and is withdrawn:** `payout_credit_not_visible` (reported for 3 of 5 hands) was a measurement artefact - the old probe counted credits only on frames whose board was still complete - and on a frame-by-frame re-measurement **all five** full-river hands have an own-epoch payout credit confirmed AFTER their last complete-board frame (8622 seat 3 +33 @9680; 11609 seat 5 +172 @12398; 14593 seat 4 +134 @15148; 17323 seat 4 +239 @18323; 24560 seat 1 +123 @25825). One root cause, five isomorphic manifestations, so one fix covers all five. Measured on the full continuous 0..27287 replay (every frame read through one temporal chain, no seeking, no sparse sampling): `ORDINARY_RIVER_CLOSED` **0 -> 5**, one per full-river hand, each EXACTLY ONCE (`closed NOT exactly once: none`; `terminal_rows` is 1 for exactly 5 of the 25 epochs and 0 for the other 20, so no epoch ever emitted a second confirmation event), each on the first observed frame of the successor epoch, none on an epoch without a full river, none without a payout, and the whole run reproduced IDENTICALLY by a second independent end-to-end replay. The target hand `observed_deal_14593` closes at **f15198** (river 15033; pending f15148-15197, 50 rows; then a direct switch to `observed_deal_15197` with no `None` in between); Hero `4s 3s`, board `3c 7s 3h Tc 6c`. All five carry `ledger_status: HAND_COMMITMENTS_UNKNOWN` with `canonical_verified / card_showdown_verified / rake_verified / strategy_eligible` all `False`, so this terminal claims no GTO strength and is not a checkable complete hand record. `pending_actions == 0` is still NOT a C1 condition - recorded as a documented deviation rather than silently added. **One new false positive found by an adversarial differential harness (same file, only the river block reverted) and deliberately NOT patched:** a single self-contradictory frame (`street_candidate == "river"` with five valid distinct cards) inside an epoch whose hand never reaches a river, followed by a cleared board, a `confirmed_frame` balance increase and a new epoch, now emits `ORDINARY_RIVER_CLOSED` with `river_complete_frame = 0`. Patching it would require an `ordinary_river`-exists guard that NARROWS the authorized semantics, so it is reported with the guard proposal for a decision instead; the failure mode is bounded to misclassification because C2 still demands that money moved, and it is unreachable on this recording where the minimum `complete_frames` across the five real hands is **67**. Verified: `tests/desktop/test_aa_ordinary_river_terminal.py` **16 passed**, `tests/desktop` **445 passed**, full suite **4128 passed / 1 skipped**, `flake8 src tests tools` clean. An independent auditor (fresh context, its own script, told not to use this round's analysis tooling) recomputed the raw JSON and CONFIRMED that each of the five hands really reached a complete river, really has a payout confirmed strictly after that river, that no river-less epoch closed, and every frame number claimed for `observed_deal_14593`; it also flagged a measurement caveat now recorded in the report (the adapter's `first_frame`/`confirmed_frame` are stable-read bookkeeping that can lag the raw balance change by a few frames - pre-existing behaviour, and both instants still fall after the river frame). No visual threshold, ROI, solver, `_posting` anchor, `expires` or seat-count change and no early-street fold-out terminal; `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` are unchanged.
 - **2026-09-17 USABLE-001 ORDINARY TERMINAL REAL-REPLAY VERIFICATION AND LIFECYCLE CONTRACT (Issue #27, PR #28) - VERIFICATION ONLY, NO EARLY-STREET TERMINAL:** the reviewer accepted the desktop `DESKTOP_EPOCH_GUARD` as `FIX_ACCEPTED_WITH_SCOPE`, kept `>= 3 seats` unchanged, and asked for exactly two things: prove or disprove real footage hits for `ORDINARY_RIVER_CLOSED` on the authorized `aa-live-20260917-0430` recording with a continuous sequential replay, and pin the `ordinary_terminal` lifecycle before any consumer exists. (1) **Replay result: 0 confirmed hits, and the first blockers are located.** The whole recording was replayed continuously (every frame grabbed in ascending order, never seeked, never sparse) from frame 0 to 27,287: 25 epochs (counting the suspended `None` bucket), **6 reaching a full river** (`None`, `observed_deal_8622`, `observed_deal_11609`, `observed_deal_14593`, `observed_deal_17323`, `observed_deal_24560`), **1 producing `ordinary_river_pending`**, and **0 producing `ORDINARY_RIVER_CLOSED`**. Attribution per hand AS PUBLISHED THEN (subsequently withdrawn): three of the five named hands were recorded as never having a credit of their OWN epoch confirmed strictly after their river frame, so C2 was said to fail for them (`payout_credit_not_visible`); `observed_deal_8622` additionally had non-zero `pending_actions`; and the suspended `None` bucket has no epoch at all so C3 can never confirm it by design. **The `payout_credit_not_visible` half of that attribution is WRONG** - it was an artefact of counting credits only on frames whose board was still complete - and the P0 entry above carries the corrected five-hand measurement plus the single real root cause. Crucially the credit channel is NOT silent - 26,980 frames carry `unallocated_positive_cash` for 218,310 entries - but those are mostly opening/refund credits (`new_post_comparison` and `stable_visual_balance_increase`), so "this epoch has credits" is not the same as "a post-river payout", and the strict `confirmed_frame > river_frame` count is what the diagnosis reports. (2) **The second blocker is a defect in this round's own implementation, located to the frame.** `observed_deal_14593` DID satisfy C1 and C2 on real data: the river completed at frame 15033 and frames 15173-15185 carried a live pending record for 38 rows (`settle=1, seats=5, pending_actions=0`). Then **frames 15186-15197 lost the complete-river reading** (`complete=False`), which reset `river_frame` and withdrew the pending record, and only at **frame 15198** did the epoch switch to `observed_deal_15197` - a direct A-to-B transition with no `None` in between. So C3 found nothing left to confirm. The cause is that `river_frame` is cleared the moment the five board cards flicker during the end-of-hand animation, even though "this hand reached a river" is an already-established fact about the hand. Minimal fix (reported then but NOT applied in that round because the authorization was verification plus one lifecycle guard; APPLIED in the P0 round above): clear `river_frame` only on an epoch change, keep suppressing via `closed` at the eligibility level, and note the residual risk that a pending record would ride on an epoch if the adapter stalls - bounded by the fact that C3 requires the pending epoch to equal the epoch that just ended and epoch names are unique. (3) **`ordinary_terminal` lifecycle pinned as a contract, with tests.** It is now a ONE-SHOT CONFIRMATION EVENT emitted only on the confirming observation and cleared immediately afterwards (clearing happens in `observe` after `_phase` returns, so it covers every return path including the blocked and lost-epoch early exits), while the persisted history is a separate, explicitly named `last_ordinary_terminal` snapshot carrying its own `epoch` plus a per-row `belongs_to_current_epoch` flag so a stale terminal can never be mistaken for the current hand's. Four new tests cover the one-shot emission, no leak across the second/third/fourth epoch, absence before any confirmation, and that the event does not survive a blocked row. No downstream consumer exists yet, which is exactly why the contract was pinned now. Verified: full suite **4124 passed / 1 skipped / 414.33s** (previous baseline 4120/1, so +4 lifecycle tests), the five touched desktop files **86 passed**, `flake8 src tests tools` clean. No threshold, no ROI, no solver, no `_posting` anchor or `expires` change, no early-street terminal started, and **nothing was relaxed to make a hit appear**. `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` unchanged; the ordinary river terminal was recorded as `CODE_TESTS_PASS / REAL_REPLAY_NOT_YET_PROVEN` as of this round, and the P0 round above moved the real-replay half to PROVEN (5 hands) while keeping `REAL_HAND_ACCEPTANCE_PENDING`, since a closed terminal is not yet a checkable complete hand record.
 - **2026-09-17 USABLE-001 DESKTOP OPENING BOUNDARY FIX AND ORDINARY RIVER CLOSE (Issue #27, PR #28) - KERNEL, SOLVER AND EVERY SEAT THRESHOLD UNTOUCHED:** the reviewer asked for three things and this round does exactly those. (1) **A real desktop-layer defect is fixed with a regression.** `aa_live_context.LiveStateAdapter`'s dealer-advance branch required only `dealer_run >= 2`, a changed `dealer_value` and `board_count == 0`, so a dealer-seat reading change (a reading wobble in this recording) re-anchored the hand and replaced the epoch even when this hand already held a ledger-qualifying opening. On the frozen development recording that discarded a ledger which had just resolved: source frame 1264 produced `observed_deal_1263` with `MULTI_POST_DEAL_CANDIDATE` and seven debits, and frame 1278 created `observed_deal_1277` with `DEALER_ADVANCE_CONTEXT_CANDIDATE`, sending `hand_ledger_v2` back to `HAND_COMMITMENTS_UNKNOWN` with `opening_post_vector_incomplete`; the plain `AA8StateAdapterV2` chain that the historical successful runs used kept the same ledger resolved for 67 consecutive frames. New `LiveStateAdapter._anchored_opening()` mirrors `AA8HandLedgerCandidate._reset`'s qualification exactly (one event for this epoch, status `MULTI_POST_DEAL_CANDIDATE`, at least three debits, no action observed yet) and, when it holds, only tracks the new dealer reading instead of re-anchoring; the deferred case (a reading change after this epoch has recorded an action) is explicitly out of scope and says so in the code. Evidence: `tests/desktop/test_aa_live_opening_boundary.py` plus the fixture `tests/fixtures/aa_reference_hands/opening_rows_1260_1290_v1.json`, which holds the **pre-adapter** rows for source frames 1260-1290 (1260-1262 from `aa8_first_hand_entry_dense_v2`, 1263+ from `aa8_first_hand_full_v1`) so CI needs no private `G:` pool; it cross-checks against the already-reviewed `eight_session_boundary_v1.json` (`initial_posting_slots [0,1,2,3,4,5,7]`, empty slot 6, hero `200 -> 196`). Run against the previous head `064894b` in a separate read-only worktree the two new files gave **8 failed / 2 passed** and now give **10 passed**; the two that were already green are the anti-over-fix guards (fixture sanity, and "an unanchored dealer advance must still re-anchor"). End to end on the real pool frames the desktop chain's epoch list went from "1264 MULTI_POST + 1278 DEALER_ADVANCE" to "**only 1264 MULTI_POST**", matching the plain-adapter history. (2) **The table's forced-bet structure was checked and the `>= 3 seats` threshold was deliberately NOT changed.** Three separate hands each open the pot at exactly **17** (frames 8647, 9814, 11130), and the committed `configs/game/aa-shadow-rules-v2.json` declares `small_blind 1 / big_blind 2 / ante 2 per dealt player / mandatory UTG straddle 4`; with the five dealt seats this recording consistently shows (empty seats 0, 2, 6) that is `5 x 2 + 1 + 2 + 4 = 17`, matching every hand. So the table has **five** simultaneous debits and `>= 3` is satisfiable in principle - it stays as it is. What actually blocks this recording is that **no seat's recognised stack ever decreases** in any of the three opening windows (`pot` moves while the stacks do not) and `causal_street_wagers_v2.status` is `WAGERS_UNKNOWN` with `street_price: null` and null glyphs, so the stack-difference method `posting_comparison` is structurally blind here regardless of the seat count. The arithmetic agreement is graded as an **inference**, not a confirmation: the rules file itself is marked `verification_status: "simulation"` and its own source note says it is "not verified live room accounting". (3) **A new, strictly bounded terminal type `ORDINARY_RIVER_CLOSED` was added in parallel to the all-in terminal, which is untouched.** C1 needs a complete river (`street_candidate == "river"`, five valid distinct board cards, `pending_actions == 0`) and `closed` false, and records `river_complete_frame`; C2 needs POSITIVE settlement evidence, a same-epoch `unallocated_positive_cash` balance increase confirmed strictly after the river - a zero pot alone never settles anything and an unread pot never blocks; C3 is the only confirmer, a NEW non-empty epoch observed strictly after `river_complete_frame` (which is the epoch event frame, because `_new_epoch` stamps the frame it runs in), and a lost epoch (`None`, the unsupported-scene or overlay case) NEVER confirms. Participating seats come from this epoch's own `participants`, never from `ledger.opening_evidence`, so the opening-ledger gap cannot silently disable the new path; `ledger_status` is copied into the evidence so a downstream consumer can require the ledger separately. The row states its own scope in `ordinary_terminal_semantics` (`ORDINARY_RIVER_CLOSED_ONLY; preflop/flop/turn fold-out endings are NOT covered`), and the record carries `canonical_verified`, `strategy_eligible`, `card_showdown_verified` and `rake_verified` all false and does not touch `terminal_observation_frame`. Seven counter-examples in `tests/desktop/test_aa_ordinary_river_terminal.py` cover confirmation only after the boundary, the explicit scope sentence, zero pot without a payout, a lost epoch after the river, a recording that ends right after the river, an all-in showdown never producing an ordinary close, a blocked overlay frame neither confirming nor reporting a pending close, and a preflop fold-out staying uncovered; all eight fail against `064894b` and pass now. Known limit stated rather than hidden: C2 needs a VISIBLE payout, and this recording's stacks did not move during the openings, so whether payouts are visible there is still unverified - if they are not, this terminal will simply stay PENDING on that recording instead of guessing. Preflop/flop/turn fold-out endings remain NOT implemented and are left for a separate round. Verified: full suite **4120 passed / 1 skipped / 407.27s** (previous baseline 4109/1, so +11 = 3 boundary plus 8 ordinary-terminal tests), `tests/desktop` + `tests/tools` **1726 passed**, `flake8 src tests tools` clean, previous-head counter-example `8 failed / 2 passed` versus `11 passed` now. NOTHING was relaxed: no threshold, no `UNKNOWN` downgrade, no ROI recalibration, no change to the `_posting` comparison anchor or its `expires`, no change to `closed`/`full_river`/`terminal`, no kernel, solver or capacity change, no front-end change, nothing merged or released. `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` are unchanged.
-- **2026-09-17 USABLE-001 FIRST MANUAL OFFLINE TRIAL PREPARATION (Issue #27, PR #28) - NO FEATURE WORK:** U2 is frozen (`PASS_WITH_SCOPE`, review `pullrequestreview-5227367145`) and this round only prepares the first manual trial, so the kernel, the strategy path, the launcher and every computing limit are untouched. The standalone entry for commit `c993632` is `launch/u2-trial/START-TRIAL.cmd` (double-click) or `python launch/u2-trial/trial_launcher.py`, version `aa-trial-u2.0` with record implementation `aa-analysis-record-v1`; it prefers port 8791, reports a busy port instead of killing anything, opens the browser only after the service answers, and keeps its own `state/` directory so an existing installation's program, configuration and records are neither read nor overwritten. The main checkout `C:\Users\Administrator\WorkBuddy\扑克\PokerSense\` has no `launch/` directory at all, so nothing of the user's is replaced. Verified this round by really starting it: `--version` prints `aa-trial-u2.0 (aa-analysis-record-v1)`, `--self-check` reports `missing_resources: []` on the preferred port with `capture_enabled: false`, the ready file carries `base=http://127.0.0.1:8791/`, `GET /` answers 200 with all four panels and the `手工假设 · 非实时建议` tag, and `/api/status` answers 200 with `strategy_scope=AA8_OBSERVATION_ONLY_NO_ADVICE` and `table_rules.conditional_analysis_ready=false` (a fresh trial directory has no table rules yet, so saving them is the first step). The page carries NO on-screen version badge and none was added this round (that would be a feature change); the version is identified by the launcher banner, the panel set, each saved record's `implementation_version` and the trial state path. **No authorised real hand can be used for the trial**: re-reading the existing selection study (`docs/research/usable-001-u1-sample-selection.zh-CN.md`, which covered 10 decision points across 9 registered development hands, the two `observed_deal_17` observation sets and the 36 reviewed action labels) confirms no re-scan is needed - every registered hand has `HAND_COMMITMENTS_UNKNOWN` with `hand_commitments=null`, the river frames have at most TWO active participants where the kernel requires exactly three, and the 36 labels carry no hole cards, board, pot or commitments. That is why no "input pending human confirmation" could be produced: the parts that ARE known cannot form a computable hand and the missing parts cannot be filled without guessing, and no synthetic hand was relabelled as real. `docs/research/usable-001-first-trial-preparation.zh-CN.md` records the entry, the version identifiers, the simplest way to open it on the user's machine, the sample conclusion and the single consolidated list of what the user must confirm (the eleven no-guessing facts a real hand needs, the three things that may legitimately be stated as assumptions, and the one yes/no). The review's non-blocking note is fixed: `usable-001-u2-r2-...` §3.2 said the cap `8 < 6.5`, it is `8 > 6.5`, and that only means THIS pot does not reach the cap. No new private media was scanned, no capture device opened, no media replayed, no vision API called, no automation added, nothing merged or released, and no old sample material was re-searched.
+- **2026-09-17 USABLE-001 FIRST MANUAL OFFLINE TRIAL PREPARATION (Issue #27, PR #28) - NO FEATURE WORK:** U2 is frozen (`PASS_WITH_SCOPE`, review `pullrequestreview-5227367145`) and this round only prepares the first manual trial, so the kernel, the strategy path, the launcher and every computing limit are untouched. The standalone entry for commit `c993632` is `launch/u2-trial/START-TRIAL.cmd` (double-click) or `python launch/u2-trial/trial_launcher.py`, version `aa-trial-u2.0` with record implementation `aa-analysis-record-v1`; it prefers port 8791, reports a busy port instead of killing anything, opens the browser only after the service answers, and keeps its own `state/` directory so an existing installation's program, configuration and records are neither read nor overwritten. The main checkout `<primary-checkout>` has no `launch/` directory at all, so nothing of the user's is replaced. Verified this round by really starting it: `--version` prints `aa-trial-u2.0 (aa-analysis-record-v1)`, `--self-check` reports `missing_resources: []` on the preferred port with `capture_enabled: false`, the ready file carries `base=http://127.0.0.1:8791/`, `GET /` answers 200 with all four panels and the `手工假设 · 非实时建议` tag, and `/api/status` answers 200 with `strategy_scope=AA8_OBSERVATION_ONLY_NO_ADVICE` and `table_rules.conditional_analysis_ready=false` (a fresh trial directory has no table rules yet, so saving them is the first step). The page carries NO on-screen version badge and none was added this round (that would be a feature change); the version is identified by the launcher banner, the panel set, each saved record's `implementation_version` and the trial state path. **No authorised real hand can be used for the trial**: re-reading the existing selection study (`docs/research/usable-001-u1-sample-selection.zh-CN.md`, which covered 10 decision points across 9 registered development hands, the two `observed_deal_17` observation sets and the 36 reviewed action labels) confirms no re-scan is needed - every registered hand has `HAND_COMMITMENTS_UNKNOWN` with `hand_commitments=null`, the river frames have at most TWO active participants where the kernel requires exactly three, and the 36 labels carry no hole cards, board, pot or commitments. That is why no "input pending human confirmation" could be produced: the parts that ARE known cannot form a computable hand and the missing parts cannot be filled without guessing, and no synthetic hand was relabelled as real. `docs/research/usable-001-first-trial-preparation.zh-CN.md` records the entry, the version identifiers, the simplest way to open it on the user's machine, the sample conclusion and the single consolidated list of what the user must confirm (the eleven no-guessing facts a real hand needs, the three things that may legitimately be stated as assumptions, and the one yes/no). The review's non-blocking note is fixed: `usable-001-u2-r2-...` §3.2 said the cap `8 < 6.5`, it is `8 > 6.5`, and that only means THIS pot does not reach the cap. No new private media was scanned, no capture device opened, no media replayed, no vision API called, no automation added, nothing merged or released, and no old sample material was re-searched.
 - **2026-09-16 USABLE-001 U2-R2 (Issue #27, PR #28) RULE-SOURCE CONTROL HONOURED, WRONG-SHAPED RECORD ISOLATED - KERNEL UNCHANGED:** review `pullrequestreview-5226343574` accepted the whole U2-R1 rebuild (both recomputes really re-verify, compute and save new records with a parent link; request identity; content seal; three-process restart test) and refused final acceptance on two boundaries, which this entry fixes without redoing anything. (1) **The rule-source control now really switches the mode.** Loading a record's saved conditions puts the form into THAT record's rules scenario with the checkbox off; ticking "use this table's saved rules" used to call only the generic "input changed" path, which dropped the receipt but left the scenario alive - so the build request kept asking for `rules_source=document` with the OLD document rules while the control said otherwise, and re-verifying happily produced a receipt for a rule set the human had not chosen. The checkbox now has its OWN change handler (`handUseTableRulesFromControl`): ticking it leaves the scenario, clears the receipt, the built document and the accepted job, and says so - while KEEPING the hand, the opponent assumptions, the size grid and the recompute-parent link. `handVerify` also fails closed on the one state that must never be sent (a saved-rules scenario paired with the control saying "this table's rules"), the saved-conditions load lists the available switch in its gaps, and the panel feedback repeats it. Switching back to a record's saved conditions still goes through the explicit, verified path (reopen the record, press "recompute under saved conditions"). (2) **A wrong-shaped record no longer takes the list down.** `record.json` holding valid JSON that is not an object (`[]`, `null`, a bare string) made `recent` raise `AttributeError` straight out of the route: measured on the previous head, the list answered **HTTP 500 with a body that never finished**, the `null`/string cases and single `get`/`scenario` **timed out**, and all four healthy records disappeared from the list. The shape check is now the FIRST thing `_verify` does, `_present` reads its envelope fields only from a dict, the field-reading block turns the expected shape/type errors into that record's own named refusal, and `recent` isolates each file (parse + present) so a broken entry becomes its own `INVALID` row and the rest of the list is served normally - never an empty list, never a rewrite or a delete. Measured on the same probe script: the list now answers 200 with the bad row as `INVALID`/`display_permitted=false` beside four healthy records, `get`/`scenario` answer 400 with a named refusal, and the file stays byte-identical. (3) **A measured trap worth keeping:** `rake_cap_bb = 0` makes the cap `0 chips`, which removes the rake entirely - a table with `rake_percent=0.05, rake_cap_bb=0` produces EXACTLY the no-rake EVs (call 64.375 / raise80 108.90625), so a "recompute under current rules" check written against it proves nothing. The harness's current-rules table now uses `rake_cap_bb=2` (call 60.15625 / raise80 104.10625), and the switched recompute is also cross-checked against a DIRECT kernel call on its own canonical input. Verified: `tests/desktop/test_aa_analysis_records.py` went from **7 failed / 44 passed** against the previous head `d9212c8` in a separate read-only worktree to **51 passed / 0 failed**; the three-phase harness went from **9 named phase-1 failures** (six for the rule-source control, three for the wrong-shaped file) to green in all three phases, driving the real control through saved conditions -> switch to this table -> re-verify -> real kernel -> save a new record E whose effective rules equal the table's and whose numbers differ from the parent's, plus an in-flight switch that discards the stale answer, a wrong-shaped file exercised through the real list/get/scenario routes, and five records reopening unchanged after two real restarts with zero analytical requests. `flake8 src tests tools` is clean; the full suite is 4109 passed / 1 skipped (was 4092 / 1). Kernel, solver, capacity, launcher and CI config unchanged; no model change; nothing merged; `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` unchanged.
 - **2026-09-16 USABLE-001 U2-R1 (Issue #27, PR #28) RECOMPUTE BOUND TO THE VERIFIED FLOW, REQUEST IDENTITY, SEALED RECORD CONTENT - KERNEL UNCHANGED:** review `pullrequestreview-5225415635` accepted the U2 save/reopen/launcher work as real but refused acceptance on three paths, and this entry supersedes the U2 entry below for exactly those three plus one readability item (its save ownership, idempotency, reopen and launcher statements still hold, except that a record now also carries a content seal and an explicit `source_kind`; "recompute under the saved conditions loads the frozen input and rules without touching the global table rules" and "recompute with current rules puts the saved facts back in the form and demands a fresh verify" are now TRUE end to end instead of merely intent). (1) **A: both recomputes go back through the accepted verify/invalidate flow.** `recordsRecompute` now voids FIRST - `recordVoid()` advances the record epoch, clears the detail and disables both recompute buttons, then `handResetForSource()` advances the hand token, drops the built document, the accepted job and the verified receipt, and clears the fields, the end-of-hand confirmation, the opponent assumptions and the rendered result through the existing 350 ms debounced cancel. It then loads the record's facts through the ONE shared fill entry (`handApplyFacts`, extracted out of `handApplyImportedFacts` so the two import paths cannot diverge on provenance or candidates), REPLACES its opponent model via a new `handApplyAssumptions` (ranges, response weights, size grid, aggression cap, fee scenario), and keeps the analysis-record id in its own field: `handSource.issue_id` carries only the ORIGINAL review id (or null) and `parent_analysis_record_id` carries the record, which the save writes into the new record's source. "Saved conditions" injects the record's rules as this scenario's rules and goes through the EXISTING document/table contract (`rules_source="document"` on `/api/hand-input/build` and `/api/analysis`), so a legitimate saved-rules scenario is not forbidden and the global table rules are never written back; "current rules" leaves the scenario unset and uses the table path. Neither auto-computes: the form says "待重新核对" and the human presses 核对输入, after which the real kernel runs and the result saves as a NEW record whose parent is the original. The previous behaviour - the form showing A while `handBuilt`/`handReceipt`/`acceptedAnalysisId` still belonged to B, A's cards mixed with B's ranges, the analysis-record id passed off as an observed-review id, and the saved-conditions branch establishing no saveable receipt at all - is exactly what the red run shows failing. (2) **B: every open/recompute/save answer is bound to the target it was issued for.** One epoch plus the requested record id plus the response's own record id plus the live selection are all checked, and a recompute additionally checks the form token captured after the void, so a clear, an edit or a rules change during the flight drops the answer instead of writing it over what the human now has. A failed open leaves no numbers and no enabled recompute button; a response naming another record is refused rather than painted; a save whose answer lands after the panel has moved on says so instead of reporting success for the current result, and refuses to report success for a non-displayable receipt. `recordsRefresh` now reads the selection at the moment the answer is APPLIED (it used to read it when the request was sent, so the automatic refresh after a save could switch the user to another record). (3) **C: the stored CONTENT is sealed and re-verified, not just the input.** Saving writes `content_seal {schema: "aa-analysis-record-content-v1", sha256:<digest of the whole record minus the seal>}` LAST, and every read path (`get`, `recent`, `scenario` and the idempotent `_find_existing`) runs the same verification. Named checks run BEFORE the seal so a failure says what actually moved: the folder id must equal the record id; `identity.source_issue_id`/`parent_analysis_record_id`/`job_id` must equal the source and job blocks; the input/facts/assumptions/rules digest chain and `job.verified_rules` must agree; `source_kind` must equal the type the source really implies; the root actions' `actor` must be the frozen Hero, a `bet/raise` size must be on the grid confirmed at verification (never rounded onto it), each `additional_cost` must equal that grid row's amount, and a `call`'s cost must equal the verified to-call; and the three blocks carrying the same derived numbers (support check, amount detail, capacity summary) must agree with each other, with the view's capacity and amounts REGENERATED from the verified support block. Because the identity digests are untouched by all of these edits, only the seal catches an `{exact, decimal}` pair rewritten together. A damaged record is INVALID on its own and does not disturb its neighbours; a file whose content was never sealed reports the new status `UNVERIFIED_FORMAT` instead of being silently promoted; nothing is ever repaired, rewritten or deleted, and the lookup refuses to hand back a matching-but-invalid file as "already saved". No new secret, no signing service, and reopening still never calls the solver. (4) **P2 readability:** `_view` returns an explicit `source_kind` (default `manual_hypothesis_unverified`; `linked_review_record`; `recomputed_from_analysis_record`) that replaced the old inference from the mere presence of an issue id, and the detail now shows the sample type in words and as the machine value, the original review link and the recompute parent, the ACTUAL rule values (not only a revision prefix) and the ACTUAL opponent ranges, response weights, size grid and fee scenario, in ordinary tables and a folding block. Verified: `tests/desktop/test_aa_analysis_records.py` went from **15 failed / 19 passed** against the previous head `3f56d4d0` in a separate read-only worktree to **34 passed / 0 failed**; the three-phase shipped-JS harness `tests/js/hand_records_flow_test.mjs` (real DOM stub, real HTTP, real kernel, three real server processes on one records directory) went from **15 named failures in phase 1** against that head to **run1 44/44 + run2 14/14 + run3 9/9**, exercising recompute-with-current-rules (A saved, B computed, A reopened, old receipt/built document/accepted job voided, A's facts AND assumptions loaded, re-verified, computed, saved as a new record C under the new table rules with `parent=A`) and recompute-under-saved-conditions in a NEW process with no receipt (A reopened, its frozen facts/assumptions ORIGINAL rules scenario loaded, global rules untouched, re-verified, computed, saved as a new record D that used A's rules rather than the current ones), then a third process reopening all four records field-for-field unchanged with zero analytical requests; plus out-of-order and forged record-id opens, a failed open, a clear and a selection change during a flight, a late list refresh, eight content rewrites and a legacy file refused on every read path with the file preserved. `flake8 src tests tools` is clean; the local full suite is reported in the progress log. `launch/` is untouched, `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` are unchanged, and no merge, no model change, no solver or capacity change was made.
 - **2026-09-16 USABLE-001 U2 (Issue #27, PR #28) SAVE THIS ANALYSIS, REOPEN IT AFTER A RESTART, VERSIONED OFFLINE TRIAL - KERNEL UNCHANGED:** the checkpoint was "compute THIS input -> save -> close the program -> start it again -> reopen the same result", plus a trial entry that cannot overwrite an existing installation. New `src/poker_engine/desktop/aa_analysis_records.py` is a thin adapter over the existing analysis facade - `aa_study_records.py`'s fixed synthetic registry is untouched. One save freezes the facts (with provenance and original candidates), the assumptions, the effective rules and the verified revision, the canonical input, the report of the job that really finished, the input/facts/assumptions/rules identities, the job id, the implementation version, the save time and the optional source link. **The server owns the numbers**: the client may only name the job and the digest it verified, the report is read from the live facade, and RUNNING / ERROR / CANCELLED / TIMED_OUT / superseded jobs are refused; the canonical input is REBUILT through the same trusted path the build route uses (`aa_hand_input.build_document` with the job's own effective rules injected) so the frozen facts and the analysed document cannot drift apart. Saves are idempotent on `(job_id, input_sha256, source_issue_id)` while two different manual sources stay separate even with identical numbers. **Reopen is not recompute**: every read re-derives the whole view from the frozen values - schema, record kind, the four identity digests, input-to-job linkage, every `{exact, decimal}` pair with the decimal REGENERATED from the exact rational (an edited display is detected), and action-field consistency (`check/call/fold` must carry target 0, `bet/raise` must be positive, a `call`'s additional cost must equal the verified to-call, no duplicate root actions). A record whose rules revision or implementation version moved on is still readable as a HISTORICAL result under its original input/assumptions/implementation, clearly labelled, and the fixed-C rule that the source file must still exist at its original path is deliberately NOT copied; a record that fails a check is refused with `display_permitted: false`, `view: null`, and the file left exactly as it was. Reopen never calls the kernel and never writes the current table rules into a record; "recompute under the saved conditions" loads the frozen input and rules without touching the global table rules, while "recompute with current rules" puts the saved facts back in the form and demands a fresh verify. New `ui/aa-live/analysis_records.js` plus one section in the manual review entry adds save / list / open and shows the board and situation, the facts and assumptions with provenance, the rules scenario, each action's additional amount and conditional EV, capacity/blockers and the history labels, using only the existing design tokens and safe text nodes. `launch/u2-trial/` is a versioned, independent trial entry (`aa-trial-u2.0`, `START-TRIAL.cmd` + `trial_launcher.py` + a README) that reuses the local Python with no new dependency, prints its version and every unverified item, checks the required resources exist, waits for the service to answer before opening the browser, keeps its own git-ignored `state/` directory, and on a busy port reports it and picks an explicitly free one without ending any process or opening a capture device. Verified: 18 store regressions (server ownership, idempotency, every integrity refusal including a corrupt file that is preserved), 8 launcher regressions (a busy port leaves its occupant listening; a restart still lists a record placed in the state directory), 2 end-to-end tests, and a two-phase shipped-JS harness (`tests/js/hand_records_flow_test.mjs`) that computes and saves two different synthetic inputs, exercises the counter-examples, then - after the first server process is stopped and a NEW one starts on the same records directory - reopens both records with identical numbers and no analytical request at all. Full suite 4076 passed / 1 skipped, flake8 clean including `launch` locally (the CI lint target is UNCHANGED: the push token has no `workflow` scope, so a workflow edit is refused by the remote). No U2 scope creep: no algorithm/player-count/street/limit change, no new Git/MCP/automation, no new private media, no capture or vision API, no live advice, no merge, no overwriting the user's existing program. `REAL_HAND_ACCEPTANCE_PENDING` and `NOT_ASSESSED` are unchanged; every synthetic record is labelled `synthetic_input_labelled` and stays apart from real records.
@@ -317,7 +586,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   no allin/sidepot crossing. Fixed-policy/calibration/uncertainty failures remain
   regressions,not empirical approval. No live Provider/UI integration,hardware,
   media or external solver runs. Root evidence:
-  G:/PokerSense_private/aa-conditional-strategy-integration-20260915-v1/.
+  <private-evidence>/aa-conditional-strategy-integration-20260915-v1/.
   See docs/THREEWAY-MODEL-VALIDATION-V1.zh-CN.md and
   docs/OPPONENT-MODEL-V1.zh-CN.md;historical report counts remain historical.
 
@@ -332,7 +601,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   44focused tests PASS,changed lint0,diff0. No hardware/accuracy/strategy
   acceptance;desktop CLI pin plumbing remains integration responsibility.
   See docs/AA-RUNTIME-BUNDLE.zh-CN.md and private
-  G:/PokerSense_private/aa-resource-bundle-20260915-v1/.
+  <private-evidence>/aa-resource-bundle-20260915-v1/.
 
 - **2026-09-15 AA8 OBSERVATION TOOL V1:** added dedicated AA reader/session/
   source/server/UI and standalone PyInstaller entry. ExplicitStart/Stop,single
@@ -353,7 +622,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   882remote/970primary-visible files and22worktrees;no product edits. AA readers
   remain tools/private compositions,not installed desktop runtime;canonical
   state and empirically strong multiway strategy are incomplete. Three read-only
-  domain audits retained at G:/PokerSense_private/project-map-20260915-v1/.
+  domain audits retained at <private-evidence>/project-map-20260915-v1/.
   Optional GTOpen registration missing source_revision reproduced without
   network/device use;not fixed. No media/training/capture/commit/push/merge.
 
@@ -389,7 +658,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   events, not verified actions. Slot 4 stack coverage 0; epoch and complete legal
   state both 0. No Advice/strategy eligibility. Identity and gate audit passed;
   model/config hashes unchanged and 200 implementation snapshots checked.
-  Private evidence G:/PokerSense_private/aa-development-001-replay-v1/;
+  Private evidence <private-evidence>/aa-development-001-replay-v1/;
   observations 5ac0941bab6e9d8845a089fa0206d1df6c851af8ca75b9b7a6186159e236c167.
   No new capture or model training; coverage is not accuracy. Next: bottom-seat
   stack ROI/glyph review and spectator-state initialization investigation.
@@ -414,7 +683,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   H09 is the hand after lucky-bomb animation13600,previous ordinary classification
   wrong;conservative v3 excludes it,6hands/8266frames,old selections preserved.
   No complete opportunity census/recall or street-accuracy claim.Private review
-  7b28fa56,manifest3e6b847a under G:/PokerSense_private/aa-action-review-001-v1/.
+  7b28fa56,manifest3e6b847a under <private-evidence>/aa-action-review-001-v1/.
   See docs/AA-ACTION-REVIEW-001.zh-CN.md.Next:fix muck-vs-fold and missed all-in.
 
 - **2026-09-15 OBSERVER VISUAL SPOT REVIEW: insurance true positives;
@@ -426,7 +695,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   v2 retains7hands/10068frames,existing targeted epoch available10068/10068 only
   in this post-hoc subset,not session accuracy/coverage acceptance. Old evidence
   preserved;no runtime changes. Report1d2418ea;selection61a7613b;private evidence
-  G:/PokerSense_private/aa-observer-visual-check-v1/. Next:seven-hand action/state
+  <private-evidence>/aa-observer-visual-check-v1/. Next:seven-hand action/state
   truth checks and separate insurance guard regressions;no strategy promotion.
 
 - **2026-09-15 OBSERVER REPLAY TARGETED FIXES: development PASS, no live
@@ -557,7 +826,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   decode,screenshot,media-content read,audio,recognition,strategy,Provider,equity,
   Advice,input control,network orADB.Both finalized sessions left device locks.
   Stale locks were manually investigated,exact bytes preserved under
-  G:/PokerSense_private/
+  <private-evidence>/
   aa_capture_lock_investigation_20260914_001/ and _002/,then cleared;no session
   evidence deleted.Root cause reproduced:the lock identity included size but was
   captured at0bytes before PID/session content was written,so final comparison
@@ -589,7 +858,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   FFmpeg9.0.1 real target SHA
   57c56e369d5b4873b4d93fc1a1d833cb7cd8bc9325c14b05c34ce60b22842d8a,
   size222229504;G free~222GiB.
-  Private evidence G:/PokerSense_private/aa_capture_hardware_preflight_20260914_v1/
+  Private evidence <private-evidence>/aa_capture_hardware_preflight_20260914_v1/
   observation ffce26a2fb7a942a86e2791c8ffb1cabd21622f5cd39fded4846368117271d1a,
   report0f376854d10a5494400ddbf4a88e1ec02a297318a9f20f52df505bde1ead0a4a,
   manifestde8d2f29774b1e43cb71d276796ed64c03d10567bbe9c316be4c3245ee47705e;
@@ -712,7 +981,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   840s+ review PNG bytes without rendering;no video or300-820s access;final reviews
   were source/JSON only. No legal menus,independent accuracy,holdout/device/live
   strategy/advice/main merge/tag/release. See docs/AA8-GLYPH-DEDUPE-V2.zh-CN.md
-  and G:/PokerSense_private/aa8_glyph_dedupe_regression_v2_20260914_v2/.
+  and <private-evidence>/aa8_glyph_dedupe_regression_v2_20260914_v2/.
 
 - **2026-09-14 AA8 ACTION TRUTH REVIEW V1: author development review COMPLETE;
   independent visual review pending,real calibration BLOCKED.** Reviewed all36
@@ -754,7 +1023,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   full3237passed/1skipped/2warnings(28.08s),lint0,generator0,private filename0,
   diff0. Final independent rereview PASS;PR#2 CI and owner signoff tracked in PR. See
   docs/AA8-OFFLINE-SESSION-EVIDENCE-V1.zh-CN.md;private evidence under
-  G:/PokerSense_private/aa8_offline_session_evidence_20260914_v1/.
+  <private-evidence>/aa8_offline_session_evidence_20260914_v1/.
   No LDPlayer/ADB/device/live capture/advice/tag/release/main push.
 
 - **2026-09-14 PUBLIC CANONICAL REPOSITORY + PROTECTED PR WORKFLOW:** Created
@@ -910,7 +1179,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   template resolves current waiting-seatNA withouthistoryfill. Rootpipeline
   includes hand candidate, participation, card smoothing and spatial insurance
   +buyin overlay. Read hashes from reports, not old summary counts.
-- **FROZEN candidate_v1** G:/PokerSense_private/aa8_candidate_freeze_v1/freeze.json
+- **FROZEN candidate_v1** <private-evidence>/aa8_candidate_freeze_v1/freeze.json
   SHA f3b55436de2ad21933b2561d921d72ba03aead23830b287dd9478bc68feaf696,
   280runtime/model/parameter/training files. DO NOT modify existing frozen source
   while independent boundary review runs. Isolated acceptance agent now doing
@@ -1077,7 +1346,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   new segments,29865 frames exactly match recorder,5807664790B,995.366s.
   All frames1920x1080,monotonic PTS,no gaps>67ms; CSV/file list/start PTS match.
   This is integrity/timeline evidence, not black-frame/freshness/recognition proof.
-  Private audit G:/PokerSense_private/aa_phone_audit_20260909_v1. Do not repeat
+  Private audit <private-evidence>/aa_phone_audit_20260909_v1. Do not repeat
   hashing/full decode unnecessarily; reuse frozen hashes and frame_index.jsonl.
 - Added separate8-seat candidate layout,top0/Hero4,using pre-recording reference
   SHA950c348258d2263defb4744605b2229121eb6d6eafc9c7857bf897a09769db2b.
@@ -1101,7 +1370,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   without another explicit user start. Source is now available for offline work.
 
 - **Historical start, now STOPPED: 2026-09-09 03:10:30 Asia/Shanghai:**
-  G:/PokerSense_private/aa_phone_record_20260909_031030_54322c62.
+  <private-evidence>/aa_phone_record_20260909_031030_54322c62.
   Recorder PID40004, ffmpeg28356, exec session38186 at launch. Verify current
   status/process identity before any stop. Graceful stop: create STOP in THIS
   session directory, not the earlier stopped test directory. User requested
@@ -1124,7 +1393,7 @@ changing desktop capture, recognition, packaging, or project documentation.
 - **Historical recording start, now STOPPED (see above), ~02:50:30:** user clarified this
   session is for video testing and later review, not consulting live advice.
   Started bounded phone-card video-only recording in
-  G:/PokerSense_private/aa_phone_test_20260909_0245 (name is an identifier;
+  <private-evidence>/aa_phone_test_20260909_0245 (name is an identifier;
   actual timestamps are in status.json). Recorder PID16332, ffmpeg29796,
   exec session16892 at launch. Check status/process identity before acting.
   STOP safely by creating file STOP in THIS session folder; recorder sends q
@@ -1147,14 +1416,14 @@ changing desktop capture, recognition, packaging, or project documentation.
   nine-slot geometry unchanged. User participation is UNKNOWN from this frame;
   lack of own hole cards/buttons is not proof of observing/folding.
   Source1920x1080/30FPS MJPEG; process exited, no strategy or game controls.
-  Private frame G:/PokerSense_private/aa_lobby_check_ec201b0bfbb5482588083b60e55ebf13/aa_check.png.
+  Private frame <private-evidence>/aa_lobby_check_ec201b0bfbb5482588083b60e55ebf13/aa_check.png.
 
 - **2026-09-09 capture recheck after phone reconnect:** one bounded DirectShow
   frame after3s warmup now visibly shows the unlocked portrait phone home
   screen and AA Poker icon, centred with black side bars. UGREEN25854 stream
  1920x1080/30FPS MJPEG; capture process exited normally. Phone picture link
   is confirmed for this snapshot, NOT AA in-app recognition or long-run stability.
-  Private frame G:/PokerSense_private/capture_recheck_b6903e50a7724f31960af0f3d2095c92/desktop_check.png.
+  Private frame <private-evidence>/capture_recheck_b6903e50a7724f31960af0f3d2095c92/desktop_check.png.
   No ADB, gameplay, strategy or continuous recording. Next permitted basic
   check: user opens phone AA lobby; no need to enter a table for capture QA.
 
@@ -1166,7 +1435,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   Two initial PNGs show black then UGREEN logo; an additional frame after5s
   warmup is black. Thus capture-device link works, usable phone/AA picture NOT
   confirmed. Capture process exited/released device. Private snapshots:
-  G:/PokerSense_private/capture_check_20260909_1e41561e250e4e36bd9962289891fff1.
+  <private-evidence>/capture_check_20260909_1e41561e250e4e36bd9962289891fff1.
   Next: user unlock/keep phone screen on and verify video input/adapter/cable;
   test phone home screen before any gameplay. Do not call this a vision pass.
 
@@ -1186,9 +1455,9 @@ changing desktop capture, recognition, packaging, or project documentation.
   and sanitized .env example filenames. Added read-only check_private_files tool;
   filename-only checks found0 flagged among446 current index /447 local history
   paths; no content/remote audit claimed.16 focused tests passed.
-  Created new empty G:/PokerSense_private with protected ACL allowing current
+  Created new empty <private-evidence> with protected ACL allowing current
   user, Administrators and SYSTEM only. No existing media moved or deleted.
-  G:/PokerSense_archive retains broad inherited Users/Authenticated Users ACLs;
+  <private-archive> retains broad inherited Users/Authenticated Users ACLs;
   not tightened pending explicit scope confirmation. No independent media backup
   created, no encryption or automatic cleanup, no old blocked-delete retry.
 
@@ -1223,7 +1492,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   VM process listened0.0.0.0:5555/2222; ADB server127.0.0.1:5037.
   Added one persistent Windows firewall rule
   `PokerSense-LD9-Block-External-Debug-TCP-v1`, scoped to
-  `C:/Program Files/ldplayer9box/Ld9BoxHeadless.exe`, inbound TCP5555/2222,
+  `<emulator-install>/Ld9BoxHeadless.exe`, inbound TCP5555/2222,
   remote IPv4 ranges excluding127/8. ActiveStore filters verified; loopback
   TCP tests5037/5555/2222 succeed; processes still running. No remote-host
   ingress test, no IPv6-rule coverage, no macro-state verification claimed.
@@ -1729,7 +1998,7 @@ changing desktop capture, recognition, packaging, or project documentation.
   synthetic pipeline evidence, not full real-video state reconstruction.
 
 - **2026-09-08 isolated V6 reproduction PASS:** new interpreter
-  `C:/Users/Administrator/.codex/runtimes/pokersense-v6-clean-20260908/Scripts/python.exe`.
+  `<existing-python>`.
   Use it for subsequent WPK training/replay/tests with `PYTHONPATH=src`,
   `PYTHONUTF8=1`, `PYTHONNOUSERSITE=1`; do not add shared site-packages.
   One OpenCV distribution (contrib4.10.0.84), numpy2.3.5, Python3.13.14.
@@ -1844,7 +2113,7 @@ changing desktop capture, recognition, packaging, or project documentation.
 - **2026-09-08 video-first execution:** follow `PLAN-WPK-video-first.zh-CN.md`
   for current sequencing: existing WPK recordings first, real capture-card
   acceptance last, AA later. V1 completed; V2 anchor/hand review started.
-  Private artifacts are under `G:\PokerSense_archive\wpk_video_first_20260908`.
+  Private artifacts are under `<private-archive>\wpk_video_first_20260908`.
   Full session_002 sequential decode: 17063 frames, no PTS regression.
   All 257 old labeled images matched exact source pixels (242 unique,
   15 repeated); 64 nominal source indices were wrong. Old labels/hand IDs

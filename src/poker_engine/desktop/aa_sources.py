@@ -45,11 +45,17 @@ class AACaptureSource:
     def _pump(self):
         try:
             while not self.cancel.is_set():
+                host_started = time.monotonic()
                 frame = self.backend.capture(self.target)
+                host_received = time.monotonic()
                 with self.condition:
                     self.latest = {
                         "image": frame.image, "source_frame": frame.frame_seq,
-                        "pts_seconds": time.monotonic() - self.started,
+                        "pts_seconds": host_received - self.started,
+                        "host_source_started_at": host_started,
+                        "host_source_received_at": host_received,
+                        "physical_source_timestamp": None,
+                        "source_clock": "host_monotonic_capture_call",
                         "source_kind": "capture-card"}
                     self.condition.notify_all()
         except Exception as exc:

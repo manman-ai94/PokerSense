@@ -1,5 +1,56 @@
 # PokerSense
 
+Read the [deduplicated work report and ChatGPT review brief](docs/reports/POKERSENSE-WORK-REPORT-20260928.zh-CN.md)
+for the complete capability inventory, fixed PR versions, experiment outcomes and evidence limits.
+
+The [finite V2 preflop support audit](docs/AA-PREFLOP-SUPPORT-AUDIT-20260928.zh-CN.md)
+completed all 31,941 asset checks without fitting or changing the nine policies.
+Only 2,833/28,899 constructible checks hit an exported average policy; most gaps
+were never visited, while zero/nonzero regret-only rows are reported separately.
+This is coverage of a fixed synthetic support grid, not full-hand completion,
+win rate or a live qualification. Original artifacts and all non-decisions remain.
+
+The [bounded full-hand evaluation](docs/AA-LOCAL-FULLHAND-20260928.zh-CN.md)
+is closed with **NO_GO for both local models**. Both failed public-information
+decision checks, and several complete groups deteriorated against fixed synthetic
+opponents. Of 3,780 planned pairs, 3,297 completed, 3 were blocked at batch deadlines,
+and 480 remain unexecuted; incomplete groups have no EV estimate. Independent
+review verified the full denominator and recorded actions. The earlier
+[loading/timing screen](docs/AA-LOCAL-CANDIDATE-SCREEN-20260927.zh-CN.md) remains
+engineering evidence only. No model is admitted to live advice; the two-batch
+budget is exhausted and no third batch or training has started.
+
+The AA observation page now shows a **table-settings summary and an Edit button**.
+An unconfigured table opens the form automatically. Enter blinds, ante, straddle,
+rake and cap, plus an optional usual effective-stack range in BB; unknown values
+stay blank. Settings persist locally across restarts. Cancel reloads the latest
+saved configuration; save or reset stops observation and invalidates old analysis.
+The stack range is descriptive metadata, not the current hand's stacks or a grant
+of live-policy eligibility. See [manual table settings](docs/AA-TABLE-VALIDATION-V2.zh-CN.md).
+
+The current increment is **AA engineering preview 0.2.0.dev1**. Windows packaging
+now uses the dedicated AA entry; `launch/aa/START-AA.cmd` opens its local offline UI.
+It adds ten-second turn deadline primitives, stale-result rejection, a killable
+preloaded shadow policy process, and a 6/7/8-player full-hand simulation, bounded
+MCCFR trainer and paired evaluator. **Live action advice remains disabled:** there
+is no validated production turn-time source or qualified policy asset. Physical
+end-to-end latency and empirical strategy strength remain unverified. Capture and
+model APIs are off by default; private recognition models remain external.
+See the [implementation and acceptance checklist](docs/AA-TEN-SECOND-IMPLEMENTATION.zh-CN.md),
+including the corrected attribution of this increment's short training probe.
+The original 378 failures were adapter binding errors, not measured coverage
+misses. An actual rerun after repairing the salt contract separately confirmed
+unknown information sets; see the [correction](docs/AA-EVALUATION-CORRECTION-V1.zh-CN.md).
+The [bounded study command](docs/AA-SELF-PLAY-STUDY.zh-CN.md) freezes and executes
+all nine player-count/seed configurations, retaining failures without automatic
+tuning, best-seed selection, paid calls, or live promotion.
+The [V2 readiness experiment](docs/AA-POLICY-READINESS-V2.zh-CN.md) separates
+real-policy integration, reproducible learning changes and unseen-hand execution.
+The corrected bounded run is complete: evaluation controls and reproducible
+learning changes pass, but all nine V2 candidates fail unseen-hand coverage.
+Only 345/5670 paired opportunities complete; postflop queries have zero hits.
+Training expansion stopped. See [all results and reproduction commands](docs/AA-POLICY-READINESS-RESULTS-20260927.zh-CN.md).
+
 ## AA eight-seat development monitor
 
 Critical board, participation, ALL-IN and river-first-actor candidates now carry
@@ -103,9 +154,11 @@ outside Git and packages.
 
 ## Release status
 
-The published v0.1.11 installers still use the legacy H5 path and do not contain
-the current physical capture-card work. A new installer requires capture-card
-hardware acceptance and Windows packaging checks.
+The canonical repository has no accepted new Release. Historical v0.1.11 generic
+installers do not represent the current AA product. The 0.2.0.dev1 Windows preview
+uses the AA entry and requires the complete `PokerSense-AA` folder. Installer,
+hardware, physical latency and strategy qualification are separate acceptance
+steps; an offline EXE smoke check does not establish live readiness.
 
 ## Emulator source disabled
 
@@ -131,7 +184,7 @@ a successful recording is still not calibration or strategy evidence. See the
 Normal desktop recognition processes capture-card frames in memory and discards
 them without keeping screenshots, video, or frame history. Only an explicitly
 authorized passive AA intake session writes raw video-only segments under
-`G:/PokerSense_private`. Those segments, screen names, and private identity maps
+`<private-evidence>`. Those segments, screen names, and private identity maps
 must not enter GitHub, pull requests, or packages. Private calibration captures
 remain excluded as well; only small redacted regression fixtures belong in Git.
 
@@ -148,6 +201,15 @@ explicit local archive supplied by the operator.
 ## Development
 
 Python 3.11–3.13 is supported.
+
+On Windows, `launch/aa/START-AA.cmd` uses this checkout's `.venv` first,
+then a supported system Python (including a 3.12-only installation). Source
+checkouts take precedence over old EXEs; the console shows the selected path
+and dependency errors. See the [AA launcher setup](launch/aa/README.zh-CN.md).
+
+Frozen V1/V2 research loaders and the shadow worker share strict probability
+validation. Invalid distributions are refused without repair; see the
+[probability contract](docs/AA-POLICY-READINESS-V2.zh-CN.md#冻结概率验证合同).
 
 ```bash
 # Install development dependencies
@@ -167,6 +229,9 @@ make run-desktop-server
 pip install -e ".[dev,desktop,packaging]"
 make package
 ```
+
+For the offline synthetic saved-HU query API and its validation limits, see
+[the delivery stage and entry guide](docs/HU-SAVED-DELIVERY-STAGE.zh-CN.md).
 
 The desktop composition lives in `src/poker_engine/desktop/`; the live update
 loop is in `src/poker_engine/realtime/`; platform-specific calibration is under

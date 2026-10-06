@@ -1,7 +1,7 @@
-name: Build Desktop App
+name: Build AA Windows Preview and Legacy macOS
 
-# Builds the PyInstaller desktop shell for macOS (.dmg, via create-dmg) and
-# Windows (a proper installer .exe, via Inno Setup).
+# Windows packages the AA offline preview. macOS keeps the legacy development
+# shell and is explicitly named legacy; no AA real-capture acceptance is implied.
 #
 # Runs on every push to main (so build breakage is caught immediately) and
 # can be triggered manually. Tag pushes (v*) additionally attach the built
@@ -29,6 +29,9 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-macos:
     runs-on: macos-latest
@@ -37,9 +40,9 @@ jobs:
     env:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -47,9 +50,9 @@ jobs:
         run: |
           python -m pip install -e ".[desktop,perceptual,packaging]"
 
-      - name: Build .app
+      - name: Build legacy development .app
         run: |
-          pyinstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
+          python -m PyInstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
 
       - name: Import signing certificate
         if: ${{ env.MACOS_CERTIFICATE != '' }}
@@ -106,21 +109,21 @@ jobs:
             --hide-extension "PokerSense.app" \
             --app-drop-link 425 190 \
             --no-internet-enable \
-            dist/PokerSense-macos.dmg \
+            dist/PokerSense-legacy-macos.dmg \
             dist/PokerSense.app || true
-          test -f dist/PokerSense-macos.dmg
+          test -f dist/PokerSense-legacy-macos.dmg
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PokerSense-macos
-          path: dist/PokerSense-macos.dmg
+          name: PokerSense-legacy-macos
+          path: dist/PokerSense-legacy-macos.dmg
 
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -131,7 +134,10 @@ jobs:
         run: python -c "import mss; print(mss.__version__)"
 
       - name: Build .exe
-        run: pyinstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
+        run: python -m PyInstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
+
+      - name: Check frozen AA package offline
+        run: python packaging/smoke_aa_package.py dist/PokerSense-AA/PokerSense-AA.exe --output dist/aa-package-smoke.json
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -143,8 +149,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PokerSense-windows
-          path: dist/PokerSense-Setup.exe
+          name: PokerSense-AA-windows
+          path: |
+            dist/PokerSense-AA-Setup.exe
+            dist/aa-package-smoke.json
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -159,5 +167,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/PokerSense-macos/PokerSense-macos.dmg
-            artifacts/PokerSense-windows/PokerSense-Setup.exe
+            artifacts/PokerSense-legacy-macos/PokerSense-legacy-macos.dmg
+            artifacts/PokerSense-AA-windows/PokerSense-AA-Setup.exe

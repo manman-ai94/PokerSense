@@ -24,7 +24,7 @@ from .range_tracker import (
 )
 
 
-_STATUS = {"test_only", "shadow_reviewed", "live_approved"}
+_STATUS = {"test_only", "simulation_only", "shadow_reviewed", "live_approved"}
 _ACTIONS = {"fold", "check", "call", "aggressive", "all_in"}
 
 
@@ -38,6 +38,37 @@ def _sha(value, name):
     if value != value.lower():
         raise ValueError(f"{name} must be lowercase SHA-256")
     return value
+
+
+def _identity_token(value):
+    return (isinstance(value, str) and bool(value)
+            and value == value.strip() and ":" not in value and "@" not in value)
+
+
+def parse_range_identity(source_version):
+    """Read only the fixed asset header, never identity text in a suffix."""
+    if not isinstance(source_version, str):
+        return None
+    parts = source_version.split(":")
+    if len(parts) < 5 or parts[0] != "aa-ranges-v2":
+        return None
+    fingerprint, status, asset_id, version_hash = parts[1:5]
+    version, separator, digest = version_hash.partition("@")
+    if (status not in _STATUS or not _identity_token(asset_id)
+            or not separator or not _identity_token(version)):
+        return None
+    if any(len(value) != 64 or any(c not in "0123456789abcdef" for c in value)
+           for value in (fingerprint, digest)):
+        return None
+    return fingerprint, status, asset_id, version, digest
+
+
+def is_explicitly_unbound_range(distribution, rule_fingerprint):
+    """Recognize a synthetic-only declaration, not a failed asset parse."""
+    parts = distribution.source_version.split(":", 3)
+    return (distribution.source == "unbound" and len(parts) == 4
+            and parts[:3] == ["aa-ranges-v2", rule_fingerprint, "unbound"]
+            and _identity_token(parts[3]))
 
 
 def _probability(value, name):
@@ -178,8 +209,8 @@ class AAConcreteRangeAssetV2:
         ):
             raise ValueError("AA range asset rule fingerprint mismatch")
         for name in ("asset_id", "asset_version"):
-            if not isinstance(payload[name], str) or not payload[name]:
-                raise ValueError(f"{name} must be non-empty")
+            if not _identity_token(payload[name]):
+                raise ValueError(f"{name} must be a non-empty identity token")
         if payload["asset_status"] not in _STATUS:
             raise ValueError("invalid range asset status")
         source = payload["source"]
@@ -292,7 +323,7 @@ class AAConcreteRangeAssetV2:
                 reasons=("exact_range_node_not_found",),
             )
         unit_source = (
-            f"aa-ranges-v2:{self.rule_fingerprint}:{self.asset_id}:"
+            f"aa-ranges-v2:{self.rule_fingerprint}:{self.asset_status}:{self.asset_id}:"
             f"{self.asset_version}@{self.asset_sha256}"
         )
         distribution = RangeDistribution(
@@ -329,9 +360,11 @@ class AAConcreteRangeAssetV2:
             raise TypeError("prior must be RangeDistribution")
         if not isinstance(query, AARangeQueryV2):
             raise TypeError("query must be AARangeQueryV2")
-        expected = f"aa-ranges-v2:{self.rule_fingerprint}:{self.asset_id}:"
+        expected = (self.rule_fingerprint, self.asset_status, self.asset_id,
+                    self.asset_version, self.asset_sha256)
         if (prior.seat_id != query.seat_id
-                or not prior.source_version.startswith(expected)):
+                or prior.source != self.asset_id
+                or parse_range_identity(prior.source_version) != expected):
             raise ValueError("prior is not bound to query and AA range asset")
         if action not in _ACTIONS:
             raise ValueError("unsupported observed action")
@@ -370,6 +403,13 @@ class AARangeShadowSnapshotV2:
     equity_permitted: bool
     advice_emitted: bool = False
     strategy_eligible: bool = False
+    # Old positional constructors remain valid, but incomplete identity does
+    # not authorize equity. The tracker supplies all five bound fields.
+    asset_id: str | None = None
+    asset_version: str | None = None
+    asset_sha256: str | None = None
+    asset_status: str | None = None
+    rule_fingerprint: str | None = None
 
 
 class AARangeShadowTrackerV2:
@@ -484,6 +524,10 @@ class AARangeShadowTrackerV2:
         return AARangeShadowSnapshotV2(
             self.version, distributions, blockers, tuple(self.events), readiness,
             not blockers, advice_emitted=False, strategy_eligible=False,
+            asset_id=self.asset.asset_id, asset_version=self.asset.asset_version,
+            asset_sha256=self.asset.asset_sha256,
+            asset_status=self.asset.asset_status,
+            rule_fingerprint=self.asset.rule_fingerprint,
         )
 
 
@@ -534,4 +578,5 @@ __all__ = [
     "AARangeNodeV2", "AARangeQueryV2", "AARangeReadinessV2",
     "AARangeShadowSnapshotV2", "AARangeShadowTrackerV2",
     "assess_aa_range_readiness",
+    "parse_range_identity", "is_explicitly_unbound_range",
 ]

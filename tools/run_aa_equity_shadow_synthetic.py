@@ -45,7 +45,7 @@ def rules(count):
         "rake_cap_bb": "2", "rake_application": "all_pots",
         "rake_rounding": "floor_to_chip",
         "rake_distribution": "proportional_all_pots", "minimum_chip": "1",
-        "verification_status": "live_verified",
+        "verification_status": "simulation",
         "source": "synthetic engine exercise only",
     })
 
@@ -96,12 +96,12 @@ def build_case(count):
         hero_range=None,
         villain_ranges=(
             RangeDistribution(
-                2, {"QcQd": Decimal("1")}, "synthetic",
-                f"aa-ranges-v2:{profile.fingerprint}:synthetic", confidence=1.0,
+                2, {"QcQd": Decimal("1")}, "unbound",
+                f"aa-ranges-v2:{profile.fingerprint}:unbound:synthetic", confidence=1.0,
             ),
             RangeDistribution(
-                3, {"JcJd": Decimal("1")}, "synthetic",
-                f"aa-ranges-v2:{profile.fingerprint}:synthetic", confidence=1.0,
+                3, {"JcJd": Decimal("1")}, "unbound",
+                f"aa-ranges-v2:{profile.fingerprint}:unbound:synthetic", confidence=1.0,
             ),
         ),
         input_quality=ContextQuality(1.0),
@@ -111,7 +111,8 @@ def build_case(count):
         effective_stack_bb=Decimal("50"),
     )
     return evaluate_aa_equity_shadow(
-        context, profile, plan, opening, now=NOW, allow_untracked_ranges=True
+        context, profile, plan, opening, now=NOW, allow_untracked_ranges=True,
+        allow_simulation=True,
     )
 
 
@@ -122,6 +123,7 @@ def run(output):
         results.append({
             "player_count": count,
             "status": value.status.value,
+            "reasons": list(value.reasons),
             "method": value.equity_report.method.value,
             "gross_expected_chips": str(value.gross_expected_chips),
             "configured_net_expected_chips": str(

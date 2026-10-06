@@ -13,6 +13,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 AMOUNTS = ("small_blind", "big_blind", "ante", "straddle_amount",
            "rake_percent", "rake_cap_bb", "minimum_chip")
+STACK_RANGE = ("common_effective_stack_min_bb", "common_effective_stack_max_bb")
 OPTIONS = {
     "straddle_mode": ("unknown", "none", "mandatory_utg", "optional_explicit_utg"),
     "rake_application": ("unknown", "all_pots", "postflop_only"),
@@ -26,7 +27,26 @@ OPTIONS = {
 
 def empty_config():
     return {"table_label": "", "dealt_players": None,
-            **dict.fromkeys(AMOUNTS), **dict.fromkeys(OPTIONS, "unknown")}
+            **dict.fromkeys(AMOUNTS), **dict.fromkeys(OPTIONS, "unknown"),
+            **dict.fromkeys(STACK_RANGE)}
+
+
+def _normalize_config(document, current=None):
+    """Only the optional range metadata may be absent in legacy documents."""
+    expected = set(empty_config())
+    required = expected - set(STACK_RANGE)
+    if (not isinstance(document, dict) or not required <= set(document)
+            or not set(document) <= expected):
+        raise ValueError("AA 规则必须包含完整表单字段")
+    defaults = current if current is not None else empty_config()
+    return {**document, **{key: document.get(key, defaults[key])
+                           for key in STACK_RANGE}}
+
+
+def _rule_document(document):
+    # Preserve the source identity of existing rules, including table_label.
+    # Common stack ranges describe usual tables, never this hand's stacks.
+    return {key: value for key, value in document.items() if key not in STACK_RANGE}
 
 
 def revision(document):
@@ -36,8 +56,7 @@ def revision(document):
 
 
 def validate_config(document):
-    if not isinstance(document, dict) or set(document) != set(empty_config()):
-        raise ValueError("AA 规则必须包含完整表单字段")
+    document = _normalize_config(document)
     label = document["table_label"]
     if not isinstance(label, str) or len(label) > 100:
         raise ValueError("牌桌备注不能超过 100 字")
@@ -46,11 +65,11 @@ def validate_config(document):
         raise ValueError("发牌人数必须为 6、7、8 或未知")
     amounts = {}
     pending = ["dealt_players"] if count is None else []
-    for key in AMOUNTS:
+    for key in AMOUNTS + STACK_RANGE:
         value = document[key]
         if value is None:
             amounts[key] = None
-            if key != "straddle_amount":
+            if key in AMOUNTS and key != "straddle_amount":
                 pending.append(key)
             continue
         if not isinstance(value, str) or not value or len(value) > 32:
@@ -62,11 +81,17 @@ def validate_config(document):
         if (not number.is_finite() or number < 0 or number > Decimal('1e12')
                 or number.as_tuple().exponent < -8):
             raise ValueError(f"{key}: 金额必须有限、非负，最多八位小数")
-        if key in ("small_blind", "big_blind", "minimum_chip") and number <= 0:
+        if (key in ("small_blind", "big_blind", "minimum_chip") + STACK_RANGE
+                and number <= 0):
             raise ValueError(f"{key}: 必须大于零")
         if key == "rake_percent" and number > 100:
             raise ValueError("抽水百分比必须在 0–100 之间；3 表示 3%")
         amounts[key] = number
+    lower, upper = (amounts[key] for key in STACK_RANGE)
+    if (lower is None) != (upper is None):
+        raise ValueError("常见有效筹码范围请同时填写上下限，或全部留空")
+    if lower is not None and lower > upper:
+        raise ValueError("常见有效筹码下限不能大于上限")
     for key, choices in OPTIONS.items():
         if document[key] not in choices:
             raise ValueError(f"{key}: 不支持的选项")
@@ -98,7 +123,7 @@ def validate_config(document):
                 "straddle_mode", "rake_application", "rake_rounding",
                 "rake_distribution")},
             "verification_status": "simulation",
-            "source": "manual-table-settings:" + revision(document),
+            "source": "manual-table-settings:" + revision(_rule_document(document)),
         })
     return {"document": document, "revision": revision(document),
             "source": "MANUAL_DECLARATION", "pending_fields": pending,
@@ -122,10 +147,11 @@ class AATableConfigStore:
             return validate_config(json.loads(json.dumps(self.document)))
 
     def save(self, document, expected_revision):
-        result = validate_config(document)
         with self.lock:
             if expected_revision != revision(self.document):
                 raise ValueError("规则已被其他页面修改，请刷新后重试")
+            document = _normalize_config(document, current=self.document)
+            result = validate_config(document)
             text = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2)
             if self.path:
                 self.path.parent.mkdir(parents=True, exist_ok=True)

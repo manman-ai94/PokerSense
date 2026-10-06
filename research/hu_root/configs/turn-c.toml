@@ -1,0 +1,48 @@
+board = "Jh 8h 4c 2d"
+oop_range = "AcAd:1,AcAh:1,AcAs:1,AdAh:1,AdAs:1,AhAs:1,JcAc:0.5,JcJd:1,JcJs:1,JdAd:0.5,JdJs:1,JsAs:0.5,KcAc:1,KcKd:1,KcKh:1,KcKs:1,KdAd:1,KdKh:1,KdKs:1,KhAh:1,KhKs:1,KsAs:1,QcAc:1,QcKc:0.5,QcQd:1,QcQh:1,QcQs:1,QdAd:1,QdKd:0.5,QdQh:1,QdQs:1,QhAh:1,QhKh:0.5,QhQs:1,QsAs:1,QsKs:0.5"
+ip_range = "9c9d:1,9c9h:1,9c9s:1,9d9h:1,9d9s:1,9h9s:1,JcAc:1,JcJd:1,JcJs:1,JcQc:0.5,JdAd:1,JdJs:1,JdQd:0.5,JsAs:1,JsQs:0.5,QcAc:1,QcKc:0.5,QcQd:1,QcQh:1,QcQs:1,QdAd:1,QdKd:0.5,QdQh:1,QdQs:1,QhAh:1,QhKh:0.5,QhQs:1,QsAs:1,QsKs:0.5,TcAc:0.5,TcJc:0.5,TcTd:1,TcTh:1,TcTs:1,TdAd:0.5,TdJd:0.5,TdTh:1,TdTs:1,ThAh:0.5,ThTs:1,TsAs:0.5,TsJs:0.5"
+effective_stack = 80.0
+starting_pot = 20.0
+allin_threshold = 100.0
+raise_cap = 1
+target_exploitability = 0.5
+max_iterations = 2000
+alpha = 1.5
+beta = 0.0
+gamma = 2.0
+turn_chance_sampling = false
+regret_floor = false
+
+[rake]
+percent = 0.0
+cap = 0.0
+
+[sizings.oop.flop]
+bet = { percents = [], allin = false }
+raise = { percents = [], allin = false }
+donk = { percents = [], allin = false }
+
+[sizings.oop.turn]
+bet = { percents = [50.0, 100.0], allin = true }
+raise = { percents = [100.0], allin = true }
+donk = { percents = [50.0, 100.0], allin = true }
+
+[sizings.oop.river]
+bet = { percents = [50.0, 100.0], allin = true }
+raise = { percents = [100.0], allin = true }
+donk = { percents = [50.0, 100.0], allin = true }
+
+[sizings.ip.flop]
+bet = { percents = [], allin = false }
+raise = { percents = [], allin = false }
+donk = { percents = [], allin = false }
+
+[sizings.ip.turn]
+bet = { percents = [50.0, 100.0], allin = true }
+raise = { percents = [100.0], allin = true }
+donk = { percents = [], allin = false }
+
+[sizings.ip.river]
+bet = { percents = [50.0, 100.0], allin = true }
+raise = { percents = [100.0], allin = true }
+donk = { percents = [], allin = false }

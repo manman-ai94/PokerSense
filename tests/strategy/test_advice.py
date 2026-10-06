@@ -20,6 +20,7 @@ from poker_engine.strategy.provider import (
     MatchKind,
 )
 from poker_engine.strategy.router import RouteResult
+from poker_engine.strategy.safety import GateResult, GateStatus
 from poker_engine.strategy.serialization import (
     strategy_deserialize,
     strategy_serialize,
@@ -42,6 +43,48 @@ def test_ready_advice_contains_source_actions_evidence_and_expiry():
     assert advice.ev_gap.value == Decimal("1.25")
     assert advice.evidence
     assert advice.expires_at == ctx.request.expires_at
+
+
+@pytest.mark.parametrize("with_math", [False, True])
+def test_frequency_only_source_abstains_at_shared_advice_gate(with_math):
+    ctx = context()
+    value = replace(candidate(ctx), assumptions=("frequency_only_not_execution",))
+    advice = build_advice(
+        ctx, _route(value), now=NOW,
+        math_report={"equity": Decimal("0.47")} if with_math else None,
+        hard_gates=(GateResult("caller_qualification", GateStatus.PASS),),
+    )
+    assert advice.status is AdviceStatus.ABSTAIN
+    assert advice.rejection_reasons == ("declared_model_frequency_only",)
+    assert not advice.action_probabilities and not advice.action_options
+    assert not advice.recommended_sizes and not advice.action_ev
+    assert advice.preferred_action is None and advice.ev_gap is None
+    assert next(g for g in advice.gate_results if g.name == "strategy_source") == (
+        GateResult("strategy_source", GateStatus.FAIL,
+                   ("declared_model_frequency_only",))
+    )
+    assert strategy_deserialize(Advice, strategy_serialize(advice)) == advice
+
+
+def test_unrestricted_zero_confidence_source_keeps_existing_advice_behavior():
+    ctx = context()
+    value = replace(candidate(ctx), confidence=0, state_match_score=0,
+                    match_kind=MatchKind.HEURISTIC)
+    advice = build_advice(
+        ctx, RouteResult(LookupState.HIT_APPROXIMATE, value, ()), now=NOW,
+    )
+    assert advice.status is AdviceStatus.READY
+    assert advice.action_probabilities and advice.preferred_action is not None
+    assert advice.confidence == 0
+
+
+def test_frequency_only_source_preserves_stale_request_precedence():
+    ctx = context()
+    value = replace(candidate(ctx), assumptions=("frequency_only_not_execution",))
+    advice = build_advice(ctx, _route(value), now=ctx.request.expires_at)
+    assert advice.status is AdviceStatus.STALE
+    assert advice.rejection_reasons == ("expired_request",)
+    assert not advice.action_options and advice.preferred_action is None
 
 
 def test_match_dimensions_survive_advice_serialization_round_trip():

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poker-engine"
-version = "0.1.11"
+version = "0.2.0.dev1"
 description = "PokerSense - Android table training companion and analysis engine"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
