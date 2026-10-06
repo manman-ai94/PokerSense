@@ -14,6 +14,9 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 LAUNCH = ROOT / "launch/aa"
+# These tests check routing and exit codes, not speed. A cold CI runner can
+# take over 30 s to import the desktop dependencies through system Python.
+LAUNCH_TIMEOUT = 120
 SPEC = importlib.util.spec_from_file_location(
     "aa_source_launcher", LAUNCH / "source_launcher.py")
 launcher = importlib.util.module_from_spec(SPEC)
@@ -137,7 +140,7 @@ def test_real_source_self_check_from_other_directory(tmp_path):
     result = subprocess.run(
         [sys.executable, str(LAUNCH / "source_launcher.py"), "--self-check",
          "--state", str(state)], cwd=tmp_path, capture_output=True, text=True,
-        timeout=30)
+        timeout=LAUNCH_TIMEOUT)
     assert result.returncode == 0, result.stdout + result.stderr
     assert str(ROOT / "packaging/aa_live_entry.py") in result.stdout
     report = json.loads(result.stdout[result.stdout.index("{"):])
@@ -169,7 +172,7 @@ def test_actual_source_argument_and_exit_code_preservation(tmp_path):
     args = ["--version", "--state", str(tmp_path / "状态 with spaces")]
     result = subprocess.run(
         [sys.executable, str(root / "launch/aa/source_launcher.py"), *args],
-        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+        cwd=tmp_path, capture_output=True, text=True, timeout=LAUNCH_TIMEOUT,
         env={**os.environ, "PYTHONUTF8": "1"})
     assert result.returncode == 17, result.stdout + result.stderr
     report = json.loads(result.stdout.splitlines()[-1])
@@ -183,7 +186,7 @@ def run_cmd(path, arguments, cwd, env=None):
     invocation = subprocess.list2cmdline([str(path), *arguments])
     command = f'"{os.environ["COMSPEC"]}" /d /s /c "{invocation}"'
     return subprocess.run(command, cwd=cwd, env=env, capture_output=True,
-                          text=True, encoding="utf-8", timeout=30)
+                          text=True, encoding="utf-8", timeout=LAUNCH_TIMEOUT)
 
 
 @WINDOWS
