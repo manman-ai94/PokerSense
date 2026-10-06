@@ -81,8 +81,20 @@ def test_bad_money_cards_or_opponent_count_reject(cards, pot, cost, n):
         river_payoff_bounds(cards, BOARD, pot, cost, n)
 
 
-def test_button_price_requires_positive_controls_actor_and_stability(monkeypatch):
+def green_button(*bands):
+    """Hero's green button with white text blocks at (top, bottom, left, right)."""
     image = np.zeros((1080, 498, 3), dtype=np.uint8)
+    cv2.circle(image, (369, 875), 44, (60, 200, 40), -1)
+    for top, bottom, left, right in bands:
+        image[top:bottom + 1, left:right + 1] = 255
+    return image
+
+
+CALL_BUTTON = ((857, 871, 360, 378), (881, 892, 355, 383))   # amount over "跟注"
+
+
+def test_button_price_requires_positive_controls_actor_and_stability(monkeypatch):
+    image = green_button(*CALL_BUTTON)
     bank = SimpleNamespace(
         diagnose=lambda patch: GrayRead("260", "260", "candidate", ()))
     reader = aa_hero_controls.AAHeroControls(bank)
@@ -98,6 +110,43 @@ def test_button_price_requires_positive_controls_actor_and_stability(monkeypatch
     assert reader.observe(image, row)["call_amount"] is None
     row.update(frame=5, current_actor=4, special_modes={"insurance": "VISIBLE"})
     assert reader.observe(image, row)["visible"] is False
+
+
+@pytest.mark.parametrize("bands, button, amount", [
+    (((867, 881, 345, 393),), "check", "0"),                        # "让牌"
+    (((868, 880, 350, 362), (868, 880, 366, 367), (868, 880, 371, 372),
+      (868, 880, 377, 390)), "all_in", "150"),                     # "All in"
+])
+def test_check_and_all_in_buttons_give_their_call_amount(monkeypatch, bands,
+                                                         button, amount):
+    bank = SimpleNamespace(diagnose=lambda patch: pytest.fail("no digits to read"))
+    reader = aa_hero_controls.AAHeroControls(bank)
+    monkeypatch.setattr(aa_hero_controls, "hero_turn_candidate",
+                        lambda image: {"hero_turn": True})
+    image = green_button(*bands)
+    row = {"frame": 0, "scene_supported": True, "current_actor": 4,
+           "stacks": {"4": {"value": "150"}}}
+    assert reader.observe(image, row)["button"] == button
+    row["frame"] = 1
+    result = reader.observe(image, row)
+    assert result["call_amount"] == amount and result["price_confirmed"] is True
+    assert result["all_in_call"] is (button == "all_in")
+    if button == "all_in":
+        row.update(frame=2, stacks={})
+        assert reader.observe(image, row)["reason"] == "all_in_stack_unknown"
+
+
+def test_button_text_reads_digits_at_stack_height_and_ignores_rim_specks():
+    image = green_button(*CALL_BUTTON)
+    image[846:848, 349:351] = 255                   # rim speck near the edge
+    text = aa_hero_controls.button_text(image)
+    assert text["kind"] == "call"
+    assert text["digits"].shape[0] == round(21 * 12 / 15)  # 15-row digits -> 12
+    assert text["digits"].max() == 255 and text["digits"][0].max() < 255
+    assert aa_hero_controls.button_text(green_button())["kind"] is None
+    off_centre = green_button((882, 892, 355, 383))
+    assert aa_hero_controls.button_text(off_centre) == {
+        "kind": None, "reason": "unexpected_button_text"}
 
 
 def test_positive_empty_plus_cannot_override_visible_money():

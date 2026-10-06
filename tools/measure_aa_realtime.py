@@ -139,6 +139,8 @@ def summarize(rows):
         "call_amount_read_on_hero_turn": _fraction(
             sum(f["hero_controls"].get("call_amount") is not None
                 for f in hero_turn), len(hero_turn)),
+        "hero_turn_buttons": dict(Counter(
+            str(f["hero_controls"].get("button")) for f in hero_turn)),
         "table_math": table_math,
     }
 

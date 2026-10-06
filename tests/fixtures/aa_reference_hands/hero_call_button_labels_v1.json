@@ -1,0 +1,371 @@
+{
+ "schema_version": 1,
+ "status": "AI_VISUAL_LABELS_NOT_HUMAN_REVIEWED",
+ "role": "development",
+ "method": "Every time the reader saw the Hero as actor (every 3rd frame), the green action button was cropped every 0.5 s; Claude read each crop by eye. A span is one Hero turn; the button does not change within it.",
+ "legend": {
+  "<digits>": "amount to call shown above 跟注",
+  "check": "让牌 (nothing to call)",
+  "all_in": "All in (calling takes the whole stack)",
+  "none": "no green button visible"
+ },
+ "independence": "Both recordings are development data (9/9 outside 300-820 s, and 9/17); the button reader's thresholds were set on them. No independent recording with Hero buttons exists yet (spectating shows none).",
+ "recordings": {
+  "aa_phone_record_20260909_031030_54322c62": {
+   "exclude": [
+    "300-820"
+   ],
+   "turns": [
+    {
+     "from": 48.77,
+     "to": 51.27,
+     "button": "18"
+    },
+    {
+     "from": 76.77,
+     "to": 78.77,
+     "button": "check"
+    },
+    {
+     "from": 95.67,
+     "to": 99.17,
+     "button": "check"
+    },
+    {
+     "from": 103.87,
+     "to": 104.87,
+     "button": "all_in"
+    },
+    {
+     "from": 112.67,
+     "to": 113.67,
+     "button": "4"
+    },
+    {
+     "from": 134.26,
+     "to": 139.86,
+     "button": "38"
+    },
+    {
+     "from": 186.85,
+     "to": 190.45,
+     "button": "25"
+    },
+    {
+     "from": 228.25,
+     "to": 229.85,
+     "button": "24"
+    },
+    {
+     "from": 298.44,
+     "to": 299.94,
+     "button": "24"
+    },
+    {
+     "from": 871.88,
+     "to": 874.48,
+     "button": "check"
+    },
+    {
+     "from": 893.48,
+     "to": 896.48,
+     "button": "check"
+    },
+    {
+     "from": 903.08,
+     "to": 911.18,
+     "button": "88"
+    },
+    {
+     "from": 924.18,
+     "to": 925.68,
+     "button": "4"
+    },
+    {
+     "from": 941.07,
+     "to": 943.07,
+     "button": "check"
+    }
+   ]
+  },
+  "aa-live-20260917-0430.mkv": {
+   "turns": [
+    {
+     "from": 28.37,
+     "to": 28.87,
+     "button": "27"
+    },
+    {
+     "from": 31.47,
+     "to": 32.47,
+     "button": "check"
+    },
+    {
+     "from": 34.87,
+     "to": 35.37,
+     "button": "all_in"
+    },
+    {
+     "from": 52.47,
+     "to": 53.47,
+     "button": "2"
+    },
+    {
+     "from": 61.87,
+     "to": 62.37,
+     "button": "check"
+    },
+    {
+     "from": 70.57,
+     "to": 71.57,
+     "button": "check"
+    },
+    {
+     "from": 91.57,
+     "to": 92.57,
+     "button": "21"
+    },
+    {
+     "from": 115.77,
+     "to": 119.77,
+     "button": "4"
+    },
+    {
+     "from": 298.47,
+     "to": 304.47,
+     "button": "6"
+    },
+    {
+     "from": 337.77,
+     "to": 339.27,
+     "button": "14"
+    },
+    {
+     "from": 344.17,
+     "to": 344.67,
+     "button": "check"
+    },
+    {
+     "from": 354.97,
+     "to": 356.47,
+     "button": "37"
+    },
+    {
+     "from": 374.97,
+     "to": 378.97,
+     "button": "3"
+    },
+    {
+     "from": 389.27,
+     "to": 389.77,
+     "button": "4"
+    },
+    {
+     "from": 417.57,
+     "to": 418.57,
+     "button": "4"
+    },
+    {
+     "from": 456.37,
+     "to": 456.87,
+     "button": "2"
+    },
+    {
+     "from": 462.67,
+     "to": 464.17,
+     "button": "3"
+    },
+    {
+     "from": 470.87,
+     "to": 471.87,
+     "button": "check"
+    },
+    {
+     "from": 474.97,
+     "to": 475.47,
+     "button": "105"
+    },
+    {
+     "from": 480.47,
+     "to": 480.97,
+     "button": "4"
+    },
+    {
+     "from": 487.07,
+     "to": 487.57,
+     "button": "4"
+    },
+    {
+     "from": 492.97,
+     "to": 492.97,
+     "button": "15"
+    },
+    {
+     "from": 495.07,
+     "to": 495.07,
+     "button": "check"
+    },
+    {
+     "from": 498.17,
+     "to": 498.17,
+     "button": "check"
+    },
+    {
+     "from": 502.67,
+     "to": 502.67,
+     "button": "check"
+    },
+    {
+     "from": 512.67,
+     "to": 518.67,
+     "button": "14"
+    },
+    {
+     "from": 521.47,
+     "to": 522.47,
+     "button": "check"
+    },
+    {
+     "from": 543.37,
+     "to": 544.37,
+     "button": "check"
+    },
+    {
+     "from": 547.97,
+     "to": 556.47,
+     "button": "check"
+    },
+    {
+     "from": 563.77,
+     "to": 564.27,
+     "button": "19"
+    },
+    {
+     "from": 565.67,
+     "to": 566.17,
+     "button": "check"
+    },
+    {
+     "from": 571.47,
+     "to": 572.47,
+     "button": "22"
+    },
+    {
+     "from": 583.17,
+     "to": 584.17,
+     "button": "check"
+    },
+    {
+     "from": 594.67,
+     "to": 595.17,
+     "button": "84"
+    },
+    {
+     "from": 600.67,
+     "to": 601.17,
+     "button": "check"
+    },
+    {
+     "from": 605.57,
+     "to": 609.07,
+     "button": "check"
+    },
+    {
+     "from": 622.47,
+     "to": 625.47,
+     "button": "26"
+    },
+    {
+     "from": 643.07,
+     "to": 651.07,
+     "button": "4"
+    },
+    {
+     "from": 660.57,
+     "to": 662.07,
+     "button": "32"
+    },
+    {
+     "from": 669.57,
+     "to": 671.57,
+     "button": "96"
+    },
+    {
+     "from": 682.67,
+     "to": 683.67,
+     "button": "4"
+    },
+    {
+     "from": 723.77,
+     "to": 731.77,
+     "button": "4"
+    },
+    {
+     "from": 763.07,
+     "to": 764.57,
+     "button": "27"
+    },
+    {
+     "from": 767.07,
+     "to": 770.07,
+     "button": "116"
+    },
+    {
+     "from": 774.07,
+     "to": 774.57,
+     "button": "check"
+    },
+    {
+     "from": 777.87,
+     "to": 781.87,
+     "button": "153"
+    },
+    {
+     "from": 807.57,
+     "to": 812.07,
+     "button": "25"
+    },
+    {
+     "from": 823.07,
+     "to": 825.07,
+     "button": "3"
+    },
+    {
+     "from": 831.57,
+     "to": 832.57,
+     "button": "check"
+    },
+    {
+     "from": 843.47,
+     "to": 844.47,
+     "button": "check"
+    },
+    {
+     "from": 855.77,
+     "to": 857.77,
+     "button": "check"
+    },
+    {
+     "from": 873.57,
+     "to": 874.57,
+     "button": "4"
+    },
+    {
+     "from": 884.17,
+     "to": 885.17,
+     "button": "27"
+    },
+    {
+     "from": 891.47,
+     "to": 892.47,
+     "button": "none"
+    },
+    {
+     "from": 894.47,
+     "to": 894.47,
+     "button": "none"
+    }
+   ]
+  }
+ }
+}

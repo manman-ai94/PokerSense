@@ -137,7 +137,8 @@ def _pot_odds(payload):
         return _unavailable("nothing_to_call")
     return {"available": True, "call": str(call), "pot": str(pot),
             "required_equity": float(call / (pot + call)),
-            "ratio": float(pot / call), "basis": "displayed_pot_and_call"}
+            "ratio": float(pot / call), "all_in": controls.get("button") == "all_in",
+            "basis": "displayed_pot_and_call"}
 
 
 def _spr(payload, states):
