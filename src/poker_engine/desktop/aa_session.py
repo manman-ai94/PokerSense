@@ -262,6 +262,9 @@ def frame_summary(payload):
     cards = payload.get("cards") or {}
     observed = payload.get("observed_state_v2") or {}
     controls = payload.get("hero_controls_v1") or {}
+    legacy = {slot: (value or {}).get("state") for slot, value in (
+        observed.get("participants") or {}).items()}
+    seats = (payload.get("seat_states_v1") or {}).get("seats")
     return {
         "scene_supported": payload.get("scene_supported"),
         "hero": cards.get("hero"),
@@ -270,8 +273,9 @@ def frame_summary(payload):
         "pot": (payload.get("pot") or {}).get("value"),
         "actor": payload.get("current_actor"),
         "dealer": payload.get("dealer_seat"),
-        "participants": {slot: (value or {}).get("state") for slot, value in (
-            observed.get("participants") or {}).items()},
+        "participants": legacy if seats is None else {
+            slot: (value or {}).get("state") for slot, value in seats.items()},
+        "participants_legacy": legacy,
         "stacks": {slot: (value or {}).get("value") for slot, value in (
             payload.get("stacks") or {}).items()},
         "hero_controls": {key: controls.get(key)

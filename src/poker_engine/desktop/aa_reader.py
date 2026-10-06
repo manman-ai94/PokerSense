@@ -17,6 +17,7 @@ import uuid
 import numpy as np
 
 from ..data_paths import resolve_legacy_path
+from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
 from .aa_semantics import AAObservationSemantics
 
 
@@ -152,6 +153,12 @@ def _create_candidate(spec):
     state.adapter = LiveStateAdapterV3()
     state.hand_ledger = LiveHandLedger()
     state.causal_wagers = LiveCausalWagers()
+    from tools.aa8_action_transfer import inventory, load
+    source = Path(spec["source"])
+    pool = inventory(source, spec["audit"])
+    icon = icon_template([load(source, pool[frame]) for frame in (1320, 1500)],
+                         state.profile)
+    state.seats = SeatCueRecorder(state.seats, icon)
     return state
 
 
@@ -209,6 +216,7 @@ class AA8Reader:
         self._last = None
         self._invalidated = False
         self._semantics = AAObservationSemantics()
+        self._seat_states = AASeatStates()
         from .aa_critical_perception import CriticalPerceptionBoundary
         self._critical = CriticalPerceptionBoundary()
 
@@ -237,10 +245,17 @@ class AA8Reader:
                 self._state = _copy_candidate(self._initial)
                 self._semantics.reset()
                 self._critical.reset()
+                self._seat_states.reset()
             self._state.audit = source
             current_hash = hashlib.sha256(image.tobytes()).hexdigest()
+            seats = getattr(self._state, "seats", None)
+            if isinstance(seats, SeatCueRecorder):
+                seats.last = None
             row = self._state.read(image, frame, {
                 "pts_seconds": pts, "sha256": current_hash})
+            row["seat_cues_v1"] = (seats.last if isinstance(seats, SeatCueRecorder)
+                                   else None)
+            row["seat_states_v1"] = self._seat_states.observe(row, pts)
             row.update(
                 source_id=source, training_audit_sha256=self._initial.audit,
                 observation_sequence=frame, reader_gap_reset=reset,

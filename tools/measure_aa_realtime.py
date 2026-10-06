@@ -95,6 +95,15 @@ def summarize(rows):
             all(f["participants"].get(slot) in KNOWN_STATES for slot in SLOTS)
             for f in fields),
     }
+    hero_frames = [f for f in fields if len(_known_cards(f["hero"])) == 2]
+    with_actor = [f for f in hero_frames if isinstance(f["actor"], int)]
+    hero_in_hand = [f for f in hero_frames
+                    if f["participants"].get("4") in ("active", "all_in")]
+
+    def all_known(frames):
+        return _fraction(sum(all(f["participants"].get(slot) in KNOWN_STATES
+                                 for slot in SLOTS) for f in frames), len(frames))
+
     math_rows = [f["table_math"] or {} for f in fields]
     table_math = {}
     for key in ("equity", "pot_odds", "spr"):
@@ -118,6 +127,14 @@ def summarize(rows):
             "table_math": percentiles([t.get("math_ms", 0) for t in timing]),
         },
         "coverage": {key: _fraction(value, total) for key, value in coverage.items()},
+        "all_participants_known": {
+            "hero_card_frames": all_known(hero_frames),
+            "hero_card_frames_with_actor": all_known(with_actor),
+            "hero_turn_frames": all_known(hero_turn),
+        },
+        "equity_available_hero_in_hand": _fraction(
+            sum(((f["table_math"] or {}).get("equity") or {}).get("available") is True
+                for f in hero_in_hand), len(hero_in_hand)),
         "hero_turn_frames": len(hero_turn),
         "call_amount_read_on_hero_turn": _fraction(
             sum(f["hero_controls"].get("call_amount") is not None
@@ -135,7 +152,7 @@ def _nearest(rows, pts, tolerance):
 
 
 def _verdict(expected, actual):
-    if actual is None:
+    if actual is None or actual == "unknown":
         return "unknown"
     return "correct" if actual == expected else "wrong"
 
@@ -156,11 +173,11 @@ def compare_gold(rows, gold, tolerance=0.2):
         got, fields = row["fields"], point["fields"]
         checks = {}
 
-        def check(name, expected, actual):
+        def check(name, expected, actual, key=None):
             verdict = _verdict(expected, actual)
             results[name][verdict] += 1
             if verdict != "correct":
-                checks[name] = {"expected": expected, "actual": actual}
+                checks[key or name] = {"expected": expected, "actual": actual}
 
         if fields["hero_cards"]["status"] == "KNOWN":
             hero = got["hero"] if len(_known_cards(got["hero"])) == 2 else None
@@ -177,10 +194,11 @@ def compare_gold(rows, gold, tolerance=0.2):
             check("actor", fields["actor"]["value"], got["actor"])
         for slot, value in (fields["stacks"].get("value") or {}).items():
             if isinstance(value, str):
-                check("stacks", value, got["stacks"].get(slot))
+                check("stacks", value, got["stacks"].get(slot), f"stacks:{slot}")
         for slot, value in (fields["participation"].get("value") or {}).items():
             if value is not None:
-                check("participation", value, got["participants"].get(slot))
+                check("participation", value, got["participants"].get(slot),
+                      f"participation:{slot}")
         details.append({"pts": pts, "matched_video_pts": row["source_video_pts"],
                         "mismatches": checks})
     return {"fields": {name: dict(counts) for name, counts in results.items()},

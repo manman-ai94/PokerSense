@@ -153,6 +153,30 @@ def test_gap_or_source_change_resets_without_reloading_factory(
     assert len(calls) == 1
 
 
+class SeatCandidate(Candidate):
+    """Readable table where seat 2 shows the fold badge only at time zero."""
+
+    def read(self, image, frame, sample):
+        row = super().read(image, frame, sample)
+        fold = sample["pts_seconds"] == 0
+        row.update(scene_supported=True, special_modes={},
+                   glyphs={str(i): "fold" if i == 2 and fold else None
+                           for i in range(8)})
+        return row
+
+
+def test_seat_states_follow_reads_and_reset_on_gaps(profile, image):
+    reader = AA8Reader(profile, factory=SeatCandidate)
+    first = reader.read(image, 0, {"pts_seconds": 0, "source_id": "session"})
+    assert first["seat_cues_v1"] is None   # test candidate has no seat reader
+    assert first["seat_states_v1"]["seats"]["2"]["state"] == "folded"
+    held = reader.read(image, 1, {"pts_seconds": .5, "source_id": "session"})
+    assert held["seat_states_v1"]["seats"]["2"]["state"] == "folded"
+    after_gap = reader.read(image, 5, {"pts_seconds": .6, "source_id": "session"})
+    assert after_gap["reader_gap_reset"] is True
+    assert after_gap["seat_states_v1"]["seats"]["2"]["state"] == "unknown"
+
+
 def test_insurance_suspends_streak(profile, image):
     reader = AA8Reader(profile, factory=Candidate)
     reader.read(image, 0, {"pts_seconds": 0})
