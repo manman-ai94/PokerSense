@@ -1,0 +1,86 @@
+"""All-in EV: score a hand by its expected result when the board runs out.
+
+When betting closes with two or more players and board cards still to come
+(an all-in), the remaining cards change who wins but nobody decides anything
+more. Replacing the actual runout with the average over every possible
+runout removes that luck without biasing the result. One or two cards to
+come are enumerated exactly; a preflop all-in averages over sampled boards.
+"""
+
+from __future__ import annotations
+
+from itertools import combinations
+import random
+
+from phevaluator import evaluate_cards
+
+from .strength import DECK
+
+SHOWN = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+RUNOUT_SAMPLES = 2000
+
+
+def settle(contributions, ranks):
+    """Net result per player for one runout; ``ranks`` covers players in the hand.
+
+    Pots are built in layers of equal contribution, as the arena does: a layer
+    only one player paid into goes back to that player, every other layer is
+    split between the best hands among the players still in it.
+    """
+    credits = [0.0] * len(contributions)
+    prior = 0.0
+    for threshold in sorted(set(contributions)):
+        payers = [i for i, value in enumerate(contributions) if value >= threshold]
+        amount = (threshold - prior) * len(payers)
+        prior = threshold
+        if not amount:
+            continue
+        if len(payers) == 1:
+            credits[payers[0]] += amount
+            continue
+        eligible = [i for i in payers if i in ranks]
+        if not eligible:
+            raise ValueError("pot has no player still in the hand")
+        best = min(ranks[i] for i in eligible)
+        winners = [i for i in eligible if ranks[i] == best]
+        for i in winners:
+            credits[i] += amount / len(winners)
+    return [credits[i] - contributions[i] for i in range(len(contributions))]
+
+
+def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
+    """Expected return per seat (chips) for an all-in runout, else None."""
+    if not arena.terminal:
+        raise ValueError("hand is not finished")
+    if arena.rules.rake_percent:
+        raise ValueError("all-in EV supports rake-free tables only")
+    seats, history = arena._seats, arena._history
+    alive = [i for i, seat in enumerate(seats) if seat not in arena._folded]
+    if len(alive) < 2 or not history:
+        return None
+    board = [repr(card) for row in arena._state.board_cards for card in row]
+    shown = SHOWN[history[-1]["street"]]
+    if shown >= len(board):
+        return None
+    known = board[:shown]
+    holes = [[repr(card) for card in hole] for hole in arena._holes]
+    dead = {card for hole in holes for card in hole} | set(known)
+    deck = [card for card in DECK if card not in dead]
+    need = 5 - shown
+    if need <= 2:
+        runouts = list(combinations(deck, need))
+    else:
+        rng = random.Random(seed)
+        runouts = [rng.sample(deck, need) for _ in range(samples)]
+    contributions = [float(value) for value in arena._contributions]
+    totals = [0.0] * len(seats)
+    for extra in runouts:
+        full = known + list(extra)
+        ranks = {i: evaluate_cards(*holes[i], *full) for i in alive}
+        for i, value in enumerate(settle(contributions, ranks)):
+            totals[i] += value
+    unit = float(arena.rules.minimum_chip)
+    return {seat: totals[i] / len(runouts) * unit for i, seat in enumerate(seats)}
+
+
+__all__ = ["RUNOUT_SAMPLES", "runout_ev", "settle"]

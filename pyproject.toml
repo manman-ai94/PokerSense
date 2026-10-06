@@ -62,6 +62,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "poker_engine.strategy.assets" = ["*.json", "*.md"]
+"poker_engine.scoreboard" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

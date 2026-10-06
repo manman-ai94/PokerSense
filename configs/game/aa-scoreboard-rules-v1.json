@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "table_size": 8,
+  "small_blind": "1",
+  "big_blind": "2",
+  "ante": "2",
+  "ante_mode": "per_dealt_player",
+  "straddle_mode": "mandatory_utg",
+  "straddle_amount": "4",
+  "rake_percent": "0",
+  "rake_cap_bb": "0",
+  "rake_application": "all_pots",
+  "rake_rounding": "exact",
+  "rake_distribution": "proportional_all_pots",
+  "minimum_chip": "1",
+  "verification_status": "simulation",
+  "source": "Owner confirmed the AA table's 1/2/4 (2) on 2026-10-06: small blind 1, big blind 2, forced UTG straddle 4, ante 2 each. Rake not modelled (AA rake unverified); mushroom and bomb pots not modelled."
+}
