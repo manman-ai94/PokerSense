@@ -41,8 +41,12 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 ## 在 Mac 上运行
 
 ```bash
-launch/mac/start-aa-replay.command            # 打开观察页并回放第一手牌的帧
-launch/mac/start-aa-replay.command <帧目录>     # 回放别的帧（目录里要有 samples.json）
+launch/mac/start-aa-video.command             # 录像实时回放：按录像节奏送画面，模拟采集卡
+launch/mac/start-aa-replay.command            # 逐帧回放第一手牌的帧（不按真实速度）
+
+# 测量实时链路：延迟、丢帧、字段覆盖率、和人工标注的对比
+PYTHONPATH=src:. .venv/bin/python tools/measure_aa_realtime.py --video <录像> --out <目录> \
+    [--exclude 300-820] [--gold tests/fixtures/aa_reference_hands/eight_dev_checkpoint_gold_v1.json]
 ```
 
 浏览器会自动打开观察页，点“开始观察”。详见 [launch/mac/README.md](launch/mac/README.md)。
@@ -57,7 +61,7 @@ launch/mac/start-aa-replay.command <帧目录>     # 回放别的帧（目录里
 | `src/poker_engine/equity/` | 胜率计算：枚举、蒙特卡洛、范围对范围 |
 | `src/poker_engine/strategy/` | 通用策略路由/Provider/建议；AA 规则、研究用 MCCFR；`frozen_postflop.py` 查询已保存的翻后求解结果 |
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
-| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话、回合截止、分析和复查 |
+| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 观察页前端（原生 HTML/JS，无构建步骤） |
 | `research/` | `hu_root`（单挑已保存策略查询）、`coverage_bridge` |
 | `tools/` | 离线命令行工具，其中不少是一次性研究脚本 |
@@ -79,7 +83,11 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa
 - 旧配置里写的 `G:/...` 和旧仓库路径 `C:/Users/Administrator/WorkBuddy/扑克/PokerSense/...`，
   会被 `data_paths.resolve_legacy_path` 自动映射到本机。新代码请直接用 `data_paths`，不要再写死路径。
 - **仓库是公开的。**录像、截图、模型权重、第三方求解器源码或二进制、密钥、`.venv`
-  一律不提交。
+  一律不提交。测量产生的逐帧日志也放在数据目录里，报告只写汇总数字。
+- **保留区间不能碰**：9 月 9 日 AA 录像（`aa_phone_record_20260909_031030_54322c62`）的
+  300–600 秒从未被看过，留作独立验收；600–820 秒以前评估时用过。开发、调参、测量时
+  一律跳过 300–820 秒（`--exclude 300-820`）。9 月 4 日的 `session_001` 是 9 座布局，
+  和现在的 8 座识别不匹配。
 
 ## Git 与 GitHub 规则
 
