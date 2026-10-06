@@ -18,6 +18,7 @@ import numpy as np
 
 from ..data_paths import resolve_legacy_path
 from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
+from .aa_street import AAStreet
 from .aa_semantics import AAObservationSemantics
 
 
@@ -217,6 +218,7 @@ class AA8Reader:
         self._invalidated = False
         self._semantics = AAObservationSemantics()
         self._seat_states = AASeatStates()
+        self._street = AAStreet()
         from .aa_critical_perception import CriticalPerceptionBoundary
         self._critical = CriticalPerceptionBoundary()
 
@@ -246,6 +248,7 @@ class AA8Reader:
                 self._semantics.reset()
                 self._critical.reset()
                 self._seat_states.reset()
+                self._street.reset()
             self._state.audit = source
             current_hash = hashlib.sha256(image.tobytes()).hexdigest()
             seats = getattr(self._state, "seats", None)
@@ -256,6 +259,7 @@ class AA8Reader:
             row["seat_cues_v1"] = (seats.last if isinstance(seats, SeatCueRecorder)
                                    else None)
             row["seat_states_v1"] = self._seat_states.observe(row, pts)
+            row["street_v1"] = self._street.observe(row, pts)
             row.update(
                 source_id=source, training_audit_sha256=self._initial.audit,
                 observation_sequence=frame, reader_gap_reset=reset,
