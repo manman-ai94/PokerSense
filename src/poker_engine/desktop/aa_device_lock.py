@@ -10,9 +10,11 @@ from pathlib import Path
 import tempfile
 import threading
 
+from ..data_paths import private_root
+
 
 DEFAULT_LOCK_PATH = Path(tempfile.gettempdir()) / "pokersense-aa-capture.lock"
-LEGACY_RECORDER_LOCK = Path("G:/PokerSense_private/.aa-passive-capture-v1.device.lock")
+LEGACY_RECORDER_LOCK = private_root() / ".aa-passive-capture-v1.device.lock"
 _UNCERTAIN_RELEASES = []
 
 

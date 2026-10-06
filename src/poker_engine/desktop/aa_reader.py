@@ -16,6 +16,7 @@ import uuid
 
 import numpy as np
 
+from ..data_paths import resolve_legacy_path
 from .aa_semantics import AAObservationSemantics
 
 
@@ -28,6 +29,9 @@ _HASH = re.compile(r"[0-9a-f]{64}")
 def _path(value, root):
     if not isinstance(value, str) or not value.strip():
         raise ValueError("nonempty_path_required")
+    legacy = resolve_legacy_path(value)
+    if legacy is not None:
+        return legacy.resolve()
     path = Path(value).expanduser()
     return (root / path).resolve() if not path.is_absolute() else path.resolve()
 

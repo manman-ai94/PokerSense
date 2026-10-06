@@ -23,8 +23,10 @@ import subprocess
 import time
 from typing import Any, Callable
 
+from poker_engine.data_paths import private_root
 
-PRIVATE_ROOT = Path("G:/PokerSense_private")
+
+PRIVATE_ROOT = private_root()
 SCHEMA_VERSION = 1
 HEX64 = re.compile(r"\A[0-9a-f]{64}\Z")
 SAFE_SESSION = re.compile(r"\Aaa-live-[a-z0-9][a-z0-9_-]{5,63}\Z")
