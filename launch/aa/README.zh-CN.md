@@ -23,4 +23,4 @@ launch\aa\START-AA.cmd --self-check
 
 缺少私有识别资源是公开离线包的预期状态，不代表识别模型或真实策略已验收。
 运行 `--version` 或访问页面所在地址的 `/api/build` 可核对版本及入口。
-详细打包与验收说明见 `docs/AA-PACKAGING-V1.zh-CN.md`。
+详细打包与验收说明见 `docs/archive/AA-PACKAGING-V1.zh-CN.md`。

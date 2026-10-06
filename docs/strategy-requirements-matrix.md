@@ -7,7 +7,7 @@
 
 ## 1. 文档目的
 
-本文将 [`realtime-training-assistant.drawio.svg`](realtime-training-assistant.drawio.svg) 中“识别完成之后”的链路拆成可开发、可测试、可验收的细粒度需求。产品级需求由 [`product-requirements.md`](product-requirements.md) 定义；自动化运行方式和完整回归门槛由 [`strategy-regression-test-matrix.md`](strategy-regression-test-matrix.md) 定义。
+本文将 [`realtime-training-assistant.drawio.svg`](archive/realtime-training-assistant.drawio.svg) 中“识别完成之后”的链路拆成可开发、可测试、可验收的细粒度需求。产品级需求由 [`product-requirements.md`](archive/product-requirements.md) 定义；自动化运行方式和完整回归门槛由 [`strategy-regression-test-matrix.md`](strategy-regression-test-matrix.md) 定义。
 
 范围从 canonical state 构建开始，到 Live Coach UI 收到 Advice 为止：
 
