@@ -17,7 +17,9 @@ from fastapi.responses import FileResponse, Response
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession
 from .aa_turn_runtime import observation_runtime_status
+from .aa_math import AATableMath
 from .aa_sources import source_factory
+from .aa_video_source import parse_windows
 from .aa_table_config import AATableConfigStore
 from .aa_issues import save_issue
 from .aa_analysis import AAConditionalAnalysis
@@ -38,7 +40,9 @@ def ui_root():
 
 def create_app(profile_path, *, replay_pool=None, replay_first=None,
                replay_last=None, replay_playlist=None, allow_capture=False,
-               session=None, rules_path=None, records_dir=None, bundle_sha256=None,
+               replay_video=None, replay_video_start=0.0, replay_video_exclude=(),
+               replay_video_speed=1.0, frame_log=None, session=None, rules_path=None,
+               records_dir=None, bundle_sha256=None,
                analysis_service=None, review_service=None, study_service=None,
                hand_input_service=None, analysis_records_service=None):
     profile_path = Path(profile_path)
@@ -46,9 +50,13 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         source_factory(profile_path, replay_pool=replay_pool,
                        replay_first=replay_first, replay_last=replay_last,
                        replay_playlist=replay_playlist,
-                       allow_capture=allow_capture),
+                       allow_capture=allow_capture, replay_video=replay_video,
+                       replay_video_start=replay_video_start,
+                       replay_video_exclude=parse_windows(replay_video_exclude),
+                       replay_video_speed=replay_video_speed),
         lambda: AA8Reader(profile_path, bundle_sha256=bundle_sha256),
-        interval_seconds=0.03,
+        interval_seconds=0.03, table_math=AATableMath().compute,
+        frame_log=frame_log,
     )
     rules = AATableConfigStore(rules_path)
     analysis = analysis_service or AAConditionalAnalysis()
@@ -337,6 +345,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                       replay_available=replay_pool is not None or (
                           replay_playlist is not None),
                       capture_available=allow_capture,
+                      video_available=replay_video is not None,
                       capture_api_default=default_capture_api(),
                       issue_recording_available=records_dir is not None,
                       table_rules=table_rules,
@@ -385,7 +394,8 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         if not isinstance(options, dict) or set(options) - {
                 "mode", "device_index", "api", "fps"}:
             raise HTTPException(400, "来源设置字段不受支持")
-        if options.get("mode") not in {"capture-card", "development-replay"}:
+        if options.get("mode") not in {"capture-card", "development-replay",
+                                       "video-replay"}:
             raise HTTPException(400, "请选择来源")
         if "fps" in options and (type(options["fps"]) is not int
                                  or options["fps"] != 30):
@@ -395,6 +405,8 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         if (options["mode"] == "development-replay" and replay_pool is None
                 and replay_playlist is None):
             raise HTTPException(400, "未配置开发回放")
+        if options["mode"] == "video-replay" and replay_video is None:
+            raise HTTPException(400, "未配置录像回放")
         profile = (preflight_profile(profile_path, bundle_sha256=bundle_sha256)
                    if bundle_sha256 else preflight_profile(profile_path))
         if not profile["ready"]:
@@ -502,6 +514,26 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     return app
 
 
+def add_video_arguments(parser):
+    parser.add_argument("--replay-video", type=Path,
+                        help="录像文件，或含 segments.csv 的分段录像目录")
+    parser.add_argument("--replay-video-start", type=float, default=0.0,
+                        help="从录像第几秒开始")
+    parser.add_argument("--replay-video-exclude", action="append", default=[],
+                        metavar="START-END", help="跳过的录像区间（秒），可重复")
+    parser.add_argument("--replay-video-speed", type=float, default=1.0)
+    parser.add_argument("--frame-log", type=Path,
+                        help="每处理一帧追加一行 JSON（时间戳与关键字段），用于测量")
+
+
+def video_options(args):
+    return {"frame_log": args.frame_log,
+            "replay_video": args.replay_video,
+            "replay_video_start": args.replay_video_start,
+            "replay_video_exclude": args.replay_video_exclude,
+            "replay_video_speed": args.replay_video_speed}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="AA 扑克八座识别监控")
     parser.add_argument("--profile", type=Path, required=True)
@@ -509,6 +541,7 @@ def main(argv=None):
     parser.add_argument("--replay-first", type=int)
     parser.add_argument("--replay-last", type=int)
     parser.add_argument("--replay-playlist", type=Path)
+    add_video_arguments(parser)
     parser.add_argument("--rules-path", type=Path)
     parser.add_argument("--records-dir", type=Path)
     parser.add_argument("--bundle-sha256")
@@ -519,6 +552,7 @@ def main(argv=None):
     app = create_app(args.profile, replay_pool=args.replay_pool,
                      replay_first=args.replay_first, replay_last=args.replay_last,
                      replay_playlist=args.replay_playlist,
+                     **video_options(args),
                      rules_path=args.rules_path, records_dir=args.records_dir,
                      bundle_sha256=args.bundle_sha256,
                      allow_capture=args.allow_capture)

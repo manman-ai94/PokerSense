@@ -110,27 +110,46 @@ function clearCurrent(reason) {
   listBlockers(["等待当前帧与完整牌局输入"]);
   el("state-closure").textContent = "等待完整开局上下文。";
   el("call-price").textContent = "未知";
+  for (const id of ["math-equity", "math-odds", "math-spr"]) el(id).textContent = "未知";
   el("river-live-results").replaceChildren();
   el("river-live-status").textContent = "等待完整河牌和跟注价格";
 }
 function controls() {
   const active = ["STARTING", "RUNNING", "STALE", "STOPPING"].includes(String(statusData.status).toUpperCase());
   const replay = statusData.replay_available === true, capture = statusData.capture_available === true;
+  const video = statusData.video_available === true;
+  const available = {"development-replay": replay, "capture-card": capture, "video-replay": video};
   const runningOptions = statusData.source_options || {};
-  if (active && ["capture-card", "development-replay"].includes(runningOptions.mode)) {
+  if (active && Object.keys(available).includes(runningOptions.mode)) {
     el("mode").value = runningOptions.mode; modeTouched = true;
     if (Number.isInteger(runningOptions.device_index)) el("device").value = runningOptions.device_index;
     if (["MSMF", "DSHOW", "AVFOUNDATION"].includes(runningOptions.api)) el("api").value = runningOptions.api;
   }
   if (!apiTouched && !active && !pending && ["MSMF", "DSHOW", "AVFOUNDATION"].includes(statusData.capture_api_default)) el("api").value = statusData.capture_api_default;
-  el("mode").options[0].disabled = !replay; el("mode").options[1].disabled = !capture;
-  if (!modeTouched && !active && !pending) el("mode").value = replay ? "development-replay" : capture ? "capture-card" : "development-replay";
+  for (const option of el("mode").options) option.disabled = !available[option.value];
+  if (!modeTouched && !active && !pending) el("mode").value = video ? "video-replay" : replay ? "development-replay" : capture ? "capture-card" : "development-replay";
   const useCapture = el("mode").value === "capture-card";
   el("mode").disabled = active || pending;
   el("device").disabled = el("api").disabled = !useCapture || active || pending;
-  el("start").disabled = active || pending || statusData.connection_failed === true || !(useCapture ? capture : replay) || statusData.profile?.ready === false;
+  el("start").disabled = active || pending || statusData.connection_failed === true || !available[el("mode").value] || statusData.profile?.ready === false;
   el("stop").disabled = !active && !pending;
-  el("availability").textContent = [replay ? "已登记开发回放可用" : "未配置开发回放", capture ? "采集入口已配置，点击开始才打开设备" : "采集入口未开放（启动服务时需明确启用）"].join(" · ");
+  el("availability").textContent = [...(video ? ["录像实时回放可用"] : []), replay ? "已登记开发回放可用" : "未配置开发回放", capture ? "采集入口已配置，点击开始才打开设备" : "采集入口未开放（启动服务时需明确启用）"].join(" · ");
+}
+const MATH_REASONS = {
+  hero_cards_unknown: "手牌未识别", board_incomplete: "公共牌不完整", cards_inconsistent: "牌面冲突",
+  participants_unknown: "在局玩家未知", hero_not_in_hand: "你不在本手", no_opponents: "没有对手",
+  not_hero_turn: "未轮到你", call_amount_unknown: "跟注额未识别", pot_unknown: "底池未识别",
+  nothing_to_call: "无需跟注", hero_stack_unknown: "你的筹码未识别", opponent_stack_unknown: "对手筹码未识别",
+};
+function mathText(item, format) {
+  if (!item) return "未知";
+  return item.available === true ? format(item) : MATH_REASONS[item.reason] || "未知";
+}
+function percent(value) { return `${(value * 100).toFixed(1)}%`; }
+function renderTableMath(math) {
+  el("math-equity").textContent = mathText(math?.equity, (item) => `${percent(item.value)} · ${item.opponents} 个对手`);
+  el("math-odds").textContent = mathText(math?.pot_odds, (item) => `${item.ratio.toFixed(1)} : 1 · 需 ${percent(item.required_equity)}`);
+  el("math-spr").textContent = mathText(math?.spr, (item) => item.value.toFixed(1));
 }
 function render(row, state) {
   if (row.scene_supported !== true) { clearCurrent("当前画面不受支持或有遮挡，字段已清空。"); return; }
@@ -142,6 +161,7 @@ function render(row, state) {
   el("dealer").textContent = Number.isInteger(row.dealer_seat) ? `座位 ${row.dealer_seat}` : Number.isInteger(row.dealer_observation_v2?.dealer_seat) ? `单帧候选 ${row.dealer_observation_v2.dealer_seat}（等待开局）` : "未知";
   el("state-closure").textContent = phaseDescription(row);
   el("call-price").textContent = text(row.hero_controls_v1?.call_amount);
+  renderTableMath(row.table_math_v1);
   renderRiverStudy(row.river_strategy_v1);
   el("sequence").textContent = text(state.sequence); el("source-frame").textContent = text(state.source_frame ?? row.frame);
   el("latency").textContent = Number.isFinite(state.processing_ms) ? `${state.processing_ms.toFixed(0)} ms` : "未记录";

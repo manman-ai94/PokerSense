@@ -221,3 +221,27 @@ def test_analysis_rejects_duplicate_keys_and_large_body(tmp_path):
         assert response.status_code == 400
         assert client.post("/api/analysis", headers=headers,
                            content=' ' * 220001).status_code == 413
+
+
+def test_video_replay_is_offered_only_when_a_recording_is_configured(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(aa_server, "preflight_profile",
+                        lambda _: {"ready": True, "errors": []})
+    body = {"mode": "video-replay"}
+    session = Session()
+    app = aa_server.create_app(tmp_path / "profile.json", session=session)
+    with TestClient(app) as client:
+        assert client.get("/api/status").json()["video_available"] is False
+        assert client.post("/api/start", json=body,
+                           headers=HEADERS).status_code == 400
+    recording = tmp_path / "rec.mkv"
+    recording.write_bytes(b"x")
+    session = Session()
+    app = aa_server.create_app(tmp_path / "profile.json", session=session,
+                               replay_video=recording,
+                               replay_video_exclude=["300-820"])
+    with TestClient(app) as client:
+        assert client.get("/api/status").json()["video_available"] is True
+        assert client.post("/api/start", json=body,
+                           headers=HEADERS).status_code == 200
+        assert session.starts == [body]
