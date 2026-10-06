@@ -411,6 +411,11 @@ def build_advice(
     _require_aware_dt(now)
     expires_at = _expiry(context.request, now)
     candidate = route.selected
+    candidate_restrictions = (
+        ("declared_model_frequency_only",)
+        if candidate is not None
+        and "frequency_only_not_execution" in candidate.assumptions else ()
+    )
     external_gates = validate_gate_set(
         tuple(hard_gates), reserved_names=_BUILTIN_GATE_NAMES
     )
@@ -448,7 +453,11 @@ def build_advice(
         *external_gates,
     ]
     if candidate is not None:
-        strategy_gate = GateResult("strategy_source", GateStatus.PASS)
+        strategy_gate = GateResult(
+            "strategy_source",
+            GateStatus.FAIL if candidate_restrictions else GateStatus.PASS,
+            candidate_restrictions,
+        )
         probabilities, sizes, options, action_ev = legalize_candidate(
             context, candidate
         )
@@ -516,10 +525,11 @@ def build_advice(
         for gate in external_gates if gate.status is GateStatus.FAIL
         for reason in gate.reasons
     )
-    if external_failures:
+    admission_failures = external_failures + candidate_restrictions
+    if admission_failures:
         return Advice(
             status=AdviceStatus.ABSTAIN,
-            rejection_reasons=tuple(dict.fromkeys(external_failures)),
+            rejection_reasons=tuple(dict.fromkeys(admission_failures)),
             **common,
         )
     if candidate is None:

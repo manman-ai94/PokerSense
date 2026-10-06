@@ -95,7 +95,7 @@ jobs:
           --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/reference.xml"
 
       - name: flake8
-        run: python -m flake8 src tests tools
+        run: python -m flake8 src tests tools research/hu_root research/coverage_bridge
 
       - name: Record pytest step outcomes
         if: ${{ always() }}

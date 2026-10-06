@@ -184,7 +184,7 @@ a successful recording is still not calibration or strategy evidence. See the
 Normal desktop recognition processes capture-card frames in memory and discards
 them without keeping screenshots, video, or frame history. Only an explicitly
 authorized passive AA intake session writes raw video-only segments under
-`G:/PokerSense_private`. Those segments, screen names, and private identity maps
+`<private-evidence>`. Those segments, screen names, and private identity maps
 must not enter GitHub, pull requests, or packages. Private calibration captures
 remain excluded as well; only small redacted regression fixtures belong in Git.
 
@@ -229,6 +229,9 @@ make run-desktop-server
 pip install -e ".[dev,desktop,packaging]"
 make package
 ```
+
+For the offline synthetic saved-HU query API and its validation limits, see
+[the delivery stage and entry guide](docs/HU-SAVED-DELIVERY-STAGE.zh-CN.md).
 
 The desktop composition lives in `src/poker_engine/desktop/`; the live update
 loop is in `src/poker_engine/realtime/`; platform-specific calibration is under

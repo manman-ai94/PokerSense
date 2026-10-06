@@ -1,0 +1,2475 @@
+{
+  "iterations": 100,
+  "exploitability_pct_of_initial_pot": 0.28239092,
+  "target_exploitability_pct_of_initial_pot": 0.5,
+  "exploitability_chips": 0.06777382,
+  "native_solve_wall_seconds": 0.0032844,
+  "payoff_unit": "chips",
+  "root_profile_EV_zero_sum_chips": [
+    -7.340171,
+    7.3401694
+  ],
+  "root_profile_EV_pot_share_chips": [
+    4.659829,
+    19.34017
+  ],
+  "meta_gain_raw_best_response_values": [
+    -7.306656,
+    7.3744297
+  ],
+  "gain_field_note": "This pinned chipEV implementation stores raw BR values; deviation is raw BR minus root profile EV.",
+  "converged": true,
+  "format_version": 1,
+  "tree_nodes": 39,
+  "saved_decision_nodes": 14,
+  "root_combo_counts": [
+    42,
+    35
+  ],
+  "solution_file": "river-b/solution.json",
+  "solution_sha256": "67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+  "solution_bytes": 22933,
+  "query_scope": "OOP all positive ROOT combos, chosen finite bet abstraction",
+  "query_attempted": 42,
+  "query_pass": 42,
+  "query_fail": 0,
+  "rows": [
+    {
+      "hero": "9c9d",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "9c9h",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "9c9s",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "9d9h",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "9d9s",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "9h9s",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9996106990650517101244834769786822411868"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003221076012560162650661002111733283033782"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005780648119857193368515609151783337495827"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000009386852493701676765266718626597134894522"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99961054",
+        "0.00032210755",
+        "0.000057806472",
+        "0.000009386851"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TcTh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9950174538908911866961024085026143899888"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003132350154846893824394940177538472172867"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0009392046564772562188439468187715044181285"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0009109912977846632606587045010756334201551"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9950175",
+        "0.0031323503",
+        "0.0009392047",
+        "0.00091099134"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TcTs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9950174538908911866961024085026143899888"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003132350154846893824394940177538472172867"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0009392046564772562188439468187715044181285"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0009109912977846632606587045010756334201551"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9950175",
+        "0.0031323503",
+        "0.0009392047",
+        "0.00091099134"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TcJc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997774535933299365584043347685459930484"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001650213023402062092746483840986459552932"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004958454269843428156677595251496061211307"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007940561631422950754240894840400384193135"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997775",
+        "0.00016502131",
+        "0.000049584545",
+        "0.000007940562"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TcAc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9994036488365296014627035827183527863166"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0004415000773978450376947211402564459457115"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0001433001826638904487047923690068594610628"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001155090340866305089690377238390827657820"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9994037",
+        "0.0004415001",
+        "0.00014330019",
+        "0.000011550904"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "ThTs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9950174538908911866961024085026143899888"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003132350154846893824394940177538472172867"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0009392046564772562188439468187715044181285"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0009109912977846632606587045010756334201551"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9950175",
+        "0.0031323503",
+        "0.0009392047",
+        "0.00091099134"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "ThJh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997774535933299365584043347685459930484"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001650213023402062092746483840986459552932"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004958454269843428156677595251496061211307"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007940561631422950754240894840400384193135"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997775",
+        "0.00016502131",
+        "0.000049584545",
+        "0.000007940562"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "ThAh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9994036488365296014627035827183527863166"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0004415000773978450376947211402564459457115"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0001433001826638904487047923690068594610628"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001155090340866305089690377238390827657820"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9994037",
+        "0.0004415001",
+        "0.00014330019",
+        "0.000011550904"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TsJs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997776950763302348243708458867528367230"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001647443527105744160833467553010080714251"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004961994879253523406980479007619669587339"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007940622166655525476002567869958509751464"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997778",
+        "0.00016474437",
+        "0.000049619954",
+        "0.000007940623"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "TsAs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9995718386301536619259448616852248020316"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0003339302128609059792466910696849916212046"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00008333881821829940531097701385662242075927"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001089233876713268949747023123358392645721"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99957186",
+        "0.00033393022",
+        "0.00008333882",
+        "0.000010892339"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JcJd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997655705774506893445539635894425056331"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001860826131363159917450911212529626137316"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004125586491241652762713235130978120836269"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007090944500578136073812937994750544801420"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997655",
+        "0.0001860826",
+        "0.000041255862",
+        "0.000007090944"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JcJh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997657674120062119032724549714744393256"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001860971625481222568622779112583025447426"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004104460276754726648962357540904051796570"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007090822678118573375643541858217611707525"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997657",
+        "0.00018609715",
+        "0.0000410446",
+        "0.0000070908222"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JcJs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997661596268430822530465466081225269428"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001856655025023442786488319330356795809934"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004108395134092322658003371030913069007050"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007090919313650241724587748532662786104892"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997662",
+        "0.00018566551",
+        "0.000041083953",
+        "0.0000070909196"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JcQc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9990588542831667338877185739713868269267"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009250099076716391259365607610555732301731"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00001539692929543805513368414088812708137339"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798661889312111811266694727617175934E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9990589",
+        "0.00092500995",
+        "0.00001539693",
+        "7.388799E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JcAc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9987850263181252733862854912668967748515"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009276364244433496531816854302888565240716"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0002865983775519073722656165262311126525035"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798794695882672067765832559719175165E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.998785",
+        "0.0009276364",
+        "0.00028659837",
+        "7.3887986E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JdJh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997655705774506893445539635894425056331"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001860826131363159917450911212529626137316"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004125586491241652762713235130978120836269"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007090944500578136073812937994750544801420"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997655",
+        "0.0001860826",
+        "0.000041255862",
+        "0.000007090944"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JdJs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997659728497696431465569513328016227336"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001856410179565369014135802872057683935818"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004129508876989924566012768914394073117147"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007091043503920706369340690848668141635747"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99976593",
+        "0.00018564101",
+        "0.000041295087",
+        "0.0000070910432"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JdQd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9989873648444097102817125117453985771455"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009609917223781072384040737798218056185626"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00005090455330422168161449194463209815494174"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388799079607982689225301475190810296842E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9989873",
+        "0.00096099166",
+        "0.00005090455",
+        "7.3887986E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JdAd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9987338162363346549928855725983860301535"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009472363505554198920060114162407033614905"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0003182085333118948603260417297353257729404"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388797980302547823742556379407121417018E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9987339",
+        "0.00094723643",
+        "0.00031820856",
+        "7.3887986E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JhJs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9997661596268430822530465466081225269428"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0001856655025023442786488319330356795809934"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00004108395134092322658003371030913069007050"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.000007090919313650241724587748532662786104892"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9997662",
+        "0.00018566551",
+        "0.000041083953",
+        "0.0000070909196"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JhQh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9990588542831667338877185739713868269267"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009250099076716391259365607610555732301731"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00001539692929543805513368414088812708137339"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798661889312111811266694727617175934E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9990589",
+        "0.00092500995",
+        "0.00001539693",
+        "7.388799E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JhAh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9987850263181252733862854912668967748515"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009276364244433496531816854302888565240716"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0002865983775519073722656165262311126525035"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798794695882672067765832559719175165E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.998785",
+        "0.0009276364",
+        "0.00028659837",
+        "7.3887986E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JsQs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9991200851575405796857186248366326742280"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0008750508594185040353432395631208089524670"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.000004125103225845784849672444553190402255904"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798150704940884631556933264172485656E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9991202",
+        "0.00087505096",
+        "0.0000041251037",
+        "7.388799E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "JsAs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9988531191255899272646929308381585648028"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0008784488028472704868232678701609453908270"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0002676931917256409208072807275758657299319"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "7.388798371613276765205641046240765050444E-7"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.99885315",
+        "0.00087844883",
+        "0.0002676932",
+        "7.3887986E-7"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QcQd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9987625525863465375000247191825515020401"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.001150329860566592653621953102176263759234"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007393629389285677789974864158861560260299"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001318125919401306845357907368361859805304"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9987625",
+        "0.0011503298",
+        "0.00007393629",
+        "0.0000131812585"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QcQh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9988415737125104568358466935718142922128"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.001071749179092945918701222908312848187672"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007349590542385082846934343938060713941005"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001318120297274641698274008049225246016725"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9988415",
+        "0.0010717491",
+        "0.0000734959",
+        "0.000013181202"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QcQs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9992453186119433044660559889847588508301"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0006698396124764326219860340171118696027257"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007173439133612477302666002239456957712125"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001310738424413813893131697573470999013471"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9992453",
+        "0.0006698396",
+        "0.00007173439",
+        "0.000013107384"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QcKc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9944020835923656207259672580215402426446"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003869199636158206003389600944071584422819"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.001077192982226315793265789411114474716611"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0006515237892498574773773516232736982159840"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9944021",
+        "0.0038691997",
+        "0.001077193",
+        "0.0006515238"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QcAc",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9988063940366296566539597255814127130679"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0008634911783922208843692863772624082362311"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0001979644189979547885069764872948644628878"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0001321503659801676731640115540300142329558"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9988065",
+        "0.00086349127",
+        "0.00019796444",
+        "0.00013215038"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QdQh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9987625525863465375000247191825515020401"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.001150329860566592653621953102176263759234"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007393629389285677789974864158861560260299"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001318125919401306845357907368361859805304"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9987625",
+        "0.0011503298",
+        "0.00007393629",
+        "0.0000131812585"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QdQs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9992430115522484565555444062386488805250"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0006717490677660909724437777324225143645367"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007213194583391742578591935951101371530683"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001310743415153504622589666941759139523677"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.999243",
+        "0.00067174906",
+        "0.000072131945",
+        "0.000013107434"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QdKd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9944434128680977625131850469206145071528"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003806437449255300593363589678124850434936"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.001132816914658650875682942331337273767504"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0006173327679882860177684210699233686448084"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9944434",
+        "0.0038064374",
+        "0.0011328169",
+        "0.00061733276"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QdAd",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9985883757143307026274773120997517697340"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009517590268532204669296782442702250993481"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0003115542924229996082726495268091635080011"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0001483109663930772973203601291688416587138"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9985884",
+        "0.00095175905",
+        "0.0003115543",
+        "0.00014831097"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QhQs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9992453186119433044660559889847588508301"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0006698396124764326219860340171118696027257"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00007173439133612477302666002239456957712125"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.00001310738424413813893131697573470999013471"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9992453",
+        "0.0006698396",
+        "0.00007173439",
+        "0.000013107384"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QhKh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9944020835923656207259672580215402426446"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.003869199636158206003389600944071584422819"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.001077192982226315793265789411114474716611"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0006515237892498574773773516232736982159840"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9944021",
+        "0.0038691997",
+        "0.001077193",
+        "0.0006515238"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QhAh",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9988063940366296566539597255814127130679"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0008634911783922208843692863772624082362311"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.0001979644189979547885069764872948644628878"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0001321503659801676731640115540300142329558"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.9988065",
+        "0.00086349127",
+        "0.00019796444",
+        "0.00013215038"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    },
+    {
+      "hero": "QsAs",
+      "route_state": "HIT_EXACT",
+      "actions": [
+        {
+          "action": "check",
+          "source_label": "Check",
+          "total_street_amount_chips": null,
+          "probability": "0.9985569571059873505552073695505122335882"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "12.0",
+          "probability": "0.0009641077585857871221889283792523925408342"
+        },
+        {
+          "action": "bet",
+          "source_label": "Bet",
+          "total_street_amount_chips": "24.0",
+          "probability": "0.00008182171248526651848289143204891564490678"
+        },
+        {
+          "action": "bet",
+          "source_label": "AllIn",
+          "total_street_amount_chips": "72",
+          "probability": "0.0003971134229415958041208106381864582260625"
+        }
+      ],
+      "raw_saved_probabilities": [
+        "0.998557",
+        "0.0009641078",
+        "0.000081821716",
+        "0.00039711344"
+      ],
+      "action_EV": {},
+      "confidence": 0,
+      "candidate_source_version": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de/NATIVE_SAVED_RUN/sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "source_evidence": [
+        "source_engine:ucsandman/postflop",
+        "engine_pin:5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+        "result_origin:NATIVE_SAVED_RUN",
+        "solution_sha256:67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+        "config_sha256:970354e441f0faa292c2739b274202fe83f4c26c72851be490971b2d05383377"
+      ],
+      "assumptions": [
+        "execution_mode:simulation",
+        "declared_synthetic_ROOT_facts_not_authenticated",
+        "query_model:hu-root-bet-abstraction-v1",
+        "restricted_bet_abstraction_not_full_native_strategy",
+        "action_EV_absent",
+        "source_labels_not_authenticated"
+      ],
+      "strategy_eligible": false,
+      "live_eligible": false,
+      "action_executable": false,
+      "advice_ready": false
+    }
+  ],
+  "default_hero": "QdQh"
+}

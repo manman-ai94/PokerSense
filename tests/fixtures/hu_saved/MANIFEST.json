@@ -1,0 +1,24 @@
+{
+  "origin": "DECLARED_SYNTHETIC",
+  "engine": "ucsandman/postflop",
+  "pin": "5fc7ee3d92b823b6c58e4f58cbee7d50d5e9e6de",
+  "files": [
+    {
+      "case": "river-a",
+      "solution_sha256": "32781f1f0e28bb2e842c135dd31db19e894b1198776f2ba1fe798d2d85e46bd7",
+      "golden_sha256": "90ac93464672939936d2024e22fd45822fb6f56ca8025abb11c92101d124e97a"
+    },
+    {
+      "case": "river-b",
+      "solution_sha256": "67d3c28c6bca7e93132c2be02fad79bdf64f1e783e3d557d9892da1a1d6607ed",
+      "golden_sha256": "7ec2c6be6dac3da2511c8251fc994a7c93b7c7a3479f64a66d6181049817ebe9"
+    },
+    {
+      "case": "turn-c",
+      "solution_sha256": "1a0a56f658cfe8285df30897bb5fb2dfdb98bd4f405db0813751838cacf662ed",
+      "golden_sha256": "4ad79464f709b0a52eb8cdd95067abcd86df9a24c683d88134adc9f18e9f7d33"
+    }
+  ],
+  "metadata_change": "solution_file only, made relative; semantic ROOT queries unchanged",
+  "new_solves": 0
+}

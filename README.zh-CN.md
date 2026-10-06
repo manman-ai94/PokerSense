@@ -135,7 +135,7 @@ ADB；没有授权、授权过期、nonce 重复、输出目录已存在或任�
 
 普通桌面识别的采集卡帧只在内存中处理并丢弃，不保存截图、视频或帧历史。只有用户
 针对一个 session 明确授权 AA 被动采集时，独立 intake 工具才会把原始 video-only
-分段写入 `G:/PokerSense_private`；这些分段、昵称和私有身份映射不能进入 GitHub、
+分段写入 `<private-evidence>`；这些分段、昵称和私有身份映射不能进入 GitHub、
 PR 或安装包。真实标定原图同样属于私有离线数据，只保留必要的脱敏回归样本。
 
 界面语言与牌桌规则分别保存。语言设置位置：
@@ -175,6 +175,9 @@ make run-desktop-server
 pip install -e ".[dev,desktop,packaging]"
 make package
 ```
+
+离线合成 HU 保存策略的查询入口与验证范围见
+[阶段报告和入口说明](docs/HU-SAVED-DELIVERY-STAGE.zh-CN.md)。
 
 桌面应用组装代码位于 `src/poker_engine/desktop/`，实时更新链路位于 `src/poker_engine/realtime/`，平台标定
 位于 `configs/`。
