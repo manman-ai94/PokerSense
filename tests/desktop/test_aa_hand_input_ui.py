@@ -69,7 +69,11 @@ def hand_server(tmp_path_factory):
     while not server.started and time.time() < deadline:
         time.sleep(0.05)
     assert server.started, "the local AA server did not start"
-    yield f"http://127.0.0.1:{port}"
+    base = f"http://127.0.0.1:{port}"
+    # Every test here builds against saved table rules; save them up front so
+    # no test depends on the Node-only test having run first.
+    post_rules(base)
+    yield base
     server.should_exit = True
     thread.join(timeout=10)
 

@@ -377,10 +377,12 @@ def test_actual_training_job_retains_atomic_state_on_node_budget_failure(
     manifest = study.freeze(output, max_nodes=1)
     job_id = variant + "-n6-seed1103-control"
     state = study.read_json(output / "study-state.json")
+    # Give the whole 5s control budget so a slow CI runner cannot hit the wall
+    # deadline before the one-node budget (seen on windows-latest with 0.5s).
     state["jobs"][job_id].update(status="RUNNING", attempts=[
-        {"status": "RUNNING", "reserved_seconds": 0.5}])
+        {"status": "RUNNING", "reserved_seconds": 5}])
     study._atomic(output / "study-state.json", state)
-    report = study.train_job(output, job_id, seconds=0.5)
+    report = study.train_job(output, job_id, seconds=5)
     assert report["stop_reason"] == "whole_sweep_budget_exceeded"
     assert report["diagnostics"]["completed_sweeps"] == 0
     assert report["diagnostics"]["nonuniform_infosets"] == 0

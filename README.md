@@ -17,6 +17,9 @@ client.*
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev,desktop,solver-tools,perceptual]"
 PYTHONPATH=src:. .venv/bin/python -m pytest
+
+# 打开观察页并回放录像帧（需要仓库外的私有数据，见 AGENTS.md）
+launch/mac/start-aa-replay.command
 ```
 
 ## 文档

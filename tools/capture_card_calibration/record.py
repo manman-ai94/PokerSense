@@ -129,7 +129,7 @@ def _is_black_frame(image: Any) -> bool:
 
 
 def resolve_api_constant(api: str) -> int:
-    """Resolve a backend API name to a cv2 constant (MSMF/DSHOW/ANY)."""
+    """Resolve a backend API name to a cv2 constant (MSMF/DSHOW/AVFOUNDATION/ANY)."""
     if cv2 is None:
         raise RuntimeError("opencv-python is not installed")
     name = api.upper()
@@ -137,6 +137,8 @@ def resolve_api_constant(api: str) -> int:
         return int(getattr(cv2, "CAP_MSMF", cv2.CAP_ANY))
     if name == "DSHOW":
         return int(getattr(cv2, "CAP_DSHOW", cv2.CAP_ANY))
+    if name == "AVFOUNDATION":
+        return int(getattr(cv2, "CAP_AVFOUNDATION", cv2.CAP_ANY))
     return int(getattr(cv2, "CAP_ANY", 0))
 
 

@@ -9,11 +9,13 @@ import shutil
 import subprocess
 import time
 
+from poker_engine.data_paths import private_root as data_private_root
+
 
 def record(output, duration=1800):
     if type(duration) is not int or not 1 <= duration <= 1800:
         raise ValueError("duration must be 1..1800 seconds")
-    private_root = Path("G:/PokerSense_private").resolve(strict=True)
+    private_root = data_private_root().resolve(strict=True)
     output = output.resolve()
     if output.parent != private_root:
         raise ValueError("record only in a new direct child of the private root")

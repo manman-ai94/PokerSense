@@ -9,7 +9,8 @@ import threading
 import time
 
 from poker_engine.perceptual.capture.base import CaptureTarget
-from poker_engine.perceptual.capture.capture_card_backend import CaptureCardBackend
+from poker_engine.perceptual.capture.capture_card_backend import (
+    CaptureCardBackend, default_capture_api)
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
 from .aa_device_lock import AACaptureDeviceLock
@@ -19,11 +20,11 @@ class AACaptureSource:
     def __init__(self, options, *, backend_factory=CaptureCardBackend,
                  device_lock_factory=None):
         index = options.get("device_index", 0)
-        api = options.get("api", "MSMF")
+        api = options.get("api", default_capture_api())
         if type(index) is not int or not 0 <= index <= 20:
             raise ValueError("设备编号必须为 0–20 的整数")
-        if api not in {"MSMF", "DSHOW"}:
-            raise ValueError("采集接口必须为 MSMF 或 DSHOW")
+        if api not in {"MSMF", "DSHOW", "AVFOUNDATION"}:
+            raise ValueError("采集接口必须为 MSMF、DSHOW 或 AVFOUNDATION")
         self.backend = backend_factory(
             device_index=index, api=api, width=1920, height=1080, fps=30,
             normalization=NormalizationConfig(

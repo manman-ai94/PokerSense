@@ -83,9 +83,11 @@ from .report import (
 )
 from .schema import DeviceAndCapture, FieldMetrics, SchemaError
 from .splits import build_split_plan, validate_split_plan
+from poker_engine.perceptual.capture.capture_card_backend import default_capture_api
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
 CANVAS_HELP = "normalized canvas size as WIDTHxHEIGHT, e.g. 1080x1920"
+_CAPTURE_APIS = ["MSMF", "DSHOW", "AVFOUNDATION", "ANY"]
 
 
 def _parse_size(text: str) -> tuple[int, int]:
@@ -1255,7 +1257,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     probe = sub.add_parser("probe", help="probe a live UVC device (stage A)")
     probe.add_argument("--device", type=int, default=0)
-    probe.add_argument("--api", default="MSMF", choices=["MSMF", "DSHOW", "ANY"])
+    probe.add_argument("--api", default=default_capture_api(), choices=_CAPTURE_APIS)
     probe.add_argument("--size", type=_parse_size, default=(1920, 1080))
     probe.add_argument("--fps", type=int, default=30)
     probe.add_argument("--fourcc", default=None)
@@ -1265,7 +1267,7 @@ def build_parser() -> argparse.ArgumentParser:
     record.add_argument("--root", type=Path, required=True)
     record.add_argument("--session", required=True, help="e.g. session_001")
     record.add_argument("--device", type=int, default=0)
-    record.add_argument("--api", default="MSMF", choices=["MSMF", "DSHOW", "ANY"])
+    record.add_argument("--api", default=default_capture_api(), choices=_CAPTURE_APIS)
     record.add_argument("--size", type=_parse_size, default=(1920, 1080))
     record.add_argument("--fps", type=int, default=30)
     record.add_argument("--fourcc", default="YUY2")

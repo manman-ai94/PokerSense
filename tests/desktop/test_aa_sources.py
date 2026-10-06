@@ -42,6 +42,23 @@ def test_capture_is_lazy_and_uses_aa_canvas():
     assert calls[-1] == "released"
 
 
+@pytest.mark.parametrize("options, expected", [
+    ({"api": "AVFOUNDATION"}, "AVFOUNDATION"),
+    ({}, None),  # unset: the backend's platform default
+])
+def test_capture_api_choice_reaches_the_backend(options, expected):
+    from poker_engine.perceptual.capture.capture_card_backend import (
+        default_capture_api)
+    seen = []
+
+    def backend(**kwargs):
+        seen.append(kwargs["api"])
+        return SimpleNamespace(release=lambda: None)
+
+    AACaptureSource(options, backend_factory=backend)
+    assert seen == [expected or default_capture_api()]
+
+
 @pytest.mark.parametrize("options", [{"device_index": True},
                                      {"device_index": -1}, {"api": "ANY"}])
 def test_invalid_device_settings_never_construct_backend(options):

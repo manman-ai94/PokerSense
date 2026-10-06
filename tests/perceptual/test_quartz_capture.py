@@ -17,6 +17,13 @@ import poker_engine.perceptual.capture.quartz_backend as qb
 from poker_engine.perceptual.capture.base import CaptureError, CaptureTarget
 
 
+@pytest.fixture(autouse=True)
+def _screen_permission_granted(request, monkeypatch):
+    """Mocked tests model a granted permission; the real smoke test checks it."""
+    if request.node.name != "test_real_quartz_capture_smoke":
+        monkeypatch.setattr(qb, "has_screen_capture_permission", lambda: True)
+
+
 class _FakeQuartz:
     """Minimal stand-in for the ``Quartz`` module's constants used here."""
 

@@ -8,6 +8,8 @@ Platform notes (measured on a real setup):
 
 - The GreenLian-style capture card only produces frames under Media Foundation
   (``CAP_MSMF``); DirectShow (``CAP_DSHOW``) returns black frames.
+- On macOS the card is read through AVFoundation (``CAP_AVFOUNDATION``), which
+  is the default API there; see :func:`default_capture_api`.
 - YUY2 is preferred as the negotiated pixel format (``CAP_PROP_FOURCC``) to
   avoid MJPEG decode overhead and artifacts; OpenCV still hands frames back as
   BGR.
@@ -24,6 +26,7 @@ recordings and remains ``UNKNOWN`` until that evidence exists.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import sys
 import time
 from typing import Any, Callable
 
@@ -40,13 +43,21 @@ except ImportError:  # pragma: no cover - dependency is pinned in pyproject
 
 # API preference names -> cv2 backend constants. Resolved lazily so the module
 # imports cleanly even where a given constant is not defined on the platform.
-_API_NAMES = {"MSMF", "DSHOW", "ANY"}
+_API_NAMES = {"MSMF", "DSHOW", "AVFOUNDATION", "ANY"}
 
 _CAP_CONSTANTS = {
     "MSMF": getattr(cv2, "CAP_MSMF", None) if cv2 is not None else None,
     "DSHOW": getattr(cv2, "CAP_DSHOW", None) if cv2 is not None else None,
+    "AVFOUNDATION": (getattr(cv2, "CAP_AVFOUNDATION", None)
+                     if cv2 is not None else None),
     "ANY": getattr(cv2, "CAP_ANY", None) if cv2 is not None else None,
 }
+
+
+def default_capture_api() -> str:
+    """The capture API used when none is chosen: AVFoundation on macOS."""
+    return "AVFOUNDATION" if sys.platform == "darwin" else "MSMF"
+
 
 _VideoCaptureFactory = Callable[..., Any]
 
@@ -68,7 +79,7 @@ class CaptureCardBackend(CaptureService):
     def __init__(
         self,
         device_index: int = 0,
-        api: str = "MSMF",
+        api: str | None = None,
         width: int = 1920,
         height: int = 1080,
         fps: int = 30,
@@ -84,6 +95,8 @@ class CaptureCardBackend(CaptureService):
             raise TypeError("device_index must be an int")
         if device_index < 0:
             raise ValueError("device_index must be >= 0")
+        if api is None:
+            api = default_capture_api()
         if api not in _API_NAMES:
             raise ValueError(f"api must be one of {sorted(_API_NAMES)}")
         for name, value in (("width", width), ("height", height), ("fps", fps)):
