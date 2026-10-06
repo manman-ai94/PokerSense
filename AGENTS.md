@@ -49,6 +49,7 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 
 ```bash
 launch/mac/start-aa-capture.command           # 接采集卡实时识别（观察页里选“实体采集卡”）
+launch/mac/record-aa-capture.command 20 标签   # 录采集卡画面 20 分钟，存到 PokerSense_private/aa-mac-recordings/
 launch/mac/start-aa-video.command             # 录像实时回放：按录像节奏送画面，模拟采集卡
 launch/mac/start-aa-replay.command            # 逐帧回放第一手牌的帧（不按真实速度）
 
