@@ -112,6 +112,7 @@ function clearCurrent(reason) {
   el("state-closure").textContent = "等待完整开局上下文。";
   el("call-price").textContent = "未知";
   for (const id of ["math-equity", "math-odds", "math-spr"]) el(id).textContent = "未知";
+  renderSolverAdvice(null, null);
   el("river-live-results").replaceChildren();
   el("river-live-status").textContent = "等待完整河牌和跟注价格";
 }
@@ -147,6 +148,54 @@ function mathText(item, format) {
   return item.available === true ? format(item) : MATH_REASONS[item.reason] || "未知";
 }
 function percent(value) { return `${(value * 100).toFixed(1)}%`; }
+const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没轮到你", street_not_covered:"只在转牌、河牌计算",
+  your_cards_not_read:"还没读到你的两张牌", more_than_one_opponent:"对手不止一个（多人底池不计算）",
+  waiting_for_last_action:"等对手刚才的动作进入行动记录", hand_incomplete:"这手牌是中途接入的，前面的动作不知道",
+  starts_after_preflop:"没有翻牌前下注（多半是暴击局），规则模型不支持", not_this_seats_turn:"重放时轮到的人对不上，可能漏记了动作",
+  street_mismatch:"重放时街道对不上", illegal_at_the_table:"有下注额在牌桌上不合法", raise_without_amount:"有加注没读到金额",
+  stacks_do_not_fit:"筹码读数和下注对不上", stack_unknown:"你或对手的筹码读不出来", board_not_read:"公共牌还没读全",
+  dealer_ambiguous:"庄位无法确定", no_dealer_fits:"找不到能对上的庄位", action_after_hand_end:"这手牌结束后还有动作",
+  solver_not_installed:"本机没有安装求解器", solver_error:"求解器出错", own_hand_not_in_range:"你的牌不在推算的范围里",
+  multiway_at_street_start:"这条街开始时不止两人", all_in:"已经全下，没有可选的动作",
+  raise_not_in_solution:"对手的下注额不在求解树里", action_not_in_solution:"对手的动作不在求解树里"};
+const ADVICE_ACTIONS = {check:"过牌", call:"跟注", fold:"弃牌", bet:"下注", raise:"加注"};
+function adviceReason(reason) {
+  if (typeof reason === "string" && reason.startsWith("players_")) return `${reason.slice(8)} 人桌，规则模型只支持 6–8 人`;
+  return ADVICE_REASONS[reason] || text(reason);
+}
+function renderSolverAdvice(advice, history) {
+  const status = advice?.status, street = labels[advice?.street] || "";
+  const rows = status === "ready" && Array.isArray(advice.advice) ? advice.advice.map(item => {
+    const node = document.createElement("li");
+    const size = ["bet", "raise"].includes(item.action) && item.to != null ? `到 ${item.to}` : "";
+    node.textContent = `${ADVICE_ACTIONS[item.action] || text(item.action)}${size} · ${Math.round(item.frequency * 100)}%`;
+    return node;
+  }) : [];
+  el("advice-rows").replaceChildren(...rows);
+  el("advice-status").textContent = status === "ready" ? `${street}：求解器给你这手牌的打法比例`
+    : status === "computing" ? `${street}：正在计算…`
+    : status === "abstain" ? `这手牌不给建议：${adviceReason(advice.reason)}`
+    : status === "idle" ? adviceReason(advice.reason) : "暂无（等待画面）";
+  const details = [];
+  if (status === "ready") {
+    const offset = Number(advice.pot_offset) || 0;
+    if (advice.pot != null) details.push(`底池 ${Number(advice.pot) + offset}${offset ? `（比 AA 规则算出的多 ${offset}，已按画面修正）` : ""}`);
+    if (advice.to_call != null && Number(advice.to_call) > 0) details.push(`要跟 ${advice.to_call}`);
+    if (Number.isFinite(advice.seconds)) details.push(`用时 ${advice.seconds} 秒`);
+  }
+  el("advice-detail").textContent = details.join(" · ");
+  const actions = Array.isArray(history?.actions) ? history.actions : [];
+  const items = actions.map(action => {
+    const node = document.createElement("li");
+    const amount = ["call", "raise", "all_in"].includes(action.kind) && action.amount != null ? ` ${action.amount}` : "";
+    node.textContent = `${labels[action.street] || "街道未知"} · 座位 ${text(action.slot)} · ${translated(action.kind)}${amount}`;
+    return node;
+  });
+  if (!items.length) {
+    const empty = document.createElement("li"); empty.className = "muted"; empty.textContent = "还没有动作"; items.push(empty);
+  }
+  el("advice-history").replaceChildren(...items);
+}
 function renderTableMath(math) {
   el("math-equity").textContent = mathText(math?.equity, (item) => `${percent(item.value)} · ${item.opponents} 个对手`);
   el("math-odds").textContent = mathText(math?.pot_odds, (item) => `${item.ratio.toFixed(1)} : 1 · 需 ${percent(item.required_equity)}`);
@@ -164,6 +213,7 @@ function render(row, state) {
   const controls = row.hero_controls_v1 || {};
   el("call-price").textContent = controls.call_amount == null ? "未知" : controls.button === "check" ? "0（可以让牌）" : controls.button === "all_in" ? `${controls.call_amount}（跟注即全下）` : text(controls.call_amount);
   renderTableMath(row.table_math_v1);
+  renderSolverAdvice(row.solver_advice_v1, row.action_history_v1);
   renderRiverStudy(row.river_strategy_v1);
   el("sequence").textContent = text(state.sequence); el("source-frame").textContent = text(state.source_frame ?? row.frame);
   el("latency").textContent = Number.isFinite(state.processing_ms) ? `${state.processing_ms.toFixed(0)} ms` : "未记录";

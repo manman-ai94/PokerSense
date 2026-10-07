@@ -57,6 +57,11 @@ footer{padding:16px 0;font-size:11px}button:focus-visible,select:focus-visible{o
 .hand-rows>.rules-grid input:disabled{background:#f1f4f2;color:var(--muted)}
 .realtime-panel { border-left: 4px solid #be8a33; }
 .realtime-panel #realtime-status { font-weight: 600; }
+.advice-panel { border-left: 4px solid #206b51; }
+.advice-panel #advice-status { font-weight: 600; }
+.advice-rows { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.advice-rows li { padding: 7px 12px; background: #eff8f1; border: 1px solid #a8cbb8; border-radius: 7px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.advice-history { margin: 8px 0 0; padding-left: 22px; font-size: 12px; }
 
 .table-settings-summary{margin-bottom:16px;padding:16px 20px}
 .table-settings-summary .section-heading{margin-bottom:4px}
