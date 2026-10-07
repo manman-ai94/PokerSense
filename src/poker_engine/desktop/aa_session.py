@@ -296,7 +296,18 @@ def frame_summary(payload):
                          for action in actions[-3:]],
         "street_wagers": payload.get("street_wagers"),
         "causal_wagers": payload.get("causal_street_wagers_v2"),
+        "actions_v1": _actions_v1(payload.get("action_history_v1")),
     }
+
+
+def _actions_v1(history):
+    """The current hand's rebuilt history, one short list per action."""
+    if not history:
+        return None
+    return {"hand_id": history["hand_id"], "complete": history["complete"],
+            "start": history["start"], "dealer": history["dealer"],
+            "actions": [[a["frame"], a["street"], a["slot"], a["kind"], a["amount"],
+                         a["amount_source"]] for a in history["actions"]]}
 
 
 def _append_frame_log(path, processed, record, timing, payload):

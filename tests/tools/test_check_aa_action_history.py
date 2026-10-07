@@ -55,3 +55,42 @@ def test_a_labelled_hand_is_compared_action_by_action():
     report = compare(log(), label)
     assert report["matched_in_order"] == 2 and report["differences"] == []
     assert report["amounts"] == {"missing": 1, "correct": 1}
+
+
+def v1_log():
+    """A rebuilt hand: the blinds go in (pot 0 -> 23), seat 3 calls 4 (23 -> 27),
+    then the pot rises by 30 with no action, and seat 6 shows folded without a
+    fold action."""
+    rows = []
+    for frame in range(30):
+        pot = ("0" if frame < 2 else "23" if frame < 4 else "27" if frame < 25
+               else "57")
+        actions = [[5, "preflop", 3, "call", "4", "pot_rise"]] if frame >= 5 else []
+        states = {"3": "active", "6": "active" if frame < 10 else "folded"}
+        rows.append({"processed": frame, "source_frame": frame * 3,
+                     "pts_seconds": frame / 10,
+                     "fields": {"pot": pot, "street": "preflop", "participants": states,
+                                "actions_v1": {"hand_id": "hand_0", "complete": True,
+                                               "start": "after_hand_over", "dealer": 7,
+                                               "actions": actions}}})
+    return rows
+
+
+def test_rebuilt_hands_report_unexplained_rises_and_folds():
+    from tools.check_aa_action_history import (hands_v1, summarize_v1,
+                                               unexplained_rises, unrecorded_folds)
+    hand = hands_v1(v1_log())["hand_0"]
+    assert [a["kind"] for a in hand["actions"]] == ["call"]
+    assert unexplained_rises(hand) == [{"frame": 25, "chips": "30"}]
+    assert unrecorded_folds(hand) == [6]
+    summary = summarize_v1(v1_log())
+    assert summary["priced_with_amount"] == 1 and summary["unexplained_pot_rises"] == 1
+
+
+def test_labelled_hands_are_matched_by_time_and_compared():
+    from tools.check_aa_action_history import compare_hands
+    labelled = [{"from": 0.0, "to": 3.0, "actions": [["preflop", 3, "call", "4"],
+                                                     ["preflop", 6, "fold", "0"]]}]
+    report = compare_hands(v1_log(), labelled)
+    assert report["totals"] == {"labelled_actions": 2, "matched": 1, "missing": 1,
+                                "extra": 0, "amount_correct": 1}
