@@ -13,7 +13,7 @@ over deals, which are independent of each other.
 
 from __future__ import annotations
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import hashlib
 import math
 import random
@@ -62,7 +62,11 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True):
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
-    """Per deal and strategy: (average result in big blinds, all-in hands)."""
+    """Per deal and strategy: (average result in big blinds, all-in hands).
+
+    Also returns, per strategy that keeps them, the counts of how it decided
+    (for example how often a solver strategy fell back to its base policy).
+    """
     rules = AARuleProfileV2.from_dict(rules_dict)
     arena = AAFullHandArena(rules)
     seats = arena.occupied_seats
@@ -85,7 +89,9 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
                 adjusted += was_adjusted
             row[name] = (total / len(seats) / big_blind, adjusted)
         rows.append((seed, row))
-    return rows
+    counts = {name: dict(bots[name].counts) for name in strategies
+              if getattr(bots[name], "counts", None)}
+    return rows, counts
 
 
 def _interval(values):
@@ -122,23 +128,44 @@ def summarize(rows, strategies, reference, seats):
 
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
-                   base_seed=1, reference=None, all_in_ev=True, chunk=None):
-    """Score ``strategies`` over ``deals`` deals; same arguments, same result."""
+                   base_seed=1, reference=None, all_in_ev=True, chunk=None,
+                   progress=None):
+    """Score ``strategies`` over ``deals`` deals; same arguments, same result.
+
+    ``progress(done, total, seconds)`` is called after each batch of deals.
+    """
     if not strategies or deals < 2:
         raise ValueError("need at least one strategy and two deals")
     rules_dict = rules.to_dict()
     seeds = [base_seed * 1_000_000 + i for i in range(deals)]
-    chunk = chunk or max(5, deals // (max(1, workers) * 8))
+    # Small batches keep every worker busy to the end (slow strategies vary a lot).
+    chunk = chunk or max(2, deals // (max(1, workers) * 32))
     chunks = [seeds[i:i + chunk] for i in range(0, len(seeds), chunk)]
     started = time.perf_counter()
     args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev)
             for part in chunks]
+    results = []
+
+    def finished(result):
+        results.append(result)
+        if progress:
+            progress(len(results), len(args), time.perf_counter() - started)
+
     if workers > 1:
         with ProcessPoolExecutor(max_workers=workers) as executor:
-            results = list(executor.map(score_deals, *zip(*args)))
+            for future in as_completed([executor.submit(score_deals, *arg)
+                                        for arg in args]):
+                finished(future.result())
     else:
-        results = [score_deals(*arg) for arg in args]
-    rows = sorted((row for part in results for row in part), key=lambda r: r[0])
+        for arg in args:
+            finished(score_deals(*arg))
+    rows = sorted((row for part, _ in results for row in part), key=lambda r: r[0])
+    counts = {}
+    for _, part in results:
+        for name, values in part.items():
+            merged = counts.setdefault(name, {})
+            for key, value in values.items():
+                merged[key] = merged.get(key, 0) + value
     seats = rules.table_size
     reference = reference or strategies[0]
     summary, versus = summarize(rows, strategies, reference, seats)
@@ -153,6 +180,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "strategies": summary,
         "reference": reference,
         "versus_reference": versus,
+        "decision_counts": counts,
         "seconds": round(time.perf_counter() - started, 1),
         "workers": workers,
         "method": ("same deal from every seat against a shuffled lineup of the pool; "

@@ -41,3 +41,11 @@ def test_too_little_input_is_refused():
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     with pytest.raises(ValueError):
         run_scoreboard(rules, ["tag"], deals=1)
+
+
+def test_progress_is_reported_after_every_batch():
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    calls = []
+    run_scoreboard(rules, ["tag"], deals=4, chunk=1, pool=("tag",),
+                   progress=lambda done, total, seconds: calls.append((done, total)))
+    assert calls == [(1, 4), (2, 4), (3, 4), (4, 4)]
