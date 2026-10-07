@@ -94,3 +94,26 @@ def test_gold_agreement_counts_correct_wrong_unknown_and_unmatched():
     assert fields["hero_cards"] == {"correct": 2, "no_frame": 1}
     assert result["checkpoints"][1]["mismatches"]["pot"] == {
         "expected": "173", "actual": "99"}
+
+
+def test_solver_advice_is_summarized_per_decision():
+    from tools.measure_aa_realtime import advice_summary
+
+    def advised(processed, status, decision=5, reason=None, seconds=None):
+        base = row(processed, processed, processed / 10, received=0.0, published=0.1)
+        base["timing"]["advice_ms"] = 2.0
+        base["fields"]["actions_v1"] = {"hand_id": "hand_1"}
+        base["fields"]["solver_advice"] = {
+            "status": status, "reason": reason, "street": "turn",
+            "decision": decision, "seconds": seconds}
+        return base
+
+    rows = [advised(0, "computing"), advised(1, "ready", seconds=3.2),
+            advised(2, "abstain", decision=7, reason="stack_unknown"),
+            row(3, 3, 0.3, received=0.0, published=0.1)]
+    summary = advice_summary(rows)
+    assert summary["decisions"] == 2
+    assert summary["outcomes"] == {"ready": 1, "abstain:stack_unknown": 1}
+    assert summary["ready_before_turn_ended"] == 1
+    assert summary["solve_seconds"]["p50"] == 3.2
+    assert advice_summary(rows[3:]) is None

@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, Response
 
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession
+from .aa_solver_advice import AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
 from .aa_math import AATableMath
 from .aa_sources import source_factory
@@ -56,7 +57,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                        replay_video_speed=replay_video_speed),
         lambda: AA8Reader(profile_path, bundle_sha256=bundle_sha256),
         interval_seconds=0.03, table_math=AATableMath().compute,
-        frame_log=frame_log,
+        solver_advice=AASolverAdvice(), frame_log=frame_log,
     )
     rules = AATableConfigStore(rules_path)
     analysis = analysis_service or AAConditionalAnalysis()

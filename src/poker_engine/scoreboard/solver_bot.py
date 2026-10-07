@@ -60,6 +60,7 @@ class SolverBot(_Policy):
         # model, as an opponent's are, since the bot's own policy never takes
         # some of the actions a person does (and would leave no range).
         self.human = human
+        self._pot_offset = 0.0
         self.streets = STREET_SETS[name]
         self.base = RfiTablePolicy()
         self.model = PopulationBot()
@@ -92,6 +93,16 @@ class SolverBot(_Policy):
     # -- solving --------------------------------------------------------------
 
     def solved_action(self, observation, rng, salt):
+        return self.to_arena(sample(self.solved_strategy(observation, salt), rng),
+                             observation)
+
+    def solved_strategy(self, observation, salt):
+        """{solver action: probability} for the hand held, at this decision.
+
+        ``observation["pot_offset"]`` (chips, optional) is added to every pot
+        the solver sees: a live table can hold chips the AA rules do not post.
+        """
+        self._pot_offset = float(observation.get("pot_offset") or 0)
         me, street = observation["observing_seat"], observation["street"]
         decisions = public_replay(observation)
         live = [seat for seat in observation["occupied_seats"]
@@ -111,10 +122,9 @@ class SolverBot(_Policy):
         for decision in now:
             node = node_at(node, [self.label(node, decision)])
         try:
-            strategy = strategy_of(node, observation["own_hole"])
+            return strategy_of(node, observation["own_hole"])
         except KeyError:
             raise Fallback("own_hand_not_in_range") from None
-        return self.to_arena(sample(strategy, rng), observation)
 
     def street_solution(self, decisions, observation, me, villain, hero, other, board):
         start = decisions[0].observation if decisions else observation
@@ -135,7 +145,8 @@ class SolverBot(_Policy):
         shown = {"flop": 3, "turn": 4, "river": 5}[start["street"]]
         street_board = tuple(board[:shown])
         tree, accuracy, iterations = self.solves[start["street"]]
-        spot = Spot(board=street_board, pot=float(start["pot"]), stack=stack,
+        spot = Spot(board=street_board, pot=float(start["pot"]) + self._pot_offset,
+                    stack=stack,
                     range_ip=ranges[ip], range_oop=ranges[oop], tree=tree)
         return self.solve(spot, accuracy, iterations), first
 
