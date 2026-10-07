@@ -69,8 +69,7 @@ def hand_facts(rows):
         at_first = next((f for f in reversed(fields) if f.get("participants")), {})
     seats = {int(seat) for seat, state in (at_first.get("participants") or {}).items()
              if state in IN_HAND} | {action["slot"] for action in actions}
-    board = max(([card for card in (f.get("board") or []) if card] for f in fields),
-                key=len, default=[])
+    board = _board(fields)
     stacks = {}
     for f in fields:
         for seat, value in (f.get("stacks") or {}).items():
@@ -80,6 +79,25 @@ def hand_facts(rows):
             "dealer": history.get("dealer"), "seats": sorted(seats),
             "actions": actions, "board": board, "stacks": stacks,
             "opening_pot": _opening_pot(rows, fields, first)}
+
+
+def _board(fields):
+    """The longest board read that agrees with the latest board reading.
+
+    A new hand's first frames can still show the last hand's board (the pot
+    resets before the cards are cleared). Those readings disagree with this
+    hand's board once its flop is read, so they are left out; a board with an
+    unread card before a read one is too.
+    """
+    readings = [list(f.get("board") or []) for f in fields]
+    latest = next((board for board in reversed(readings) if any(board)), [])
+    boards = []
+    for board in readings:
+        cards = [card for card in board if card]
+        if (board[:len(cards)] == cards
+                and all(a == b for a, b in zip(board, latest) if a and b)):
+            boards.append(cards)
+    return max(boards, key=len, default=[])
 
 
 def _opening_pot(rows, fields, first):
