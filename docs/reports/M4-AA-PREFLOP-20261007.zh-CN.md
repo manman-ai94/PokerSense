@@ -23,6 +23,31 @@
   所以新策略按 AA 真人的打法来预判对手。如果按 2009 年的打法预判，到 AA 这种松桌上反而比现有表少赢 45。
 - 暂时不需要花钱买数据：现在的瓶颈是 AA 真人的数据太少（只有 71 手），这个买不到，要靠多录几场。理由见最后一节。
 
+## 更新：AA 数据从 71 手增加到 120 手（2026-10-07 晚些时候）
+
+主人提醒 9 月录过不少八人桌录像，就把还没用过的 AA 八人桌录像都按真实节奏识别了一遍（0.75 倍速，几段同时跑）：
+
+- 9/09（跳过留作验收的 300–820 秒）
+- 9/09 测试段
+- 9/14
+- 9/17
+- 10/06 第二场
+
+备份里的视频共 88.6 GB，但按时长算 AA 八人桌只有约 2.5 小时：
+
+- 9/03 的约 39 GB 是 WePoker；
+- 9/04 和 9/17 是无损格式，每分钟约 1 GB；
+- 9/04 是 9 座布局，现在的识别用不了。
+
+新增 49 手完整牌，共 120 手。各局面的比例和 71 手时几乎一样：第一个入池平跟 34%（原 40%），面对加注跟注 27%、弃牌 68%。
+
+用新数据重新验证（第 2 批牌，每个策略 32000 手）：
+
+- 对 AA 人群，新翻前比现有表多赢 +50.4（+31.9 ~ +68.9）；
+- 对 2009 年真人人群多赢 +72.7（+53.5 ~ +92.0）。
+
+结论不变。下文的数字是 71 手时的结果。
+
 ## 怎么算的（大白话）
 
 每个选择的价值都相对于“现在弃牌”（记为 0）来算：
@@ -173,11 +198,12 @@
 ```bash
 # 两两对战胜率表（约 2 分钟，8 个进程）
 PYTHONPATH=src:. .venv/bin/python tools/build_preflop_equity.py --trials 10000
-# AA 真人的翻前频率
+# AA 真人的翻前频率（120 手版本：再加上 bulk-20261007/ 下 5 段测量日志）
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_preflop_stats.py \
     <测量目录>/actions-allin-replay-20261006-112110-spectate-table1/frames.jsonl \
     <测量目录>/actions-allin-replay-20261006-120822-spectate-session3b/frames.jsonl \
-    <测量目录>/advice-20261007-hero-play/frames.jsonl
+    <测量目录>/advice-20261007-hero-play/frames.jsonl \
+    <测量目录>/bulk-20261007/{0909-record-a,0909-test-v2,0914-dev-a,0917-live,1006-session2}/frames.jsonl
 # 调参（第 1 批牌）
 PYTHONPATH=src:. .venv/bin/python tools/tune_aa_preflop.py --pool aa --deals 2000 --seed 1 \
     --grid realize_ip=0.9,1.0,1.1 --grid realize_oop=0.7,0.8,0.9 --grid crowd=0,0.05,0.1
