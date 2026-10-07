@@ -324,7 +324,8 @@ def _advice(advice):
     if not advice:
         return None
     return {key: advice[key] for key in ("status", "reason", "street", "decision",
-                                         "advice", "pot_offset", "seconds")
+                                         "advice", "options", "pot_offset",
+                                         "stacks_assumed", "seconds")
             if key in advice}
 
 

@@ -51,6 +51,26 @@ assert.deepEqual(texts("advice-history"), ["还没有动作"]);
 render({status: "computing", street: "river"}, history);
 assert.equal(element("advice-status").textContent, "河牌：正在计算…");
 
+render({status: "ready", street: "preflop", pot: "23", to_call: "4", pot_offset: null,
+        stacks_assumed: [6], seconds: 0.004,
+        advice: [{action: "raise", frequency: 1.0, chips: "17", to: "17"}],
+        options: [{action: "raise", chips: 27.1, big_blinds: 13.53, to: "17", chips_in: "17"},
+                  {action: "call", chips: 11.9, big_blinds: 5.95, chips_in: "4"},
+                  {action: "fold", chips: 0, big_blinds: 0}]}, history);
+assert.equal(element("advice-status").textContent, "翻前：建议加注到 17（下面是每个选择平均值多少，比弃牌多赚为正）");
+assert.deepEqual(texts("advice-rows"), ["加注到 17 · +13.5 个大盲（+27.1 筹码）",
+  "跟注 · +6.0 个大盲（+11.9 筹码）", "弃牌 · 0.0 个大盲（0.0 筹码）"]);
+assert.equal(element("advice-detail").textContent, "底池 23 · 要跟 4 · 座位 6 的筹码没读到，按很深计算 · 用时 0.004 秒");
+render({status: "ready", street: "preflop", pot: "23", to_call: "4",
+        advice: [{action: "fold", frequency: 1.0}],
+        options: [{action: "fold", chips: 0, big_blinds: 0},
+                  {action: "call", chips: -2.4, big_blinds: -1.2, chips_in: "4"}]}, history);
+assert.equal(element("advice-status").textContent, "翻前：建议弃牌（下面是每个选择平均值多少，比弃牌多赚为正）");
+assert.deepEqual(texts("advice-rows"), ["弃牌 · 0.0 个大盲（0.0 筹码）", "跟注 · −1.2 个大盲（−2.4 筹码）"]);
+
+render({status: "idle", reason: "street_not_covered", street: "flop"}, history);
+assert.equal(element("advice-status").textContent, "翻牌不计算（求解要约一分钟，来不及）");
+
 render(null, null);
 assert.equal(element("advice-status").textContent, "暂无（等待画面）");
 console.log("solver advice panel cases passed");

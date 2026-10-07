@@ -223,7 +223,8 @@ class AAPreflopPolicy(_Policy):
         return self.postflop.decide(observation, rng)
 
     def choose(self, observation):
-        """The action taken and the value of each option (chips).
+        """The action taken, the value of each option (chips) and the amount
+        a raise would raise to (None when no raise is possible).
 
         Decisions depend on the hand only through its class, so they are kept
         per public state and class: a solver strategy replaying its own
@@ -250,7 +251,7 @@ class AAPreflopPolicy(_Policy):
         if best == "raise":
             action = raise_action[0]
         return {"action": action, "values": values,
-                "raise_to": raise_action[1] if best == "raise" else None}
+                "raise_to": raise_action[1] if raise_action else None}
 
 
 class Table:
