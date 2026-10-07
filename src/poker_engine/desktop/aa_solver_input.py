@@ -41,7 +41,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .aa_action_history import COMPACT_FIELDS
 
 RULES_PATH = (Path(__file__).resolve().parents[3]
-              / "configs/game/aa-scoreboard-rules-v1.json")
+              / "configs/game/aa-scoreboard-rules-v2.json")
 IN_HAND = frozenset({"active", "folded", "all_in"})
 PLAYERS = range(6, 9)               # table sizes the AA rules cover
 DEEP = Decimal(100000)              # stacks for checking the betting alone
