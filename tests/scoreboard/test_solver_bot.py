@@ -128,3 +128,32 @@ def test_too_wide_flops_are_left_to_the_base_policy(monkeypatch):
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     report = run_scoreboard(rules, ["solver_flop"], deals=20, pool=("population",))
     assert report["decision_counts"]["solver_flop"].get("flop_ranges_too_wide", 0) > 0
+
+
+def test_a_persons_past_actions_are_read_with_the_population_model():
+    from types import SimpleNamespace
+
+    def limp(cards):
+        observation = {"street": "preflop", "public_history": [], "board": [],
+                       "to_call": "4", "bets": {"3": "0"}, "own_hole": list(cards)}
+        action = {"id": "check_call", "kind": "check_call", "raise_to": None}
+        return [Decision(3, "preflop", observation, action)]
+
+    weights = {"AhKd": 1.0, "QsQd": 1.0, "7c2d": 1.0}
+    never_calls = SimpleNamespace(decide=lambda obs, rng: "fold")
+    calls_with_aces = SimpleNamespace(decide=lambda obs, rng: (
+        "check_call" if obs["own_hole"][0][0] == "A" else "fold"))
+    bot = SolverBot("solver_turn")
+    bot.base = never_calls
+    hero, _ = bot.street_ranges("preflop", limp(("7c", "2d")), 3, 5, weights,
+                                weights, "salt", (), "7c2d")
+    assert hero == {}                     # the bot's own policy never limps
+    person = SolverBot("solver_turn", human=True)
+    person.model = calls_with_aces
+    hero, _ = person.street_ranges("preflop", limp(("7c", "2d")), 3, 5, weights,
+                                   weights, "salt", (), "7c2d")
+    assert hero == {"AhKd": 1.0, "7c2d": 1.0}       # the held hand stays in
+    person.model = never_calls
+    hero, _ = person.street_ranges("preflop", limp(("7c", "2d")), 3, 5, weights,
+                                   weights, "salt", (), "7c2d")
+    assert hero == weights                # an action the model never takes
