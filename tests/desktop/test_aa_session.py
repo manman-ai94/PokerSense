@@ -295,3 +295,17 @@ def test_frame_summary_prefers_current_evidence_and_keeps_legacy_fields():
     assert summary["participants"] == {"1": "active"}
     assert summary["participants_legacy"] == {"1": "folded"}
     assert summary["hero_controls"]["button"] == "check"
+
+
+def test_frame_summary_keeps_the_rebuilt_hand_compact():
+    from poker_engine.desktop.aa_session import frame_summary
+
+    history = {"hand_id": "hand_7", "complete": True, "start": "pot_went_down",
+               "dealer": 2, "actions": [
+                   {"frame": 9, "street": "flop", "slot": 3, "kind": "raise",
+                    "amount": "19", "amount_source": "pot_rise"}]}
+    summary = frame_summary({"action_history_v1": history})
+    assert summary["actions_v1"] == {
+        "hand_id": "hand_7", "complete": True, "start": "pot_went_down", "dealer": 2,
+        "actions": [[9, "flop", 3, "raise", "19", "pot_rise"]]}
+    assert frame_summary({})["actions_v1"] is None

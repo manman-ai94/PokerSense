@@ -28,6 +28,7 @@ STREETS = ("preflop", "flop", "turn", "river")
 KIND = {"aggressive": "raise", "raise": "raise", "bet": "raise", "call": "call",
         "check": "check", "fold": "fold", "all_in": "all_in"}
 PRICED = ("call", "raise", "all_in")
+FIELDS_V1 = ("frame", "street", "slot", "kind", "amount", "source")
 
 
 def load(path):
@@ -170,6 +171,190 @@ def rebuilt(rows):
                                       if a.get("amount") not in (None, ""))}
 
 
+def hands_v1(rows):
+    """Each hand's last rebuilt history (``actions_v1``) with the frames it covered."""
+    result = {}
+    for row in rows:
+        history = (row.get("fields") or {}).get("actions_v1")
+        if not history:
+            continue
+        hand = result.setdefault(history["hand_id"], {"rows": []})
+        hand.update(complete=history["complete"], start=history["start"],
+                    dealer=history["dealer"],
+                    actions=[dict(zip(FIELDS_V1, item)) for item in history["actions"]])
+        hand["rows"].append(row)
+    return result
+
+
+def _between(first, second):
+    """Seats strictly between two seats, going round the table (8 seats)."""
+    seats, seat = [], (first + 1) % 8
+    while seat != second:
+        seats.append(seat)
+        seat = (seat + 1) % 8
+    return seats
+
+
+def skipped_seats(hand):
+    """Seats still in the hand that should have acted between two actions of
+    one street but have no action there: likely missed actions."""
+    by_frame = {row["processed"]: row for row in hand["rows"]}
+    folded, flags = set(), []
+    actions = sorted(hand["actions"], key=lambda a: a["frame"])
+    for first, second in zip(actions, actions[1:]):
+        if first["kind"] == "fold":
+            folded.add(first["slot"])
+        if (first["street"] != second["street"]
+                or None in (first["slot"], second["slot"])):
+            continue
+        row = by_frame.get(second["frame"]) or {}
+        states = (row.get("fields") or {}).get("participants") or {}
+        for seat in _between(first["slot"], second["slot"]):
+            if seat not in folded and states.get(str(seat)) == "active":
+                flags.append({"street": second["street"], "seat": seat,
+                              "between": [first["slot"], second["slot"]],
+                              "frame": second["frame"]})
+    return flags
+
+
+def street_balance(hand):
+    """Per street: chips of its actions against the rise of the steady pot."""
+    pots = [(row["processed"], (row.get("fields") or {}).get("pot"))
+            for row in hand["rows"]]
+    pots = [(frame, Decimal(pot)) for frame, pot in pots if pot not in (None, "")]
+    result = []
+    for street in STREETS:
+        acts = [a for a in hand["actions"] if a["street"] == street]
+        if not acts or any(a["kind"] in PRICED and a["amount"] in (None, "")
+                           for a in acts if a["kind"] in PRICED):
+            continue
+        start, end = acts[0]["frame"], acts[-1]["frame"]
+        before = [pot for frame, pot in pots if frame < start - 10]
+        after = [pot for frame, pot in pots if end + 15 < frame]
+        if not before or not after:
+            continue
+        chips = sum(Decimal(a["amount"]) for a in acts if a["kind"] in PRICED)
+        result.append({"street": street, "chips": str(chips),
+                       "pot_rise": str(after[0] - before[-1]),
+                       "balanced": chips == after[0] - before[-1]})
+    return result
+
+
+def unexplained_rises(hand):
+    """Steady pot rises in a hand that no call or raise accounts for.
+
+    A rise spans from the last reading of the old pot to the first of the new
+    one (the pot is sometimes unreadable for seconds). Each call or raise
+    accounts for the rise nearest to it, within 15 frames of the span. The
+    rise from an empty pot is the blinds and antes.
+    """
+    by_frame = {row["processed"]: row for row in hand["rows"]}
+    if not by_frame:
+        return []
+    runs = pot_runs(by_frame, min(by_frame), max(by_frame))
+    rises = [(before, after) for before, after in zip(runs, runs[1:])
+             if after[0] > before[0] and before[0] != 0]
+    explained = set()
+    for action in hand["actions"]:
+        if action["kind"] not in PRICED:
+            continue
+        frame = action["frame"]
+        gaps = [(max(before[2] - frame, frame - after[1], 0), after[1])
+                for before, after in rises]
+        near = [gap for gap in gaps if gap[0] <= 15]
+        if near:
+            explained.add(min(near)[1])
+    return [{"frame": after[1], "chips": str(after[0] - before[0])}
+            for before, after in rises if after[1] not in explained]
+
+
+def unrecorded_folds(hand):
+    """Seats the seat states show folding during the hand with no fold action."""
+    folds = {a["slot"] for a in hand["actions"] if a["kind"] == "fold"}
+    seen_active, result = set(), set()
+    for row in hand["rows"]:
+        states = (row.get("fields") or {}).get("participants") or {}
+        for seat, state in states.items():
+            if state == "active":
+                seen_active.add(int(seat))
+            elif (state == "folded" and int(seat) in seen_active
+                    and int(seat) not in folds):
+                result.add(int(seat))
+    return sorted(result)
+
+
+def summarize_v1(rows):
+    hands_ = hands_v1(rows)
+    actions = [a for hand in hands_.values() for a in hand["actions"]]
+    priced = [a for a in actions if a["kind"] in PRICED]
+    flags = [flag for hand in hands_.values() for flag in skipped_seats(hand)]
+    balances = [item for hand in hands_.values() if hand["complete"]
+                for item in street_balance(hand)]
+    return {"hands": len(hands_),
+            "complete_hands": sum(hand["complete"] for hand in hands_.values()),
+            "starts": dict(Counter(hand["start"] for hand in hands_.values())),
+            "actions": len(actions), "priced_actions": len(priced),
+            "priced_with_amount": sum(a["amount"] not in (None, "") for a in priced),
+            "amount_sources": dict(Counter(a["source"] for a in priced)),
+            "skipped_seat_flags": len(flags),
+            "unexplained_pot_rises": sum(len(unexplained_rises(hand))
+                                         for hand in hands_.values()),
+            "unrecorded_folds": sum(len(unrecorded_folds(hand))
+                                    for hand in hands_.values()),
+            "streets_checked": len(balances),
+            "streets_balanced": sum(item["balanced"] for item in balances)}
+
+
+def compare_hands(rows, labelled):
+    """Rebuilt hands against labelled hands of one recording.
+
+    ``labelled`` is a list of {"from", "to", "actions": [[street, seat, kind,
+    chips], ...]} with recording seconds; each is matched to the rebuilt hand
+    with the most actions in that span, then compared action by action.
+    """
+    pts = {row["processed"]: row.get("pts_seconds") for row in rows}
+    rebuilt_hands = hands_v1(rows)
+    totals = Counter()
+    details = []
+    for label in labelled:
+        def inside(action):
+            seconds = pts.get(action["frame"])
+            return seconds is not None and label["from"] <= seconds <= label["to"]
+        best = max(rebuilt_hands.values(), default=None,
+                   key=lambda hand: sum(map(inside, hand["actions"])))
+        got = [] if best is None else [a for a in best["actions"] if inside(a)]
+        want = [tuple(item[:3]) for item in label["actions"]]
+        seen = [(a["street"], a["slot"], a["kind"]) for a in got]
+        matcher = SequenceMatcher(a=want, b=seen, autojunk=False)
+        matched = missing = extra = 0
+        amounts = []
+        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+            if tag == "equal":
+                matched += i2 - i1
+                for offset in range(i2 - i1):
+                    chips = label["actions"][i1 + offset][3]
+                    amount = got[j1 + offset]["amount"]
+                    if want[i1 + offset][2] in PRICED:
+                        result = ("missing" if amount in (None, "") else
+                                  "correct" if str(amount) == str(chips) else "wrong")
+                        totals["amount_" + result] += 1
+                        if result != "correct":
+                            amounts.append({"action": want[i1 + offset],
+                                            "labelled": chips, "rebuilt": amount})
+            else:
+                missing += i2 - i1
+                extra += j2 - j1
+        totals.update(labelled_actions=len(want), matched=matched, missing=missing,
+                      extra=extra)
+        details.append({"from": label["from"], "matched": matched, "missing": missing,
+                        "extra": extra, "differences": [
+                            {"labelled": want[i1:i2], "rebuilt": seen[j1:j2]}
+                            for tag, i1, i2, j1, j2 in matcher.get_opcodes()
+                            if tag != "equal"],
+                        "amount_differences": amounts})
+    return {"totals": dict(totals), "hands": details}
+
+
 def label_sequence(label):
     """(street, seat, kind, chips, recording-frame window) per labelled action."""
     result = []
@@ -216,12 +401,21 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--frames", type=Path, required=True)
     parser.add_argument("--labels", type=Path)
+    parser.add_argument("--hand-labels", type=Path,
+                        help="labelled hands of several recordings (see compare_hands)")
+    parser.add_argument("--recording", help="recording name inside --hand-labels")
     args = parser.parse_args(argv)
     rows = load(args.frames)
     report = {"summary": summarize(rows), "rebuilt": rebuilt(rows)}
+    if any((row.get("fields") or {}).get("actions_v1") for row in rows):
+        report["v1"] = summarize_v1(rows)
     if args.labels:
         report["labelled_hand"] = compare(
             rows, json.loads(args.labels.read_text(encoding="utf-8")))
+    if args.hand_labels:
+        labels = json.loads(args.hand_labels.read_text(encoding="utf-8"))
+        report["labelled_hands"] = compare_hands(
+            rows, labels["recordings"][args.recording])
     print(json.dumps(report, indent=1, ensure_ascii=False))
 
 

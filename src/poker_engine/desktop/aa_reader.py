@@ -18,6 +18,7 @@ import numpy as np
 
 from ..data_paths import resolve_legacy_path
 from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
+from .aa_action_history import AAActionHistory
 from .aa_street import AAStreet
 from .aa_semantics import AAObservationSemantics
 
@@ -219,6 +220,7 @@ class AA8Reader:
         self._semantics = AAObservationSemantics()
         self._seat_states = AASeatStates()
         self._street = AAStreet()
+        self._actions = AAActionHistory()
         from .aa_critical_perception import CriticalPerceptionBoundary
         self._critical = CriticalPerceptionBoundary()
 
@@ -249,6 +251,7 @@ class AA8Reader:
                 self._critical.reset()
                 self._seat_states.reset()
                 self._street.reset()
+                self._actions.reset()
             self._state.audit = source
             current_hash = hashlib.sha256(image.tobytes()).hexdigest()
             seats = getattr(self._state, "seats", None)
@@ -280,6 +283,7 @@ class AA8Reader:
             row["action_history_candidate"] = list(
                 getattr(self._state.adapter, "actions", [])[-256:]) if hasattr(
                     self._state, "adapter") else []
+            row["action_history_v1"] = self._actions.observe(row, frame)
             row.update(self._semantics.observe(row))
             row["critical_perception_v1"] = self._critical.observe(row)
             from .aa_critical_perception import target_s_candidate_screen
