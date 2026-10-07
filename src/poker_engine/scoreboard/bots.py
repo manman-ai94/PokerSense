@@ -228,6 +228,9 @@ def make_policy(name):
     if name == "population":
         from .population import PopulationBot   # imports this module
         return PopulationBot()
+    if name.startswith("solver_"):
+        from .solver_bot import SolverBot       # needs TexasSolver installed
+        return SolverBot(name)
     if name == "always_call":
         return AlwaysCall()
     if name == "random":

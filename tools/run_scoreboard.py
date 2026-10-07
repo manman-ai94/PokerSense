@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 
 from poker_engine.scoreboard.bots import POLICY_NAMES
 from poker_engine.scoreboard.runner import POOLS, run_scoreboard
@@ -42,6 +43,15 @@ def table(report):
     return "\n".join(lines)
 
 
+def show_progress(done, total, seconds):
+    left = seconds / done * (total - done)
+    sys.stderr.write(f"\r{done}/{total} batches, {seconds / 60:.1f} min, "
+                     f"about {left / 60:.1f} min left ")
+    if done == total:
+        sys.stderr.write("\n")
+    sys.stderr.flush()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--deals", type=int, default=2000)
@@ -63,7 +73,7 @@ def main(argv=None):
                             pool=POOLS.get(args.pool) or tuple(args.pool.split(",")),
                             workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
-                            all_in_ev=not args.no_all_in_ev)
+                            all_in_ev=not args.no_all_in_ev, progress=show_progress)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
