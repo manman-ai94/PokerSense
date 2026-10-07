@@ -1,6 +1,9 @@
-"""Solver advice for your heads-up turn and river decisions, in the background."""
+"""Advice for your preflop decisions, and solver advice for your heads-up turn
+and river decisions in the background."""
 
 from concurrent.futures import Future
+
+import pytest
 
 from poker_engine.desktop.aa_session import frame_summary
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice
@@ -101,9 +104,44 @@ def test_the_solve_runs_in_the_background_once_per_decision():
 def test_decisions_the_solver_does_not_cover_stay_idle():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     assert run(advice, range(50), hero=())[-1]["reason"] == "your_cards_not_read"
-    early = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
-    first = early.observe({**payload(14), "hero_controls_v1": {"visible": True}}, 14)
-    assert first["reason"] == "street_not_covered"
+    flop = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    first = flop.observe({**payload(31), "hero_controls_v1": {"visible": True}}, 31)
+    assert (first["reason"], first["street"]) == ("street_not_covered", "flop")
+
+
+def preflop_turn(hero):
+    """Your first preflop decision: seat 3 folded, it is seat 4's turn."""
+    return {**payload(12, hero=hero, extra_pot=0),
+            "hero_controls_v1": {"visible": True, "button": "call",
+                                 "call_amount": "4"}}
+
+
+def test_your_preflop_turn_gets_the_most_valuable_option_and_every_value():
+    bot = Bot({"CALL": 1.0})
+    advice = AASolverAdvice(bot, Inline())
+    aces = advice.observe(preflop_turn(("As", "Ah")), 12)
+    assert (aces["status"], aces["street"]) == ("ready", "preflop")
+    assert aces["advice"][0]["action"] == "raise" and aces["advice"][0]["to"]
+    options = {row["action"]: row for row in aces["options"]}
+    assert set(options) == {"fold", "call", "raise"}
+    assert options["fold"]["chips"] == 0
+    assert options["raise"]["chips"] > options["call"]["chips"] > 0
+    assert options["raise"]["big_blinds"] == pytest.approx(
+        options["raise"]["chips"] / 2, abs=0.05)
+    assert options["raise"]["to"] == aces["advice"][0]["to"]
+    assert aces["options"][0]["action"] == "raise"       # most valuable first
+    assert "AA players" in aces["basis"] and bot.seen == []
+    trash = AASolverAdvice(bot, Inline()).observe(preflop_turn(("7c", "2d")), 12)
+    assert trash["advice"] == [{"action": "fold", "frequency": 1.0}]
+    summary = frame_summary({"solver_advice_v1": aces})["solver_advice"]
+    assert summary["options"] == aces["options"]
+
+
+def test_extra_chips_on_screen_count_in_the_preflop_pot():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    result = advice.observe({**preflop_turn(("Ks", "Qs")), "pot": {"value": "40"}}, 12)
+    assert result["status"] == "ready" and result["pot"] == "40"
+    assert result["pot_offset"] == "21"           # the six-seat opening pot is 19
 
 
 def test_a_solver_fallback_abstains_with_its_reason():

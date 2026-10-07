@@ -1,12 +1,20 @@
-"""Heads-up turn and river advice from the solver, worked out in the background.
+"""Advice for your preflop and heads-up turn and river decisions.
 
-When it is your turn (your action button is on screen) on the turn or the
-river, with one opponent left and both your cards read, the hand so far is
-replayed on the AA table (``aa_solver_input``) and the scoreboard's solver
-strategy (``solver_turn`` in human mode) works out what to do with your hand:
-how often to check, call, fold or bet, and how much. The solve runs on a
-background thread, so recognition never waits for it. Every frame reports
-where the current decision stands:
+When it is your turn (your action button is on screen) and both your cards
+are read, the hand so far is replayed on the AA table (``aa_solver_input``).
+
+- Before the flop the AA preflop policy (``aa_preflop``) works out what
+  folding, calling and raising are each worth in chips against the AA
+  players' ranges, and advises the most valuable; the values are the reasons
+  shown. It takes milliseconds and runs at once.
+- On the turn or the river, with one opponent left, the scoreboard's solver
+  strategy (``solver_turn`` in human mode, on ``aa_preflop``: everyone's
+  earlier play is read as AA players play) works out how often to check,
+  call, fold or bet, and how much. The solve runs on a background thread, so
+  recognition never waits for it.
+
+The flop is not covered: a flop solve takes about a minute. Every frame
+reports where the current decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -14,9 +22,9 @@ where the current decision stands:
 - ``abstain``: this hand cannot be used (the reason says why).
 
 The pot the solver sees is corrected to the pot on screen: the AA rules do
-not post extra chips such as a mushroom or bomb pot. The advice comes from a
-model of how people play and is for study only; nothing here acts on the
-client.
+not post extra chips such as a mushroom or bomb pot (preflop, extra chips on
+screen are added to the pot the policy sees). The advice comes from a model
+of how people play and is for study only; nothing here acts on the client.
 """
 
 from __future__ import annotations
@@ -25,6 +33,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 import time
 
+from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.solver.texassolver import amount_of
 
@@ -32,13 +41,16 @@ from .aa_session import frame_summary
 from .aa_solver_input import hand_facts, solver_observation
 
 HERO = 4                        # your seat: bottom centre
-STREETS = ("turn", "river")     # the flop takes about a minute: too slow live
+STREETS = ("preflop", "turn", "river")   # a flop solve takes about a minute
 THREADS = 4                     # solver threads (the scoreboard uses one)
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
 SALT = "live-advice"
 BASIS = ("heads-up TexasSolver strategy; ranges from a population model of "
-         "public hand histories; for study only")
+         "public hand histories fitted to AA players' preflop play; for study only")
+PREFLOP_BASIS = ("expected chips of each option against AA players' preflop "
+                 "frequencies (read from recordings) and a heads-up equity table; "
+                 "for study only")
 
 
 def _decimal(value):
@@ -65,9 +77,10 @@ def advice_rows(strategy, observation):
 class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
-    def __init__(self, bot=None, executor=None):
+    def __init__(self, bot=None, executor=None, preflop=None):
         self._bot = bot
         self._executor = executor
+        self._preflop = preflop
         self._rows, self._hand_id, self._jobs = [], None, {}
 
     def __call__(self, payload, frame):
@@ -115,6 +128,8 @@ class AASolverAdvice:
             return {"status": "abstain", "reason": reason}
         if observation["street"] != fields.get("street"):
             return {"status": "abstain", "reason": "street_mismatch"}
+        if observation["street"] == "preflop":
+            return self._preflop_advice(observation, fields)
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
         if len(live) != 2:
@@ -125,11 +140,53 @@ class AASolverAdvice:
         if pot is not None:
             observation["pot_offset"] = str(pot - Decimal(observation["pot"]))
         if self._bot is None:
-            self._bot = SolverBot("solver_turn", human=True, threads=THREADS)
+            self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
+                                  base=self._preflop_policy())
         if self._executor is None:
             self._executor = ThreadPoolExecutor(max_workers=1,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(self._solve, observation, time.monotonic())
+
+    def _preflop_policy(self):
+        if self._preflop is None:
+            self._preflop = AAPreflopPolicy()
+        return self._preflop
+
+    def _preflop_advice(self, observation, fields):
+        """The most valuable option and every option's value, at once."""
+        if HERO in observation["stacks_unknown"]:
+            return {"status": "abstain", "reason": "stack_unknown"}
+        started = time.monotonic()
+        pot = _decimal(fields.get("pot"))
+        offset = None
+        if pot is not None and pot > Decimal(observation["pot"]):
+            offset = pot - Decimal(observation["pot"])
+            observation = {**observation, "pot": str(pot)}
+        choice = self._preflop_policy().choose(observation)
+        big_blind = Decimal(observation["rules"]["big_blind"])
+        mine = Decimal(observation["bets"][str(HERO)])
+        price = Decimal(observation["to_call"] or 0)
+        options = []
+        for name, value in sorted(choice["values"].items(),
+                                  key=lambda item: (-item[1], item[0])):
+            row = {"action": name, "chips": round(value, 1),
+                   "big_blinds": round(value / float(big_blind), 2)}
+            if name == "raise":
+                to = Decimal(str(choice["raise_to"])).quantize(Decimal(1))
+                row.update(to=str(to), chips_in=str(to - mine))
+            elif name == "call":
+                row.update(chips_in=str(price))
+            options.append(row)
+        best = options[0]
+        advice = [{"action": best["action"], "frequency": 1.0,
+                   **({"chips": best["chips_in"], "to": best["to"]}
+                      if best["action"] == "raise" else {})}]
+        return {"status": "ready", "advice": advice, "options": options,
+                "pot": observation["pot"], "to_call": observation["to_call"],
+                "pot_offset": None if offset is None else str(offset),
+                "stacks_assumed": observation["stacks_unknown"],
+                "basis": PREFLOP_BASIS,
+                "seconds": round(time.monotonic() - started, 3)}
 
     def _solve(self, observation, started):
         try:
@@ -153,12 +210,13 @@ class AASolverAdvice:
             self._jobs[key] = job
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
-                                "advice", "pot", "to_call", "pot_offset", "seconds")
+                                "advice", "options", "pot", "to_call", "pot_offset",
+                                "stacks_assumed", "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):
         return {"schema_version": 1, "status": status, "reason": reason,
-                "hand_id": self._hand_id, **extra, "basis": BASIS,
+                "hand_id": self._hand_id, "basis": BASIS, **extra,
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
