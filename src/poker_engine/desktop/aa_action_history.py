@@ -44,6 +44,8 @@ PRICED = frozenset({"call", "raise", "all_in"})
 BEFORE, AFTER = 10, 15          # reader frames searched around an action's frame
 WAIT = 120                      # longest wait for an unreadable pot to come back
 HISTORY = 400                   # reader frames of pot and street kept
+# One action in the compact form the measurement log keeps (``frame_summary``).
+COMPACT_FIELDS = ("frame", "street", "slot", "kind", "amount", "source")
 
 
 def _amount(value):
@@ -345,4 +347,4 @@ class AAActionHistory:
                          "board-card street"}
 
 
-__all__ = ["AAActionHistory", "steady_runs"]
+__all__ = ["AAActionHistory", "COMPACT_FIELDS", "steady_runs"]

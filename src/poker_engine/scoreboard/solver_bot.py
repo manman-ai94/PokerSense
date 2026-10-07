@@ -53,8 +53,13 @@ class Fallback(Exception):
 
 
 class SolverBot(_Policy):
-    def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16):
+    def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16,
+                 human=False):
         self.name = name
+        # Advising a person: their past actions are read with the population
+        # model, as an opponent's are, since the bot's own policy never takes
+        # some of the actions a person does (and would leave no range).
+        self.human = human
         self.streets = STREET_SETS[name]
         self.base = RfiTablePolicy()
         self.model = PopulationBot()
@@ -159,6 +164,10 @@ class SolverBot(_Policy):
                 if node is not None:
                     hero = keep_own(weighted(hero, node, self.label(node, decision)),
                                     hero, own)
+                elif self.human:
+                    read = kept(hero, decision, lambda obs: self.model.decide(
+                        obs, _rng(MODEL_SALT, obs)))
+                    hero = keep_own(read or hero, hero, own)
                 else:
                     hero = kept(hero, decision,
                                 lambda obs: self.base.decide(obs, _rng(salt, obs)),
