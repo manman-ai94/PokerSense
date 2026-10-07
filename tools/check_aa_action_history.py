@@ -296,6 +296,7 @@ def summarize_v1(rows):
             "actions": len(actions), "priced_actions": len(priced),
             "priced_with_amount": sum(a["amount"] not in (None, "") for a in priced),
             "amount_sources": dict(Counter(a["source"] for a in priced)),
+            "all_ins": sum(a["kind"] == "all_in" for a in actions),
             "skipped_seat_flags": len(flags),
             "unexplained_pot_rises": sum(len(unexplained_rises(hand))
                                          for hand in hands_.values()),
@@ -303,6 +304,23 @@ def summarize_v1(rows):
                                     for hand in hands_.values()),
             "streets_checked": len(balances),
             "streets_balanced": sum(item["balanced"] for item in balances)}
+
+
+def labelled_kinds(actions):
+    """Kinds as the labels use them: an all-in is a raise when it tops the
+    street's bets so far (or has no amount), otherwise a call."""
+    put, top, kinds = Counter(), Counter(), []
+    for action in actions:
+        kind, street, slot = action["kind"], action["street"], action["slot"]
+        chips = (Decimal(action["amount"]) if kind in PRICED
+                 and action["amount"] not in (None, "") else Decimal(0))
+        if kind == "all_in":
+            raises = not chips or put[street, slot] + chips > top[street]
+            kind = "raise" if raises else "call"
+        put[street, slot] += chips
+        top[street] = max(top[street], put[street, slot])
+        kinds.append(kind)
+    return kinds
 
 
 def compare_hands(rows, labelled):
@@ -322,7 +340,10 @@ def compare_hands(rows, labelled):
             return seconds is not None and label["from"] <= seconds <= label["to"]
         best = max(rebuilt_hands.values(), default=None,
                    key=lambda hand: sum(map(inside, hand["actions"])))
-        got = [] if best is None else [a for a in best["actions"] if inside(a)]
+        actions = [] if best is None else [
+            {**a, "kind": kind} for a, kind in zip(best["actions"],
+                                                   labelled_kinds(best["actions"]))]
+        got = [a for a in actions if inside(a)]
         want = [tuple(item[:3]) for item in label["actions"]]
         seen = [(a["street"], a["slot"], a["kind"]) for a in got]
         matcher = SequenceMatcher(a=want, b=seen, autojunk=False)

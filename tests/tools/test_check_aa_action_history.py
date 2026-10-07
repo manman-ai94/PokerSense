@@ -94,3 +94,12 @@ def test_labelled_hands_are_matched_by_time_and_compared():
     report = compare_hands(v1_log(), labelled)
     assert report["totals"] == {"labelled_actions": 2, "matched": 1, "missing": 1,
                                 "extra": 0, "amount_correct": 1}
+
+
+def test_all_ins_compare_with_labels_as_raises_or_calls():
+    from tools.check_aa_action_history import labelled_kinds
+    actions = [{"street": "flop", "slot": 3, "kind": "raise", "amount": "23"},
+               {"street": "flop", "slot": 1, "kind": "all_in", "amount": "448"},
+               {"street": "flop", "slot": 3, "kind": "all_in", "amount": "200"},
+               {"street": "turn", "slot": 5, "kind": "all_in", "amount": None}]
+    assert labelled_kinds(actions) == ["raise", "raise", "call", "raise"]

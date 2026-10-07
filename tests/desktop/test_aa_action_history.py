@@ -165,3 +165,48 @@ def test_a_call_after_the_flop_has_its_chips_before_the_pot_is_read():
     assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
         ("19", "pot_rise"), ("19", "street_logic")]
     assert hand["pending_amounts"] == 0
+
+
+def stacked(item, stacks):
+    return {**item,
+            "stacks": {slot: {"value": value} for slot, value in stacks.items()}}
+
+
+def shove(extra_frames=0, seen=(), seen_from=0):
+    """Seat 1 (448 behind) goes all in on the flop: the pot goes 58 -> 506."""
+    pots = ["58"] * 10 + ["506"] * (20 + extra_frames)
+    return [{**stacked(payload(pot, "flop"), {"1": "448" if i < 10 else "0"}),
+             "action_history_candidate": [e for e in seen if i >= seen_from]}
+            for i, pot in enumerate(pots)]
+
+
+def test_a_stack_dropping_to_zero_next_to_a_pot_rise_is_an_all_in():
+    hand = feed(AAActionHistory(), shove())
+    assert [(a["street"], a["slot"], a["kind"], a["amount"], a["amount_source"])
+            for a in hand["actions"]] == [("flop", 1, "all_in", "448", "stack")]
+
+
+def test_a_stack_at_zero_without_a_pot_rise_adds_nothing():
+    frames = [stacked(payload("58", "flop"), {"1": "448" if i < 10 else "0"})
+              for i in range(40)]
+    assert feed(AAActionHistory(), frames)["actions"] == []
+
+
+def test_an_all_in_is_not_counted_twice_when_the_reader_sees_it_too():
+    before = feed(AAActionHistory(), shove(seen=[event(10, 1, "aggressive")],
+                                           seen_from=11))
+    assert [(a["kind"], a["amount"]) for a in before["actions"]] == [("raise", "448")]
+    later = feed(AAActionHistory(), shove(seen=[event(10, 1, "all_in")], seen_from=20))
+    assert [(a["kind"], a["amount"], a["amount_source"]) for a in later["actions"]] == [
+        ("all_in", "448", "stack")]
+
+
+def test_a_call_after_an_all_in_owes_the_all_in():
+    frames = shove() + [stacked(payload("954", "flop"), {"1": "0"})] * 20
+    frames = [{**item, "action_history_candidate":
+               [event(31, 3, "call")] if i > 31 else []}
+              for i, item in enumerate(frames)]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["slot"], a["kind"], a["amount"], a["amount_source"])
+            for a in hand["actions"]] == [(1, "all_in", "448", "stack"),
+                                          (3, "call", "448", "pot_rise")]
