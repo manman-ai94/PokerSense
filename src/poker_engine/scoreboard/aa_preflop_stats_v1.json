@@ -13,57 +13,77 @@
   {
    "log": "advice-20261007-hero-play",
    "hands": 23
+  },
+  {
+   "log": "0909-record-a",
+   "hands": 7
+  },
+  {
+   "log": "0909-test-v2",
+   "hands": 0
+  },
+  {
+   "log": "0914-dev-a",
+   "hands": 13
+  },
+  {
+   "log": "0917-live",
+   "hands": 27
+  },
+  {
+   "log": "1006-session2",
+   "hands": 2
   }
  ],
- "hands": 71,
+ "hands": 120,
  "spots": {
   "3bet_vs_4bet": {
-   "n": 3,
+   "n": 5,
    "raise": 1,
-   "call": 0,
+   "call": 2,
    "fold": 2
   },
   "call_vs_3bet": {
-   "n": 7,
+   "n": 9,
    "raise": 3,
-   "call": 3,
+   "call": 5,
    "fold": 1
   },
   "limp_vs_raise": {
-   "n": 43,
-   "raise": 3,
-   "call": 22,
-   "fold": 18
+   "n": 71,
+   "raise": 4,
+   "call": 36,
+   "fold": 31
   },
   "open_vs_3bet": {
-   "n": 12,
-   "raise": 2,
-   "call": 2,
+   "n": 17,
+   "raise": 5,
+   "call": 4,
    "fold": 8
   },
   "rfi": {
-   "n": 126,
-   "raise": 15,
-   "call": 51,
-   "fold": 60
+   "n": 221,
+   "raise": 35,
+   "call": 75,
+   "fold": 111
   },
   "vs_3bet_cold": {
-   "n": 12,
+   "n": 15,
    "raise": 0,
    "call": 0,
-   "fold": 12
+   "fold": 15
   },
   "vs_limp": {
-   "n": 194,
-   "raise": 25,
-   "call": 88,
-   "fold": 81
+   "n": 272,
+   "raise": 40,
+   "call": 123,
+   "fold": 109
   },
   "vs_open": {
-   "n": 116,
-   "raise": 7,
-   "call": 31,
-   "fold": 78
+   "n": 198,
+   "raise": 11,
+   "call": 53,
+   "fold": 134
   }
  }
 }

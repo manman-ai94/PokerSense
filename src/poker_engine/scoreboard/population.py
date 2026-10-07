@@ -21,11 +21,12 @@ in and one player behind, like a small blind, so it uses the small blind's.
 Other seats use the position with the same number of seats to the button.
 
 ``aa_population`` is the same bot fitted to real AA players: AA tables are
-far looser before the flop than the 2009 games (in 71 read hands of three
-2026-10 recordings, 40% of first-in players limp against 10%, and 27% call an
-open against 12%). Where the AA count of a kind of decision is large enough,
-its raise and call shares at every position are scaled by how much more (or
-less) often AA players raise and call there than the 2009 players pooled
+far looser before the flop than the 2009 games (in 120 read hands of seven
+recordings from 2026-09-09 to 10-07, 34% of first-in players limp against
+10%, and 27% call an open against 12%). Where the AA count of a kind of
+decision is large enough, its raise and call shares at every position are
+scaled by how much more (or less) often AA players raise and call there than
+the 2009 players pooled
 (``aa_preflop_stats_v1.json``, built by ``tools/build_aa_preflop_stats.py``).
 Postflop it plays like the 2009 players: there is no AA count of that yet.
 """
