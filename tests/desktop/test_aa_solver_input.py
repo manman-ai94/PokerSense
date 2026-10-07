@@ -89,6 +89,21 @@ def test_hand_facts_come_from_the_frame_log():
     assert found["opening_pot"] == Decimal(19)
 
 
+def test_the_last_hands_board_still_on_screen_is_not_this_hands_board():
+    found = rows()
+    for row in found[3:6]:                  # the last hand's cards, not cleared yet
+        row["fields"] = {**row["fields"], "board": ["Jd", "As", "6d", "9c", "Td"]}
+    found[36]["fields"] = {**found[36]["fields"], "board": [None] * 5}   # a miss
+    assert hand_facts(found)["board"] == BOARD
+
+
+def test_a_board_with_an_unread_card_before_a_read_one_is_left_out():
+    found = rows()[:32]
+    gapped = [None, "Kd", "7c", "2s", None]
+    found[-1]["fields"] = {**found[-1]["fields"], "board": gapped}
+    assert hand_facts(found)["board"] == BOARD
+
+
 def test_before_any_action_the_seats_come_from_the_latest_reading():
     early = [row for row in rows() if row["processed"] < 8]
     for row in early:
