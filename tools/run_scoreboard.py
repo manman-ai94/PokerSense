@@ -1,7 +1,8 @@
 """Score strategies on simulated AA eight-seat tables (bb/100 with 95% intervals).
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
-        [--strategies rfi_table,tag,always_call] [--pool population|aa|styles|tag,lag] \\
+        [--strategies rfi_table,tag,always_call] \\
+        [--pool population|aa|styles|tag,lag] \\
         [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
