@@ -12,9 +12,7 @@ from __future__ import annotations
 from itertools import combinations
 import random
 
-from phevaluator import evaluate_cards
-
-from .strength import DECK
+from .strength import _EVALUATE_7, CARD_ID, DECK
 
 SHOWN = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 RUNOUT_SAMPLES = 2000
@@ -65,7 +63,7 @@ def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
     known = board[:shown]
     holes = [[repr(card) for card in hole] for hole in arena._holes]
     dead = {card for hole in holes for card in hole} | set(known)
-    deck = [card for card in DECK if card not in dead]
+    deck = [CARD_ID[card] for card in DECK if card not in dead]
     need = 5 - shown
     if need <= 2:
         runouts = list(combinations(deck, need))
@@ -74,9 +72,11 @@ def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
         runouts = [rng.sample(deck, need) for _ in range(samples)]
     contributions = [float(value) for value in arena._contributions]
     totals = [0.0] * len(seats)
+    known = [CARD_ID[card] for card in known]
+    hole_ids = [[CARD_ID[card] for card in hole] for hole in holes]
     for extra in runouts:
         full = known + list(extra)
-        ranks = {i: evaluate_cards(*holes[i], *full) for i in alive}
+        ranks = {i: _EVALUATE_7(*hole_ids[i], *full) for i in alive}
         for i, value in enumerate(settle(contributions, ranks)):
             totals[i] += value
     unit = float(arena.rules.minimum_chip)
