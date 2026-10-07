@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from importlib import resources
+from itertools import combinations
 import json
 
 from phevaluator import evaluate_cards
@@ -53,6 +54,27 @@ def preflop_percentile(cards):
     top 15% plays every hand whose percentile is at most 0.15.
     """
     return preflop_table()["classes"][hand_class(cards)]["percentile"]
+
+
+def combo_percentile(cards):
+    """Like ``preflop_percentile``, but spread over the combinations of the class.
+
+    The combinations of a class (6 for a pair, 4 suited, 12 offsuit) take
+    evenly spaced places inside the class's share, so a cut that falls inside
+    a class plays part of it rather than all or none of it.
+    """
+    name = hand_class(cards)
+    high, low = sorted(cards, key=lambda card: (RANKS.index(card[0]),
+                                                SUITS.index(card[1])), reverse=True)
+    first, second = SUITS.index(high[1]), SUITS.index(low[1])
+    if len(name) == 2:
+        index = list(combinations(range(4), 2)).index((second, first))
+    elif name.endswith("s"):
+        index = first
+    else:
+        index = first * 3 + (second if second < first else second - 1)
+    combos = class_combos(name)
+    return preflop_percentile(cards) - (combos - index - 0.5) / 1326
 
 
 def equity(hero, board, opponents, trials, rng):

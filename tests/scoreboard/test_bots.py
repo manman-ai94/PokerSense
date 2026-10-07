@@ -78,3 +78,12 @@ def test_facing_a_raise_tightens_up():
 def test_unknown_policy_is_rejected():
     with pytest.raises(ValueError):
         make_policy("nobody")
+
+
+def test_a_split_policy_plays_one_policy_before_the_flop_and_another_after():
+    split = make_policy("tag/always_call")
+    assert split.name == "tag/always_call"
+    decide = split.for_game("salt")
+    assert decide(observation(["7c", "2d"], seat=5)) == "fold"          # tag preflop
+    flop = observation(["7c", "2d"], seat=5, street="flop")
+    assert decide(flop) == "check_call"                                  # always calls

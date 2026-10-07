@@ -1,11 +1,13 @@
 """Score strategies on simulated AA eight-seat tables (bb/100 with 95% intervals).
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
-        [--strategies rfi_table,tag,always_call] [--pool tag,lag,rock,station] \\
+        [--strategies rfi_table,tag,always_call] [--pool population|styles|tag,lag] \\
         [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
-shuffled lineup of pool styles; ``hands`` = deals x 8 per strategy.
+shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
+pool is a name from ``runner.POOLS`` or a comma-separated list of policies;
+the default, "population", plays like real players.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ import os
 from pathlib import Path
 
 from poker_engine.scoreboard.bots import POLICY_NAMES
-from poker_engine.scoreboard.runner import DEFAULT_POOL, run_scoreboard
+from poker_engine.scoreboard.runner import POOLS, run_scoreboard
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
@@ -25,14 +27,16 @@ DEFAULT_RULES = (Path(__file__).resolve().parents[1]
 
 def table(report):
     rows = sorted(report["strategies"].items(), key=lambda kv: -kv[1]["bb_per_100"])
+    width = max(12, *(len(name) for name, _ in rows))
     header = "vs " + report["reference"]
-    lines = [f"{'strategy':<12} {'bb/100':>8}  {'95% interval':<20} {header:>14}"]
+    lines = [f"{'strategy':<{width}} {'bb/100':>8}  {'95% interval':<20} {header:>14}"]
     for name, row in rows:
         ci = row["ci95"]
         versus = report["versus_reference"].get(name)
         delta = "" if versus is None else f"{versus['delta_bb_per_100']:+.1f}"
-        lines.append(f"{name:<12} {row['bb_per_100']:>8.1f}  "
-                     f"[{ci[0]:.1f}, {ci[1]:.1f}]".ljust(42) + f"{delta:>8}")
+        interval = f"[{ci[0]:.1f}, {ci[1]:.1f}]"
+        lines.append(f"{name:<{width}} {row['bb_per_100']:>8.1f}  {interval:<20} "
+                     f"{delta:>14}")
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
@@ -42,7 +46,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--deals", type=int, default=2000)
     parser.add_argument("--strategies", default=",".join(POLICY_NAMES))
-    parser.add_argument("--pool", default=",".join(DEFAULT_POOL))
+    parser.add_argument("--pool", default="population",
+                        help="pool name (population, styles) or policies a,b,c")
     parser.add_argument("--reference", default="always_call")
     parser.add_argument("--workers", type=int,
                         default=max(1, (os.cpu_count() or 1) - 2),
@@ -55,7 +60,8 @@ def main(argv=None):
     rules = AARuleProfileV2.from_dict(
         json.loads(args.rules.read_text(encoding="utf-8")))
     report = run_scoreboard(rules, args.strategies.split(","), deals=args.deals,
-                            pool=tuple(args.pool.split(",")), workers=args.workers,
+                            pool=POOLS.get(args.pool) or tuple(args.pool.split(",")),
+                            workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev)
     if args.out:

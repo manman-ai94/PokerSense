@@ -3,7 +3,8 @@
 import random
 
 from poker_engine.scoreboard.strength import (
-    all_classes, class_combos, equity, hand_class, preflop_percentile, preflop_table)
+    DECK, all_classes, class_combos, combo_percentile, equity, hand_class,
+    preflop_percentile, preflop_table)
 
 
 def test_hand_classes_cover_every_starting_hand():
@@ -21,6 +22,23 @@ def test_preflop_ranking_orders_known_hands():
     table = preflop_table()["classes"]
     assert max(row["percentile"] for row in table.values()) == 1.0
     assert table["32o"]["rank"] == 169
+
+
+def test_combinations_spread_evenly_inside_their_class():
+    by_class = {}
+    for index, first in enumerate(DECK):
+        for second in DECK[index + 1:]:
+            cards = [first, second]
+            by_class.setdefault(hand_class(cards), []).append(combo_percentile(cards))
+    for name, places in by_class.items():
+        top = preflop_percentile(cards_of(name))
+        steps = sorted(round((top - place) * 1326, 6) for place in places)
+        assert steps == [i + 0.5 for i in range(class_combos(name))]
+    assert combo_percentile(["Ks", "As"]) == combo_percentile(["As", "Ks"])
+
+
+def cards_of(name):
+    return [name[0] + "s", name[1] + ("s" if name.endswith("s") else "d")]
 
 
 def test_equity_against_random_hands():
