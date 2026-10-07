@@ -25,7 +25,8 @@ class AARecognitionSession:
     """
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
-                 interval_seconds=0.1, table_math=None, frame_log=None):
+                 interval_seconds=0.1, table_math=None, solver_advice=None,
+                 frame_log=None):
         if not callable(source_factory) or not callable(reader_factory):
             raise TypeError("source_factory and reader_factory must be callable")
         for name, value in (("stale_after", stale_after),
@@ -39,9 +40,11 @@ class AARecognitionSession:
         self._reader_factory = reader_factory
         self._stale_after = stale_after
         self._interval = interval_seconds
-        # Optional payload -> dict enrichment (table math) and a JSONL file
-        # receiving one timing/field record per processed frame.
+        # Optional payload -> dict enrichments (table math; solver advice, which
+        # also takes the frame number) and a JSONL file receiving one
+        # timing/field record per processed frame.
         self._table_math = table_math
+        self._solver_advice = solver_advice
         self._frame_log = frame_log
         self._lock = threading.RLock()
         self._worker = None
@@ -199,6 +202,10 @@ class AARecognitionSession:
                 if self._table_math is not None:
                     payload["table_math_v1"] = self._table_math(payload)
                 math_finished = time.monotonic()
+                if self._solver_advice is not None:
+                    advice = self._solver_advice(payload, processed)
+                    payload["solver_advice_v1"] = advice
+                advice_finished = time.monotonic()
                 # Detach mutable reader results and reject NaN/non-JSON values.
                 payload = json.loads(json.dumps(payload, allow_nan=False))
                 ok, encoded = cv2.imencode(".jpg", image)
@@ -228,6 +235,7 @@ class AARecognitionSession:
                         "recognition_finished_at": recognition_finished,
                         "recognition_ms": (recognition_finished - started) * 1000,
                         "math_ms": (math_finished - recognition_finished) * 1000,
+                        "advice_ms": (advice_finished - math_finished) * 1000,
                         "published_at": self._last_result,
                         "physical_source_timestamp": None,
                         "end_to_end_latency_ms": None,
@@ -297,6 +305,7 @@ def frame_summary(payload):
         "street_wagers": payload.get("street_wagers"),
         "causal_wagers": payload.get("causal_street_wagers_v2"),
         "actions_v1": _actions_v1(payload.get("action_history_v1")),
+        "solver_advice": _advice(payload.get("solver_advice_v1")),
     }
 
 
@@ -308,6 +317,15 @@ def _actions_v1(history):
             "start": history["start"], "dealer": history["dealer"],
             "actions": [[a["frame"], a["street"], a["slot"], a["kind"], a["amount"],
                          a["amount_source"]] for a in history["actions"]]}
+
+
+def _advice(advice):
+    """The solver advice status, without its fixed wording."""
+    if not advice:
+        return None
+    return {key: advice[key] for key in ("status", "reason", "street", "decision",
+                                         "advice", "pot_offset", "seconds")
+            if key in advice}
 
 
 def _append_frame_log(path, processed, record, timing, payload):

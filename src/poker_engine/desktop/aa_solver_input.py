@@ -12,9 +12,13 @@ that replay, and checks the hand on the way:
   Spectating, the button in front of the bottom seat is not read and the
   last reading stays; when the reading does not fit the actions and exactly
   one other dealer replays the whole hand, that one is used;
-- **actions**: every action must come from the seat whose turn it is and be
-  legal at the table, with raises to what the seat had in plus its chips.
-  Two actions read in the same frame may be in either order.
+- **actions**: every action must come from the seat whose turn it is, never
+  on a later street than the table is on, and be legal at the table, with
+  raises to what the seat had in plus its chips. (Without the street check,
+  a hand joined after preflop can fit a wrong dealer with its flop checks
+  taken for preflop calls. An earlier street is fine: the first action on a
+  new street is often read before its board cards.) Two actions read in the
+  same frame may be in either order.
 
 Anything that does not fit stops the replay with a reason: no advice should
 be given from such a hand. The opening pot is compared with the antes,
@@ -42,6 +46,7 @@ PLAYERS = range(6, 9)               # table sizes the AA rules cover
 DEEP = Decimal(100000)              # stacks for checking the betting alone
 SAME_FRAME = 2                      # reader frames apart that may be swapped
 BOARD = (("flop", 3), ("turn", 4), ("river", 5))
+STREETS = ("preflop", "flop", "turn", "river")
 
 
 def _rules(players):
@@ -102,6 +107,10 @@ def replay_hand(facts, stacks=None):
     seats, actions = facts["seats"], facts["actions"]
     if len(seats) not in PLAYERS:
         return _result("stopped", f"players_{len(seats)}", None, None, 0, None)
+    if actions and actions[0].get("street") not in (None, "preflop"):
+        # No preflop betting: most likely a bomb pot (everyone puts in, the
+        # flop comes at once), which the AA rules do not model.
+        return _result("stopped", "starts_after_preflop", None, None, 0, None)
     reported = facts["dealer"]
     candidates = ([reported] if reported in seats else []) + [
         seat for seat in seats if seat != reported]
@@ -155,6 +164,9 @@ def _steps(seats, dealer, actions, board, stacks):
             return "stopped", "action_after_hand_end", index, arena
         if arena.actor != action["slot"]:
             return "stopped", "not_this_seats_turn", index, arena
+        street = action.get("street")
+        if street in STREETS and STREETS.index(street) > STREETS.index(arena.street):
+            return "stopped", "street_mismatch", index, arena
         step = _arena_action(arena, action)
         if step is None:
             return "stopped", "raise_without_amount", index, arena
@@ -201,19 +213,25 @@ def solver_observation(facts, seat, cards):
 
     The hand is replayed again from starting stacks (readings plus what each
     seat put in; seats without a reading stay deep). There is no observation
-    when the replay stops, when it is not ``seat``'s turn, or when the table
-    would have dealt a board card the reader has not seen yet.
+    for a hand joined midway (its first actions are unknown), when the replay
+    stops, when it is not ``seat``'s turn yet ("not_your_turn_yet": usually the
+    action before has not been read yet), when the stack readings do not fit
+    the betting, or when the table would have dealt a board card the reader
+    has not seen.
     """
+    if facts.get("complete") is not True:
+        return None, "hand_incomplete"
     first = replay_hand(facts)
     if first["status"] != "ok":
         return None, first["reason"]
+    if first["arena"].terminal or first["arena"].actor != seat:
+        return None, "not_your_turn_yet"
+    # Only now: a stack can already show an action the history has not read yet.
     stacks = starting_stacks(facts, first)
     replay = replay_hand({**facts, "dealer": first["dealer"]}, stacks)
     arena = replay["arena"]
-    if replay["status"] != "ok":
-        return None, replay["reason"]
-    if arena.terminal or arena.actor != seat:
-        return None, "not_this_seats_turn"
+    if replay["status"] != "ok" or arena.terminal or arena.actor != seat:
+        return None, "stacks_do_not_fit"
     observation = arena.observe(seat)
     if len(observation["board"]) > len(facts["board"]):
         return None, "board_not_read"

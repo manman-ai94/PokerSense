@@ -22,6 +22,7 @@ import time
 from poker_engine.desktop.aa_math import KNOWN_STATES, AATableMath
 from poker_engine.desktop.aa_reader import AA8Reader
 from poker_engine.desktop.aa_session import AARecognitionSession
+from poker_engine.desktop.aa_solver_advice import AASolverAdvice
 from poker_engine.desktop.aa_sources import source_factory
 from poker_engine.desktop.aa_video_source import parse_windows
 
@@ -30,14 +31,19 @@ SLOTS = tuple(str(slot) for slot in range(8))
 
 
 def run(profile, video, frame_log, *, start=0.0, exclude=(), speed=1.0,
-        max_seconds=None, poll=1.0):
-    """Play the recording through a real session until it ends or times out."""
+        max_seconds=None, poll=1.0, advice=False):
+    """Play the recording through a real session until it ends or times out.
+
+    With ``advice`` the solver works out your heads-up turn and river
+    decisions in the background, as it would live (needs TexasSolver).
+    """
     session = AARecognitionSession(
         source_factory(profile, replay_video=video, replay_video_start=start,
                        replay_video_exclude=parse_windows(exclude),
                        replay_video_speed=speed),
         lambda: AA8Reader(profile), interval_seconds=0.03,
-        table_math=AATableMath().compute, frame_log=frame_log)
+        table_math=AATableMath().compute,
+        solver_advice=AASolverAdvice() if advice else None, frame_log=frame_log)
     began = time.monotonic()
     session.start({"mode": "video-replay"})
     try:
@@ -142,6 +148,7 @@ def summarize(rows):
         "hero_turn_buttons": dict(Counter(
             str(f["hero_controls"].get("button")) for f in hero_turn)),
         "table_math": table_math,
+        "solver_advice": advice_summary(rows),
     }
 
 
@@ -207,6 +214,34 @@ def compare_gold(rows, gold, tolerance=0.2):
             "checkpoints": details}
 
 
+def advice_summary(rows):
+    """Your decisions the solver advised on: how each ended, how long it took,
+    and how many frames it was ready before your turn ended."""
+    decisions = {}
+    for row in rows:
+        advice = (row["fields"].get("solver_advice") or {})
+        hand = (row["fields"].get("actions_v1") or {}).get("hand_id")
+        if advice.get("decision") is None or hand is None:
+            continue
+        item = decisions.setdefault((hand, advice["decision"], advice["street"]),
+                                    {"frames": 0, "ready_frames": 0})
+        item["frames"] += 1
+        item["ready_frames"] += advice["status"] == "ready"
+        item.update(status=advice["status"], reason=advice.get("reason"),
+                    seconds=advice.get("seconds"))
+    if not decisions:
+        return None
+    done = list(decisions.values())
+    return {"decisions": len(done),
+            "outcomes": dict(Counter(d["status"] if d["status"] != "abstain"
+                                     else "abstain:" + str(d["reason"]) for d in done)),
+            "ready_before_turn_ended": sum(d["ready_frames"] > 0 for d in done),
+            "solve_seconds": percentiles([d["seconds"] for d in done
+                                          if d["seconds"] is not None]),
+            "advice_ms": percentiles([row["timing"].get("advice_ms", 0)
+                                      for row in rows])}
+
+
 def read_log(path):
     with open(path, encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
@@ -223,13 +258,15 @@ def main(argv=None):
     parser.add_argument("--speed", type=float, default=1.0)
     parser.add_argument("--max-seconds", type=float)
     parser.add_argument("--gold", type=Path)
+    parser.add_argument("--advice", action="store_true",
+                        help="work out solver advice on your turn (needs TexasSolver)")
     args = parser.parse_args(argv)
 
     args.out.mkdir(parents=True, exist_ok=False)
     frame_log = args.out / "frames.jsonl"
     outcome = run(args.profile, args.video, frame_log, start=args.start,
                   exclude=args.exclude, speed=args.speed,
-                  max_seconds=args.max_seconds)
+                  max_seconds=args.max_seconds, advice=args.advice)
     rows = read_log(frame_log) if frame_log.exists() else []
     report = {"video": str(args.video), "start": args.start,
               "exclude": args.exclude, "speed": args.speed, "run": outcome,

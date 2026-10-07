@@ -84,6 +84,7 @@ class PacedVideoCapture:
         self._anchor = None  # (wall clock, timeline seconds)
         self._skip_until = None
         self.last_pts = None
+        self.skips = 0          # excluded windows jumped over so far
         self.finished = False
         self._seek(float(start))
 
@@ -141,6 +142,7 @@ class PacedVideoCapture:
             resume = self._excluded_until(pts)
             if resume is not None:
                 self._seek(resume)
+                self.skips += 1
                 continue
             if self._anchor is None:
                 self._anchor = (self._clock(), pts)
@@ -188,7 +190,11 @@ class AAVideoSource(AACaptureSource):
                          source_kind="video-replay")
 
     def _frame_extras(self):
-        return {"source_video_pts": self.video.last_pts}
+        # A jump over an excluded window is a new stretch of observation: the
+        # reader starts over (its temporal state, including the hand) on a
+        # new source identity, as if observation had stopped and restarted.
+        return {"source_video_pts": self.video.last_pts,
+                "source_id": f"video-replay:{self.video.skips}"}
 
     def read(self):
         try:

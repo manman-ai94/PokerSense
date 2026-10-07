@@ -100,6 +100,7 @@ def test_excluded_window_is_skipped_even_when_seek_lands_early():
     assert timeline(capture) == [0.0, 0.1, 0.2, 0.7, 0.8, 0.9]
     # Pace restarts after the jump instead of sleeping through the gap.
     assert max(clock.sleeps) == pytest.approx(0.1)
+    assert capture.skips == 1
 
 
 def test_start_seeks_into_the_right_segment():
@@ -148,5 +149,6 @@ def test_video_source_uses_capture_card_canvas_and_ends_cleanly(tmp_path):
     assert stamps and stamps[0] == 0.0
     assert stamps == sorted(set(stamps)) and set(stamps) <= {0.0, 0.01, 0.02}
     assert all(r["source_kind"] == "video-replay" for r in records)
+    assert {r["source_id"] for r in records} == {"video-replay:0"}
     assert records[0]["image"].shape == (1080, 498, 3)
     assert records[0]["physical_source_timestamp"] is None

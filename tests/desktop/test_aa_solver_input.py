@@ -112,4 +112,35 @@ def test_no_observation_before_the_board_card_is_read_or_out_of_turn():
     from poker_engine.desktop.aa_solver_input import solver_observation
     assert solver_observation(facts(), 2, ["Qs", "Qh"]) == (None, "board_not_read")
     hand = {**facts(), "board": BOARD + ["2s"]}
-    assert solver_observation(hand, 5, ["Qs", "Qh"]) == (None, "not_this_seats_turn")
+    assert solver_observation(hand, 5, ["Qs", "Qh"]) == (None, "not_your_turn_yet")
+    joined = {**hand, "complete": False}
+    assert solver_observation(joined, 2, ["Qs", "Qh"]) == (None, "hand_incomplete")
+
+
+def test_an_action_on_another_street_than_the_table_stops_the_replay():
+    # Preflop actions read as the flop's must not pass for preflop calls.
+    shifted = ACTIONS[:2] + [(a[0], "flop", *a[2:]) for a in ACTIONS[2:6]]
+    result = replay_hand(facts(shifted))
+    assert (result["status"], result["reason"]) == ("stopped", "street_mismatch")
+
+
+def test_the_first_action_of_a_street_may_be_read_before_its_board():
+    early = list(ACTIONS)
+    early[6] = (30, "preflop", 2, "check", "0")       # the first flop check
+    assert replay_hand(facts(early))["status"] == "ok"
+
+
+def test_a_hand_without_preflop_betting_is_not_replayed():
+    # A bomb pot: everyone puts in and the flop comes at once.
+    flop_only = [(a[0], "flop", *a[2:]) for a in ACTIONS[6:]]
+    result = replay_hand(facts(flop_only))
+    assert (result["status"], result["reason"]) == ("stopped", "starts_after_preflop")
+
+
+def test_stacks_that_do_not_fit_the_betting_give_no_observation():
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    # Seat 5's stack already shows a shove the history has not read: with 0
+    # behind it would have been all in on the flop.
+    stacks = {seat: Decimal(100) for seat in range(6)}
+    hand = {**facts(stacks={**stacks, 5: Decimal(0)}), "board": BOARD + ["2s"]}
+    assert solver_observation(hand, 2, ["Qs", "Qh"]) == (None, "stacks_do_not_fit")
