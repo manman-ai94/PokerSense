@@ -12,8 +12,9 @@ At a heads-up decision on a street it covers, the bot
 3. turns the solver's bet into the nearest bet the table allows.
 
 Preflop, multiway pots and anything it cannot handle (solver not installed,
-an opponent action the population model never takes, ...) are played by
-rfi_table; ``counts`` records how often each happened.
+an opponent action the population model never takes, ...) are played by the
+base policy, rfi_table unless another is given; ``counts`` records how often
+each happened.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ class Fallback(Exception):
 
 class SolverBot(_Policy):
     def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16,
-                 human=False):
+                 human=False, base=None):
         self.name = name
         # Advising a person: their past actions are read with the population
         # model, as an opponent's are, since the bot's own policy never takes
@@ -62,8 +63,10 @@ class SolverBot(_Policy):
         self.human = human
         self._pot_offset = 0.0
         self.streets = STREET_SETS[name]
-        self.base = RfiTablePolicy()
-        self.model = PopulationBot()
+        self.base = base or RfiTablePolicy()
+        # Opponents' ranges are read as the base policy expects them to play
+        # (the AA preflop policy expects AA players), else as the 2009 players.
+        self.model = PopulationBot(adjusted=getattr(self.base, "adjusted", False))
         self.solves = dict(STREET_SOLVES if solves is None else solves)
         self.threads = threads
         self.max_flop_hands = MAX_FLOP_HANDS

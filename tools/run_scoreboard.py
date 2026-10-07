@@ -1,7 +1,7 @@
 """Score strategies on simulated AA eight-seat tables (bb/100 with 95% intervals).
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
-        [--strategies rfi_table,tag,always_call] [--pool population|styles|tag,lag] \\
+        [--strategies rfi_table,tag,always_call] [--pool population|aa|styles|tag,lag] \\
         [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
@@ -64,7 +64,7 @@ def main(argv=None):
     parser.add_argument("--deals", type=int, default=2000)
     parser.add_argument("--strategies", default=",".join(POLICY_NAMES))
     parser.add_argument("--pool", default="population",
-                        help="pool name (population, styles) or policies a,b,c")
+                        help="pool name (population, aa, styles) or policies a,b,c")
     parser.add_argument("--reference", default="always_call")
     parser.add_argument("--workers", type=int,
                         default=max(1, (os.cpu_count() or 1) - 2),

@@ -1,0 +1,69 @@
+{
+ "schema_version": 1,
+ "method": "complete hands of the rebuilt action history (actions_v1); every preflop action counted by its kind of decision, pooled over positions; all in counts as a raise",
+ "sources": [
+  {
+   "log": "actions-allin-replay-20261006-112110-spectate-table1",
+   "hands": 25
+  },
+  {
+   "log": "actions-allin-replay-20261006-120822-spectate-session3b",
+   "hands": 23
+  },
+  {
+   "log": "advice-20261007-hero-play",
+   "hands": 23
+  }
+ ],
+ "hands": 71,
+ "spots": {
+  "3bet_vs_4bet": {
+   "n": 3,
+   "raise": 1,
+   "call": 0,
+   "fold": 2
+  },
+  "call_vs_3bet": {
+   "n": 7,
+   "raise": 3,
+   "call": 3,
+   "fold": 1
+  },
+  "limp_vs_raise": {
+   "n": 43,
+   "raise": 3,
+   "call": 22,
+   "fold": 18
+  },
+  "open_vs_3bet": {
+   "n": 12,
+   "raise": 2,
+   "call": 2,
+   "fold": 8
+  },
+  "rfi": {
+   "n": 126,
+   "raise": 15,
+   "call": 51,
+   "fold": 60
+  },
+  "vs_3bet_cold": {
+   "n": 12,
+   "raise": 0,
+   "call": 0,
+   "fold": 12
+  },
+  "vs_limp": {
+   "n": 194,
+   "raise": 25,
+   "call": 88,
+   "fold": 81
+  },
+  "vs_open": {
+   "n": 116,
+   "raise": 7,
+   "call": 31,
+   "fold": 78
+  }
+ }
+}
