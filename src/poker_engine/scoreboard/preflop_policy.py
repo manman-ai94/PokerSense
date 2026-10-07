@@ -64,6 +64,7 @@ from .strength import class_combos, hand_class, preflop_table
 EQUITY_FILE = "preflop_equity_v1.json"
 COMBOS = 1326
 MIN_CHANCE = 0.005      # a player calling less often than this is left out
+CACHE_SIZE = 50_000     # decisions kept (per public state and hand class)
 
 
 @dataclass(frozen=True)
@@ -173,6 +174,20 @@ def band(history, seat, name, adjusted=True):
     return low, high
 
 
+def situation(observation):
+    """Everything public a preflop decision depends on, as a hashable key."""
+    rules = (observation.get("rules_fingerprint")
+             or json.dumps(observation["rules"], sort_keys=True))
+    return (rules, observation["observing_seat"], observation["dealer_seat"],
+            observation.get("straddler_seat"), tuple(observation["occupied_seats"]),
+            tuple(sorted(observation["folded"])), observation["pot"],
+            observation["to_call"], tuple(sorted(observation["bets"].items())),
+            tuple(sorted(observation["stacks"].items())),
+            tuple((row["actor"], row["id"]) for row in observation["public_history"]),
+            tuple(a["id"] for a in observation["legal_actions"]),
+            observation.get("mushroom_pool"))
+
+
 def postflop_order(observation, seat):
     """Place in the postflop order: 0 acts first (small blind), larger acts later."""
     occupied = observation["occupied_seats"]
@@ -200,6 +215,7 @@ class AAPreflopPolicy(_Policy):
         self.params = params or PreflopParams()
         self.adjusted = adjusted        # expect AA players (else 2009 players)
         self.postflop = PopulationBot()
+        self._choices = {}
 
     def decide(self, observation, rng):
         if observation["street"] == "preflop":
@@ -207,7 +223,21 @@ class AAPreflopPolicy(_Policy):
         return self.postflop.decide(observation, rng)
 
     def choose(self, observation):
-        """The action taken and the value of each option (chips)."""
+        """The action taken and the value of each option (chips).
+
+        Decisions depend on the hand only through its class, so they are kept
+        per public state and class: a solver strategy replaying its own
+        range asks about all 1326 hands at each of its decisions.
+        """
+        key = (situation(observation), hand_class(observation["own_hole"]))
+        if key not in self._choices:
+            if len(self._choices) >= CACHE_SIZE:
+                self._choices.clear()
+            self._choices[key] = self._choose(observation)
+        kept = self._choices[key]
+        return {**kept, "values": dict(kept["values"])}
+
+    def _choose(self, observation):
         table = Table(observation, self.params, self.adjusted)
         values = {"fold" if table.to_call else "check": table.passive_value()}
         if table.to_call:

@@ -90,6 +90,16 @@ def test_values_rank_strong_hands_above_weak_ones():
     assert trash["action"] == "fold"
 
 
+def test_decisions_are_kept_per_situation_and_hand_class():
+    _, observation = first_decision()
+    policy = AAPreflopPolicy()
+    first = policy.choose({**observation, "own_hole": ["Ah", "Kh"]})
+    first["values"]["raise"] = -1.0          # a caller's change stays its own
+    again = policy.choose({**observation, "own_hole": ["Ad", "Kd"]})
+    assert again == policy._choose({**observation, "own_hole": ["Ad", "Kd"]})
+    assert again["values"]["raise"] != -1.0
+
+
 def test_weak_hands_fold_to_an_all_in_and_aces_call():
     arena, observation = first_decision()
     jam = max((a for a in observation["legal_actions"] if a["kind"] == "raise_to"),
