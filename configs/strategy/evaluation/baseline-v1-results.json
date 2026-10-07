@@ -1,7 +1,7 @@
 {
   "advice_emitted": false,
   "base_commit": "d98084aba96eac6ff3bc0cf07dad99b00e36ff31",
-  "baseline_file_sha256": "3b9983b46c054a40499286467164c68e2e1ea7039df0a5c2470859ebd702eab4",
+  "baseline_file_sha256": "5ecae40e03ce18b22799599446745ce1db467e7a8bf41cc994a2d4cdeabfdac6",
   "baseline_id": "BASELINE_V1",
   "blocked_count": 0,
   "capacity_probes": [
@@ -1510,7 +1510,7 @@
     }
   ],
   "complete_count": 30,
-  "deterministic_sha256": "c1a725f3f95a76261fb041af200e45bae02b6836202b36ec56578f0afd680aae",
+  "deterministic_sha256": "81fe23072adc7852e3e75253c13de33ac13c6f58bd16758c9baba46651ee85af",
   "negative_vs_simple_policy_case_ids": [
     "n6-facing_bet/value_heavy",
     "n6-unopened/value_heavy",
