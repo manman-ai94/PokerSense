@@ -127,6 +127,20 @@ def summarize(rows, strategies, reference, seats):
     return summary, versus
 
 
+def pairwise(rows, strategies):
+    """Every pair of strategies compared on the same deals: first minus second."""
+    per = {name: [row[name][0] for _, row in rows] for name in strategies}
+    result = {}
+    for index, first in enumerate(strategies):
+        for second in strategies[index + 1:]:
+            mean, half = _interval([a - b for a, b in zip(per[first], per[second])])
+            result[f"{first} - {second}"] = {
+                "delta_bb_per_100": round(mean * 100, 2),
+                "ci95": None if half is None else [round((mean - half) * 100, 2),
+                                                   round((mean + half) * 100, 2)]}
+    return result
+
+
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
                    progress=None):
@@ -180,7 +194,12 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "strategies": summary,
         "reference": reference,
         "versus_reference": versus,
+        "pairwise": pairwise(rows, strategies),
         "decision_counts": counts,
+        # Average big blinds per hand of each strategy on each deal, so any
+        # later comparison can be made from the saved file.
+        "per_deal": [[seed, {name: round(row[name][0], 6) for name in strategies}]
+                     for seed, row in rows],
         "seconds": round(time.perf_counter() - started, 1),
         "workers": workers,
         "method": ("same deal from every seat against a shuffled lineup of the pool; "
@@ -188,5 +207,5 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     }
 
 
-__all__ = ["DEFAULT_POOL", "POOLS", "lineup", "play_hand", "run_scoreboard",
+__all__ = ["DEFAULT_POOL", "POOLS", "lineup", "pairwise", "play_hand", "run_scoreboard",
            "score_deals", "summarize"]

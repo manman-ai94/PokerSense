@@ -38,6 +38,13 @@ def table(report):
         interval = f"[{ci[0]:.1f}, {ci[1]:.1f}]"
         lines.append(f"{name:<{width}} {row['bb_per_100']:>8.1f}  {interval:<20} "
                      f"{delta:>14}")
+    others = {pair: row for pair, row in report.get("pairwise", {}).items()
+              if report["reference"] not in pair.split(" - ")}
+    for pair, row in others.items():
+        ci = row["ci95"]
+        lines.append(f"{pair}: {row['delta_bb_per_100']:+.1f} "
+                     f"[{ci[0]:.1f}, {ci[1]:.1f}]" if ci else f"{pair}: "
+                     f"{row['delta_bb_per_100']:+.1f}")
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
