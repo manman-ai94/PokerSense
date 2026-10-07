@@ -19,6 +19,15 @@ straddler acts last before the flop with the full blind in, like a big
 blind, so it uses the big blind's frequencies; the big blind has half of it
 in and one player behind, like a small blind, so it uses the small blind's.
 Other seats use the position with the same number of seats to the button.
+
+``aa_population`` is the same bot fitted to real AA players: AA tables are
+far looser before the flop than the 2009 games (in 71 read hands of three
+2026-10 recordings, 40% of first-in players limp against 10%, and 27% call an
+open against 12%). Where the AA count of a kind of decision is large enough,
+its raise and call shares at every position are scaled by how much more (or
+less) often AA players raise and call there than the 2009 players pooled
+(``aa_preflop_stats_v1.json``, built by ``tools/build_aa_preflop_stats.py``).
+Postflop it plays like the 2009 players: there is no AA count of that yet.
 """
 
 from __future__ import annotations
@@ -36,7 +45,10 @@ from .strength import combo_percentile, equity
 
 STATS_FILE = "phh_population_stats_v1.json"
 CALIBRATION_FILE = "population_bot_v1.json"
+AA_STATS_FILE = "aa_preflop_stats_v1.json"
 GROUP = "7-9"
+MIN_AA_DECISIONS = 30      # AA decisions of a kind needed to rescale it
+MAX_CONTINUE = 0.98        # rescaled raise + call shares stay below this
 
 NAMES = {Position.BTN: "BTN", Position.CO: "CO", Position.HJ: "HJ",
          Position.LJ: "LJ", Position.UTG1: "EP", Position.UTG: "EP",
@@ -61,6 +73,22 @@ def calibration():
     return json.loads(data.read_text(encoding="utf-8"))["quantiles"]
 
 
+@lru_cache(maxsize=1)
+def aa_factors():
+    """{kind of decision: (raise factor, call factor)} of AA players vs 2009."""
+    data = json.loads(_data(AA_STATS_FILE).read_text(encoding="utf-8"))
+    stats = population_stats()
+    factors = {}
+    for spot, row in data["spots"].items():
+        base = stats.get(f"ALL|{spot}")
+        if row["n"] < MIN_AA_DECISIONS or not base:
+            continue
+        if base.get("raise") and base.get("call"):
+            factors[spot] = (row["raise"] / row["n"] / base["raise"],
+                             row["call"] / row["n"] / base["call"])
+    return factors
+
+
 def stats_position(observation):
     """Position whose real-player frequencies this seat uses before the flop."""
     seat_position = position(observation)
@@ -77,14 +105,25 @@ def actions(observation, street):
             if row["street"] == street]
 
 
-def preflop_shares(name, spot):
-    """(raise, call) shares of real players at this position and spot."""
+def preflop_shares(name, spot, adjusted=False):
+    """(raise, call) shares of real players at this position and spot.
+
+    ``adjusted``: of AA players (see the module notes).
+    """
     stats = population_stats()
     row = stats.get(f"{name}|{spot}") or stats.get(f"ALL|{spot}") or {}
-    return row.get("raise", 0.0), row.get("call", 0.0)
+    raise_share, call_share = row.get("raise", 0.0), row.get("call", 0.0)
+    if adjusted and spot in aa_factors():
+        raise_factor, call_factor = aa_factors()[spot]
+        raise_share, call_share = raise_share * raise_factor, call_share * call_factor
+        total = raise_share + call_share
+        if total > MAX_CONTINUE:
+            raise_share, call_share = (raise_share * MAX_CONTINUE / total,
+                                       call_share * MAX_CONTINUE / total)
+    return raise_share, call_share
 
 
-def preflop_band(observation, name):
+def preflop_band(observation, name, adjusted=False):
     """The range the seat's own earlier preflop decisions leave it with.
 
     A range is a band of hand percentiles (0 = strongest). Each decision splits
@@ -97,7 +136,7 @@ def preflop_band(observation, name):
         if player != me:
             continue
         spot = preflop_spot(history[:index], me)
-        raise_share, call_share = preflop_shares(name, spot)
+        raise_share, call_share = preflop_shares(name, spot, adjusted)
         width = high - low
         if kind == "r":
             high = low + raise_share * width
@@ -142,8 +181,11 @@ def threshold(spot, share):
 class PopulationBot(_Policy):
     name = "population"
 
-    def __init__(self, recorder=None):
+    def __init__(self, recorder=None, adjusted=False):
         self.recorder = recorder      # calibration: collects (spot, equity, action)
+        self.adjusted = adjusted      # preflop like AA players
+        if adjusted:
+            self.name = "aa_population"
 
     def decide(self, observation, rng):
         if observation["street"] == "preflop":
@@ -154,8 +196,8 @@ class PopulationBot(_Policy):
         name = stats_position(observation)
         me = observation["observing_seat"]
         spot = preflop_spot(actions(observation, "preflop"), me)
-        raise_share, call_share = preflop_shares(name, spot)
-        low, high = preflop_band(observation, name)
+        raise_share, call_share = preflop_shares(name, spot, self.adjusted)
+        low, high = preflop_band(observation, name, self.adjusted)
         share = combo_percentile(observation["own_hole"])
         place = (share - low) / (high - low) if high > low else 1.0
         if place <= raise_share:
@@ -188,5 +230,5 @@ class PopulationBot(_Policy):
         return passive(observation) if action == "fold" else "check_call"
 
 
-__all__ = ["PopulationBot", "fallbacks", "population_stats", "preflop_band",
-           "stats_position", "threshold"]
+__all__ = ["PopulationBot", "aa_factors", "fallbacks", "population_stats",
+           "preflop_band", "preflop_shares", "stats_position", "threshold"]

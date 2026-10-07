@@ -27,8 +27,10 @@ from .allin_ev import runout_ev
 from .bots import make_policy
 
 # Opponent pools by name. "population" plays like real players (see
-# population.py) and is the default; "styles" is the first version's mix.
-POOLS = {"population": ("population",), "styles": ("tag", "lag", "rock", "station")}
+# population.py) and is the default; "aa" like them but as loose before the
+# flop as AA players; "styles" is the first version's mix.
+POOLS = {"population": ("population",), "aa": ("aa_population",),
+         "styles": ("tag", "lag", "rock", "station")}
 DEFAULT_POOL = POOLS["population"]
 MAX_ACTIONS = 400
 

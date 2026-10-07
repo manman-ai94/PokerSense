@@ -222,12 +222,22 @@ class Split(_Policy):
 
 
 def make_policy(name):
+    if name.startswith("solver_") and "+" in name:
+        # "solver_flop+aa_preflop": the solver strategy on another base policy
+        from .solver_bot import SolverBot       # needs TexasSolver installed
+        streets, _, base = name.partition("+")
+        bot = SolverBot(streets, base=make_policy(base))
+        bot.name = name
+        return bot
     if "/" in name:
         before, after = name.split("/", 1)
         return Split(make_policy(before), make_policy(after))
-    if name == "population":
+    if name in ("population", "aa_population"):
         from .population import PopulationBot   # imports this module
-        return PopulationBot()
+        return PopulationBot(adjusted=name == "aa_population")
+    if name.startswith("aa_preflop"):
+        from .preflop_policy import from_name    # imports this module
+        return from_name(name)
     if name.startswith("solver_"):
         from .solver_bot import SolverBot       # needs TexasSolver installed
         return SolverBot(name)
@@ -242,7 +252,8 @@ def make_policy(name):
     raise ValueError(f"unknown policy: {name}")
 
 
-POLICY_NAMES = ("always_call", "random", "rfi_table", *STYLES, "population")
+POLICY_NAMES = ("always_call", "random", "rfi_table", "aa_preflop", *STYLES,
+                "population", "aa_population")
 
 __all__ = ["POLICY_NAMES", "STYLES", "Split", "StyleBot", "make_policy", "position",
            "raise_toward"]
