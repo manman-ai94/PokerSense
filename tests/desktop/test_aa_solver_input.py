@@ -144,3 +144,8 @@ def test_stacks_that_do_not_fit_the_betting_give_no_observation():
     stacks = {seat: Decimal(100) for seat in range(6)}
     hand = {**facts(stacks={**stacks, 5: Decimal(0)}), "board": BOARD + ["2s"]}
     assert solver_observation(hand, 2, ["Qs", "Qh"]) == (None, "stacks_do_not_fit")
+
+
+def test_a_fold_read_again_for_a_folded_seat_is_skipped():
+    repeated = ACTIONS[:4] + [(15, "preflop", 3, "fold", "0")] + ACTIONS[4:]
+    assert replay_hand(facts(repeated))["status"] == "ok"
