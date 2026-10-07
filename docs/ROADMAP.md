@@ -74,6 +74,7 @@ AI 打得好不好，要靠“策略记分牌”量出来，不能凭感觉：�
 
 ## 参考
 
+- [德州扑克怎么才打得好（2026-10-07）](research-winning-play.zh-CN.md)：基本功、顶级 AI 的做法、群体倾向、AA 规则的影响，以及里程碑 4 的数据来源选项。
 - [开源求解器调研（2026-09-06）](research-open-source-solvers.md)。2026-10 补充：开源界仍没有多人翻后求解器；
   商业的 GTO Wizard 已经提供 3 人翻后求解和 9 人翻前求解，但没有可集成的接口。
 - [多人翻前资产调研](research-multiplayer-preflop-assets.md)
