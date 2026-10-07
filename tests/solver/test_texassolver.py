@@ -87,3 +87,17 @@ def test_a_polarized_river_bets_the_nuts_against_bluff_catchers():
     betting = sum(p for action, p in strategy_of(tree, ["Qh", "Qd"]).items()
                   if action.startswith("BET"))
     assert betting > 0.9
+
+
+@pytest.mark.skipif(solver_binary() is None, reason="TexasSolver is not installed")
+def test_the_solver_restarts_after_its_load_budget():
+    spot = Spot(board=("Qs", "Jh", "2h", "7c", "3d"), pot=100, stack=100,
+                range_ip={"KcJc": 1.0}, range_oop={"QhQd": 1.0, "6s5s": 1.0})
+    with TexasSolver(threads=1) as solver:
+        solver.LOAD = {5: 0.5}                     # restart after every two rivers
+        first = solver.solve(spot)
+        pid = solver._process.pid
+        solver.solve(spot)
+        assert solver._process is None and solver.restarts == 1
+        assert solver.solve(spot) == first          # a new process, same answer
+        assert solver._process.pid != pid

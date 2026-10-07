@@ -9,7 +9,9 @@ separate program; nothing of it is part of this repository. Its location is
 The solver loads a 2.6-million-line hand table when it starts (about 3.5 s),
 so one process is kept running and fed one spot after another on its
 standard input; each spot is solved from the start of the current street
-and only that street's strategy is read back.
+and only that street's strategy is read back. A running solver never frees
+the trees it built (about 10 MB per turn, far more per flop), so it is
+restarted once the solves it has done add up to roughly a few hundred MB.
 
 Solver conventions used here:
 
@@ -173,6 +175,10 @@ def amount_of(action):
 class TexasSolver:
     """A running console solver; ``solve`` returns the street's strategy tree."""
 
+    # Share of a restart budget each solve uses, by board size: a flop solve
+    # leaves up to several hundred MB behind, a turn about 10 MB, a river little.
+    LOAD = {3: 1.0, 4: 0.04, 5: 0.005}
+
     def __init__(self, binary=None, threads=8, accuracy=0.5, max_iterations=200):
         self.binary = Path(binary) if binary else solver_binary()
         if self.binary is None:
@@ -184,6 +190,8 @@ class TexasSolver:
         self._process = None
         self._lock = threading.Lock()
         self._count = 0
+        self._load = 0.0
+        self.restarts = 0
 
     def _start(self):
         resources = self.binary.parent / "resources"
@@ -192,14 +200,18 @@ class TexasSolver:
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True, bufsize=1)
 
-    def solve(self, spot):
+    def solve(self, spot, accuracy=None, max_iterations=None):
+        """The street's strategy tree; accuracy and iterations default to the
+        solver's own settings."""
         with self._lock:
             if self._process is None or self._process.poll() is not None:
                 self._start()
             self._count += 1
             output = Path(self._workdir.name) / f"spot-{self._count}.json"
-            lines = spot.commands(output.name, self.threads, self.accuracy,
-                                  self.max_iterations)
+            lines = spot.commands(output.name, self.threads,
+                                  self.accuracy if accuracy is None else accuracy,
+                                  self.max_iterations if max_iterations is None
+                                  else max_iterations)
             self._process.stdin.write("\n".join(lines + [DONE]) + "\n")
             self._process.stdin.flush()
             for line in self._process.stdout:
@@ -211,15 +223,24 @@ class TexasSolver:
                 raise RuntimeError("TexasSolver did not write a strategy")
             tree = json.loads(output.read_text(encoding="utf-8"))
             output.unlink()
+            self._load += self.LOAD[len(spot.board)]
+            if self._load >= 1.0:
+                self._stop()
+                self.restarts += 1
             return tree
 
-    def close(self):
+    def _stop(self):
         if self._process is not None and self._process.poll() is None:
             self._process.stdin.close()
             try:
                 self._process.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._process.kill()
+        self._process = None
+        self._load = 0.0
+
+    def close(self):
+        self._stop()
         self._workdir.cleanup()
 
     def __enter__(self):

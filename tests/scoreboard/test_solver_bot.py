@@ -9,8 +9,9 @@ import pytest
 from poker_engine.scoreboard import solver_bot
 from poker_engine.scoreboard.replay import Decision
 from poker_engine.scoreboard.runner import run_scoreboard
-from poker_engine.scoreboard.solver_bot import (Fallback, SolverBot, kept, sample,
-                                                weighted)
+from poker_engine.scoreboard.solver_bot import (Fallback, SolverBot, by_class,
+                                                keep_own, kept, sample, weighted)
+from poker_engine.solver.texassolver import range_text
 from poker_engine.solver.texassolver import solver_binary
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
@@ -74,6 +75,26 @@ def test_ranges_follow_the_actions_taken():
     assert kept(weights, decision("call"), lambda obs: "check_call") == weights
 
 
+def test_flop_ranges_are_written_by_class():
+    board = ("Ks", "9d", "4c")
+    split = {"AhKh": 1.0, "AdKd": 1.0, "QsQd": 1.0}       # classes cut by suit
+    even = by_class(split, board)
+    # The board's Ks leaves three suited AK; one queen pair out of six.
+    assert even["AhKh"] == even["AcKc"] == pytest.approx(2 / 3)
+    assert "AsKs" not in even and even["QhQc"] == pytest.approx(1 / 6)
+    assert range_text(even, board) == "AKs:0.6667,QQ:0.1667"
+
+
+def test_the_hand_actually_held_stays_in_its_own_range():
+    before = {"AhKd": 1.0, "QsQd": 0.5, "7c2d": 0.2}
+    # The solver gave the held hand (7c2d) no weight for the action taken.
+    after = keep_own({"AhKd": 0.5, "QsQd": 0.25}, before, "7c2d")
+    assert after == {"AhKd": 1.0, "QsQd": 0.5, "7c2d": 0.4}
+    tiny = keep_own({"AhKd": 0.8, "7c2d": 0.0004}, before, "7c2d")
+    assert tiny["AhKd"] == 1.0 and tiny["7c2d"] == 0.01
+    assert keep_own({"AhKd": 0.5}, before, None) == {"AhKd": 0.5}
+
+
 def test_sampling_is_repeatable_and_follows_the_probabilities():
     strategy = {"CHECK": 0.25, "BET 29.000000": 0.75}
     draws = [sample(strategy, random.Random(seed)) for seed in range(2000)]
@@ -98,3 +119,12 @@ def test_heads_up_rivers_are_solved():
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     report = run_scoreboard(rules, ["solver_river"], deals=12, pool=("population",))
     assert report["decision_counts"]["solver_river"].get("solved", 0) > 0
+
+
+def test_too_wide_flops_are_left_to_the_base_policy(monkeypatch):
+    monkeypatch.setattr(solver_bot, "solver_binary", lambda: None)
+    monkeypatch.setattr(solver_bot, "_SOLVERS", {})
+    monkeypatch.setattr(solver_bot, "MAX_FLOP_HANDS", 0)
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    report = run_scoreboard(rules, ["solver_flop"], deals=20, pool=("population",))
+    assert report["decision_counts"]["solver_flop"].get("flop_ranges_too_wide", 0) > 0

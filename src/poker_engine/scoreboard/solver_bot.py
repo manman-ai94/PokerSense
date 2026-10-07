@@ -21,18 +21,29 @@ from __future__ import annotations
 from collections import Counter, OrderedDict
 
 from poker_engine.solver.texassolver import (Spot, TexasSolver, Tree, all_combos,
-                                             amount_of, node_at, solver_binary,
-                                             strategy_of)
+                                             amount_of, combo_key, node_at,
+                                             solver_binary, strategy_of)
 
 from .bots import RfiTablePolicy, _Policy, _rng, opponents_in_hand
 from .population import PopulationBot
 from .replay import kind_of, public_replay, with_hole
+from .strength import hand_class
 
-# Which heads-up streets each solver strategy plays. A river takes milliseconds
-# and a turn about 4 s on one thread; a flop takes one to several minutes, so
-# solver_flop is only practical for small experiments.
+# Which heads-up streets each solver strategy plays.
 STREET_SETS = {"solver_river": ("river",), "solver_turn": ("turn", "river"),
                "solver_flop": ("flop", "turn", "river")}
+# Tree, target accuracy (exploitability, % of the pot) and iteration cap per
+# street. A river takes milliseconds and a turn about 4 s on one thread. A
+# flop solve also covers every turn and river card, so the flop gets a smaller
+# tree (half pot or all in, raises all in only), a looser target and a cap:
+# one to two minutes instead of six.
+STREET_SOLVES = {"flop": (Tree(bets=(50,), raises=(), donks=(50,)), 2.0, 30),
+                 "turn": (Tree(), 0.5, 200), "river": (Tree(), 0.5, 200)}
+# A flop solve's time and memory grow with the ranges: a raised pot (about
+# 400 hands in both ranges) takes 45 s and 0.9 GB, a limped pot checked
+# through by the big blind (1300 hands) 3.5 minutes and 4.6 GB. Wider flops
+# are left to the base policy.
+MAX_FLOP_HANDS = 600
 ORDER = ("preflop", "flop", "turn", "river")
 MODEL_SALT = "population-range"
 
@@ -42,15 +53,14 @@ class Fallback(Exception):
 
 
 class SolverBot(_Policy):
-    def __init__(self, name="solver_river", tree=Tree(), threads=1, accuracy=0.5,
-                 max_iterations=200, cache_size=64):
+    def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16):
         self.name = name
         self.streets = STREET_SETS[name]
         self.base = RfiTablePolicy()
         self.model = PopulationBot()
-        self.tree = tree
-        self.settings = {"threads": threads, "accuracy": accuracy,
-                         "max_iterations": max_iterations}
+        self.solves = dict(STREET_SOLVES if solves is None else solves)
+        self.threads = threads
+        self.max_flop_hands = MAX_FLOP_HANDS
         self.counts = Counter()
         self._solutions = OrderedDict()
         self._cache_size = cache_size
@@ -85,9 +95,10 @@ class SolverBot(_Policy):
         board = tuple(observation["board"])
         hero = {key: 1.0 for key in all_combos(board)}
         other = dict(hero)
+        own = combo_key(observation["own_hole"])
         for past in ORDER[:ORDER.index(street)]:
             hero, other = self.street_ranges(past, decisions, me, villain, hero, other,
-                                             salt, board)
+                                             salt, board, own)
         now = [d for d in decisions if d.street == street]
         tree, first = self.street_solution(now, observation, me, villain, hero, other,
                                            board)
@@ -110,16 +121,26 @@ class SolverBot(_Policy):
         stack = min(float(stacks[str(me)]), float(stacks[str(villain)]))
         if stack <= 0:
             raise Fallback("all_in")
+        if start["street"] == "flop":
+            hero, other = by_class(hero, board[:3]), by_class(other, board[:3])
+            if len(hero) + len(other) > self.max_flop_hands:
+                raise Fallback("flop_ranges_too_wide")
         ranges = {me: hero, villain: other}
         oop, ip = first, (villain if first == me else me)
         shown = {"flop": 3, "turn": 4, "river": 5}[start["street"]]
         street_board = tuple(board[:shown])
+        tree, accuracy, iterations = self.solves[start["street"]]
         spot = Spot(board=street_board, pot=float(start["pot"]), stack=stack,
-                    range_ip=ranges[ip], range_oop=ranges[oop], tree=self.tree)
-        return self.solve(spot), first
+                    range_ip=ranges[ip], range_oop=ranges[oop], tree=tree)
+        return self.solve(spot, accuracy, iterations), first
 
-    def street_ranges(self, street, decisions, me, villain, hero, other, salt, board):
-        """Both ranges after ``street``'s actions, from the ranges before it."""
+    def street_ranges(self, street, decisions, me, villain, hero, other, salt, board,
+                      own=None):
+        """Both ranges after ``street``'s actions, from the ranges before it.
+
+        ``own`` is the hand the bot actually holds; it stays in its own range
+        (see ``keep_own``).
+        """
         now = [d for d in decisions if d.street == street]
         if not now:
             return hero, other
@@ -128,12 +149,16 @@ class SolverBot(_Policy):
                            if s not in now[0].observation["folded"]]) == 2)
         node = None
         if solved:
-            node, _ = self.street_solution(now, now[0].observation, me, villain,
-                                           hero, other, board)
+            try:
+                node, _ = self.street_solution(now, now[0].observation, me, villain,
+                                               hero, other, board)
+            except Fallback:          # the street was played by the base policy
+                node = None
         for decision in now:
             if decision.seat == me:
                 if node is not None:
-                    hero = weighted(hero, node, self.label(node, decision))
+                    hero = keep_own(weighted(hero, node, self.label(node, decision)),
+                                    hero, own)
                 else:
                     hero = kept(hero, decision,
                                 lambda obs: self.base.decide(obs, _rng(salt, obs)),
@@ -149,12 +174,12 @@ class SolverBot(_Policy):
                 node = node_at(node, [self.label(node, decision)])
         return hero, other
 
-    def solve(self, spot):
-        key = "\n".join(spot.commands("x", **self.settings))
+    def solve(self, spot, accuracy, iterations):
+        key = "\n".join(spot.commands("x", self.threads, accuracy, iterations))
         if key in self._solutions:
             self._solutions.move_to_end(key)
             return self._solutions[key]
-        tree = shared_solver(**self.settings).solve(spot)
+        tree = shared_solver(self.threads).solve(spot, accuracy, iterations)
         self._solutions[key] = tree
         if len(self._solutions) > self._cache_size:
             self._solutions.popitem(last=False)
@@ -203,15 +228,13 @@ class SolverBot(_Policy):
 _SOLVERS = {}
 
 
-def shared_solver(threads, accuracy, max_iterations):
-    """One running solver per process and setting (starting one takes 3.5 s)."""
-    key = (threads, accuracy, max_iterations)
-    if key not in _SOLVERS:
+def shared_solver(threads):
+    """One running solver per process and thread count (starting one takes 3.5 s)."""
+    if threads not in _SOLVERS:
         if solver_binary() is None:
             raise Fallback("solver_not_installed")
-        _SOLVERS[key] = TexasSolver(threads=threads, accuracy=accuracy,
-                                    max_iterations=max_iterations)
-    return _SOLVERS[key]
+        _SOLVERS[threads] = TexasSolver(threads=threads)
+    return _SOLVERS[threads]
 
 
 def kept(weights, decision, decide, both_orders=False):
@@ -245,6 +268,44 @@ def weighted(weights, node, label):
     return result
 
 
+def by_class(weights, board):
+    """Every hand class at its average weight over the combinations left.
+
+    The population model cuts its ranges by single combinations, so a class at
+    the edge of a range is split by suit; one such class makes the solver drop
+    its suit-symmetry speed-up for the whole solve. Before any postflop action
+    the suits of a class carry no information, so the flop gets class weights.
+    """
+    groups = {}
+    for key in all_combos(board):
+        groups.setdefault(hand_class((key[:2], key[2:])), []).append(key)
+    result = {}
+    for keys in groups.values():
+        average = sum(weights.get(key, 0.0) for key in keys) / len(keys)
+        if average > 0:
+            result.update(dict.fromkeys(keys, average))
+    return result
+
+
+def keep_own(weights, before, own, floor=0.01):
+    """Keep the hand actually held in a range reweighted by solver frequencies.
+
+    The bot took the action it took, so its own hand stays in: if the solver
+    gave that action no weight for this hand (the decision was played by the
+    base policy), the hand keeps its earlier weight. Weights are then scaled
+    so the largest is 1, which does not change a solve, and the own hand gets
+    at least ``floor``: the solver ignores weights of 0.5% or less.
+    """
+    if own is None or own not in before:
+        return weights
+    weights = dict(weights)
+    weights[own] = weights.get(own) or before[own]
+    top = max(weights.values())
+    weights = {key: value / top for key, value in weights.items()}
+    weights[own] = max(weights[own], floor)
+    return weights
+
+
 def sample(strategy, rng):
     """One action drawn from {action: probability} (in a fixed order)."""
     actions = sorted(strategy)
@@ -257,5 +318,5 @@ def sample(strategy, rng):
     return actions[-1]
 
 
-__all__ = ["Fallback", "STREET_SETS", "SolverBot", "kept", "sample", "shared_solver",
-           "weighted"]
+__all__ = ["Fallback", "STREET_SETS", "STREET_SOLVES", "SolverBot", "by_class",
+           "keep_own", "kept", "sample", "shared_solver", "weighted"]
