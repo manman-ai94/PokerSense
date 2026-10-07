@@ -61,8 +61,12 @@ def hand_facts(rows):
     actions = [dict(zip(COMPACT_FIELDS, item)) for item in history.get("actions", [])]
     first = actions[0]["frame"] if actions else None
     fields = [row.get("fields") or {} for row in rows]
-    at_first = next((f for row, f in zip(rows, fields)
-                     if first is not None and row["processed"] >= first), {})
+    if first is not None:
+        at_first = next((f for row, f in zip(rows, fields)
+                         if row["processed"] >= first), {})
+    else:
+        # Nobody has acted yet (you are first to act): the latest seat reading.
+        at_first = next((f for f in reversed(fields) if f.get("participants")), {})
     seats = {int(seat) for seat, state in (at_first.get("participants") or {}).items()
              if state in IN_HAND} | {action["slot"] for action in actions}
     board = max(([card for card in (f.get("board") or []) if card] for f in fields),

@@ -89,6 +89,15 @@ def test_hand_facts_come_from_the_frame_log():
     assert found["opening_pot"] == Decimal(19)
 
 
+def test_before_any_action_the_seats_come_from_the_latest_reading():
+    early = [row for row in rows() if row["processed"] < 8]
+    for row in early:
+        row["fields"] = {**row["fields"], "actions_v1": {
+            **row["fields"]["actions_v1"], "actions": []}}
+    found = hand_facts(early)
+    assert found["seats"] == [0, 1, 2, 3, 4, 5] and found["actions"] == []
+
+
 def test_a_checked_hand_reports_the_replay_and_the_opening_pot():
     report = check_hand(rows())
     assert report["status"] == "ok" and report["players"] == 6

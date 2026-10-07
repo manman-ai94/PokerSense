@@ -148,7 +148,7 @@ function mathText(item, format) {
   return item.available === true ? format(item) : MATH_REASONS[item.reason] || "未知";
 }
 function percent(value) { return `${(value * 100).toFixed(1)}%`; }
-const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没轮到你", street_not_covered:"只在转牌、河牌计算",
+const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没轮到你", street_not_covered:"翻牌不计算（求解要约一分钟，来不及）",
   your_cards_not_read:"还没读到你的两张牌", more_than_one_opponent:"对手不止一个（多人底池不计算）",
   waiting_for_last_action:"等对手刚才的动作进入行动记录", hand_incomplete:"这手牌是中途接入的，前面的动作不知道",
   starts_after_preflop:"没有翻牌前下注（多半是暴击局），规则模型不支持", not_this_seats_turn:"重放时轮到的人对不上，可能漏记了动作",
@@ -163,16 +163,27 @@ function adviceReason(reason) {
   if (typeof reason === "string" && reason.startsWith("players_")) return `${reason.slice(8)} 人桌，规则模型只支持 6–8 人`;
   return ADVICE_REASONS[reason] || text(reason);
 }
+function signed(value) { return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(1)}`; }
+function optionText(item) {
+  const size = item.action === "raise" && item.to != null ? `到 ${item.to}` : "";
+  return `${ADVICE_ACTIONS[item.action] || text(item.action)}${size}`;
+}
 function renderSolverAdvice(advice, history) {
   const status = advice?.status, street = labels[advice?.street] || "";
-  const rows = status === "ready" && Array.isArray(advice.advice) ? advice.advice.map(item => {
+  const preflop = status === "ready" && Array.isArray(advice.options);
+  const rows = preflop ? advice.options.map(item => {
+    const node = document.createElement("li");
+    node.textContent = `${optionText(item)} · ${signed(item.big_blinds)} 个大盲（${signed(item.chips)} 筹码）`;
+    return node;
+  }) : status === "ready" && Array.isArray(advice.advice) ? advice.advice.map(item => {
     const node = document.createElement("li");
     const size = ["bet", "raise"].includes(item.action) && item.to != null ? `到 ${item.to}` : "";
     node.textContent = `${ADVICE_ACTIONS[item.action] || text(item.action)}${size} · ${Math.round(item.frequency * 100)}%`;
     return node;
   }) : [];
   el("advice-rows").replaceChildren(...rows);
-  el("advice-status").textContent = status === "ready" ? `${street}：求解器给你这手牌的打法比例`
+  el("advice-status").textContent = preflop ? `${street}：建议${optionText(advice.advice?.[0] || {})}（下面是每个选择平均值多少，比弃牌多赚为正）`
+    : status === "ready" ? `${street}：求解器给你这手牌的打法比例`
     : status === "computing" ? `${street}：正在计算…`
     : status === "abstain" ? `这手牌不给建议：${adviceReason(advice.reason)}`
     : status === "idle" ? adviceReason(advice.reason) : "暂无（等待画面）";
@@ -181,6 +192,7 @@ function renderSolverAdvice(advice, history) {
     const offset = Number(advice.pot_offset) || 0;
     if (advice.pot != null) details.push(`底池 ${Number(advice.pot) + offset}${offset ? `（比 AA 规则算出的多 ${offset}，已按画面修正）` : ""}`);
     if (advice.to_call != null && Number(advice.to_call) > 0) details.push(`要跟 ${advice.to_call}`);
+    if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length) details.push(`座位 ${advice.stacks_assumed.join("、")} 的筹码没读到，按很深计算`);
     if (Number.isFinite(advice.seconds)) details.push(`用时 ${advice.seconds} 秒`);
   }
   el("advice-detail").textContent = details.join(" · ");
