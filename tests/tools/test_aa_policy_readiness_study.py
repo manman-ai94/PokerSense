@@ -196,6 +196,23 @@ def test_outer_timeout_kills_descendant_process_too(tmp_path):
     assert not marker.exists()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX only")
+def test_closing_an_already_exited_group_is_quiet(monkeypatch):
+    """macOS answers EPERM, not ESRCH, for a group left with only exited
+    processes; the tree is already gone, so closing it must not fail."""
+    def refuse(pid, signal):
+        raise PermissionError(1, "Operation not permitted")
+
+    class Exited:
+        pid = 4242
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(study.os, "killpg", refuse)
+    study._ProcessTree(Exited(), owns_group=True).close()
+
+
 def test_resume_never_reexecutes_committed_training_jobs(frozen):
     output, manifest = frozen
     called = []

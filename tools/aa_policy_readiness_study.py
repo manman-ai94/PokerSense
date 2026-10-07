@@ -811,7 +811,9 @@ class _ProcessTree:
                     os.killpg(self.process.pid, signal.SIGKILL)
                 elif self.process.poll() is None:
                     self.process.kill()
-            except ProcessLookupError:
+            except (ProcessLookupError, PermissionError):
+                # The tree is already gone. macOS reports EPERM instead of
+                # ESRCH while the group's exited processes await reaping.
                 pass
 
 
