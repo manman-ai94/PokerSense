@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from poker_engine.scoreboard.runner import lineup, run_scoreboard, summarize
+from poker_engine.scoreboard.runner import lineup, pairwise, run_scoreboard, summarize
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 RULES = Path(__file__).resolve().parents[2] / "configs/game/aa-scoreboard-rules-v1.json"
@@ -49,3 +49,12 @@ def test_progress_is_reported_after_every_batch():
     run_scoreboard(rules, ["tag"], deals=4, chunk=1, pool=("tag",),
                    progress=lambda done, total, seconds: calls.append((done, total)))
     assert calls == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+
+def test_every_pair_of_strategies_is_compared_on_the_same_deals():
+    rows = [(1, {"a": (1.0, 0), "b": (0.5, 1), "c": (0.0, 0)}),
+            (2, {"a": (3.0, 2), "b": (2.0, 0), "c": (1.0, 0)})]
+    result = pairwise(rows, ("a", "b", "c"))
+    assert set(result) == {"a - b", "a - c", "b - c"}
+    assert result["a - b"] == {"delta_bb_per_100": 75.0, "ci95": [26.0, 124.0]}
+    assert result["a - c"]["delta_bb_per_100"] == 150.0

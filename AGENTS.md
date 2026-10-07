@@ -17,7 +17,7 @@ PokerSense 是一个德州扑克**实时策略分析**工具：用采集卡读�
 ## 当前阶段
 
 总目标：做一个胜率高的扑克 AI，人通过它的实时分析学习。按 [ROADMAP](docs/ROADMAP.md)
-的里程碑推进，当前顺序是：识别补缺（基本完成）→ 策略记分牌（完成）→ 单挑翻后求解（转牌、河牌已接入）→ 翻前范围表 → 多人底池 → 界面重做。
+的里程碑推进，当前顺序是：识别补缺（基本完成）→ 策略记分牌（完成）→ 单挑翻后求解（翻牌、转牌、河牌已在记分牌上接入，实时观察页未接）→ 翻前范围表 → 多人底池 → 界面重做。
 已确定的方向：
 - 不自研全街策略，也不自研求解器；单挑翻后用现成开源求解器，多人底池先给数学参考并明确标注。
 - 每项策略改进都必须在“策略记分牌”（模拟牌桌上的 bb/100）上看到提升，不能凭感觉。
@@ -62,10 +62,11 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_seat_states.py --video <录像>
 # 策略记分牌：在模拟的 AA 8 人桌上给策略打分（bb/100 和 95% 区间）
 # 对手默认是照真人牌谱打的“真人人群”；--pool styles 换成 4 种风格机器人，作为第二个检验
 PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 --reference rfi_table
-# 求解器策略（单挑转牌、河牌用 TexasSolver）：先安装求解器，再给 solver_turn 打分（较慢，3000 局约半小时）
+# 求解器策略（solver_turn：单挑转牌、河牌用 TexasSolver；solver_flop：再加翻牌）。先安装求解器。
+# 很慢也很占内存：solver_flop 600 局 4 个进程约 1.5 小时；每个翻牌求解要约 1GB 内存，进程不要开多
 tools/setup_texassolver.sh
-PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 3000 \
-    --strategies rfi_table,solver_turn --reference rfi_table
+PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 4 \
+    --strategies rfi_table,solver_turn,solver_flop --reference rfi_table
 # 核对轮到你时的按钮（跟注额 / 让牌 / All in）和标注是否一致
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> \
     --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
@@ -85,7 +86,7 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像>
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
 | `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 观察页前端（原生 HTML/JS，无构建步骤） |
-| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑转牌河牌用求解器的策略 `solver_bot.py`（靠 `replay.py` 重放公开行动推算双方范围） |
+| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围） |
 | `src/poker_engine/solver/` | 调用本机编译的 TexasSolver（常驻后台，一次算一条街）；求解器本身不在仓库里，用 `tools/setup_texassolver.sh` 安装 |
 | `research/` | `hu_root`（单挑已保存策略查询）、`coverage_bridge` |
 | `tools/` | 离线命令行工具，其中不少是一次性研究脚本 |

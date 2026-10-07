@@ -11,11 +11,16 @@ from importlib import resources
 from itertools import combinations
 import json
 
-from phevaluator import evaluate_cards
+from phevaluator import _pheval
 
 RANKS = "23456789TJQKA"
 SUITS = "cdhs"
 DECK = tuple(rank + suit for rank in RANKS for suit in SUITS)
+# phevaluator numbers cards rank * 4 + suit, the order of DECK. Monte Carlo
+# equity calls its native 7-card evaluator with these numbers directly; going
+# through ``evaluate_cards`` with card names spent most of the time parsing.
+CARD_ID = {card: index for index, card in enumerate(DECK)}
+_EVALUATE_7 = _pheval.evaluate_7cards
 TABLE_NAME = "preflop_strength_v1.json"
 
 
@@ -82,14 +87,16 @@ def equity(hero, board, opponents, trials, rng):
     if opponents < 1:
         return 1.0
     dead = set(hero) | set(board)
-    deck = [card for card in DECK if card not in dead]
+    deck = [CARD_ID[card] for card in DECK if card not in dead]
     need = 5 - len(board)
+    known = [CARD_ID[card] for card in board]
+    first, second = (CARD_ID[card] for card in hero)
     won = 0.0
     for _ in range(trials):
         draw = rng.sample(deck, need + 2 * opponents)
-        full = list(board) + draw[:need]
-        mine = evaluate_cards(*hero, *full)
-        ranks = [evaluate_cards(draw[need + 2 * k], draw[need + 2 * k + 1], *full)
+        full = known + draw[:need]
+        mine = _EVALUATE_7(first, second, *full)
+        ranks = [_EVALUATE_7(draw[need + 2 * k], draw[need + 2 * k + 1], *full)
                  for k in range(opponents)]
         best = min(ranks)
         if mine < best:
