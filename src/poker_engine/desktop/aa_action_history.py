@@ -16,6 +16,12 @@ This layer keeps the reader's actions and rebuilds the rest:
   which also splits a rise that held the next bet too while the pot was
   unreadable. Chips of a rise are given out once; the rise from an empty
   pot is the blinds and antes, never an action;
+- **all in**: Mac recordings show the All in badge in a style the reader
+  does not match, and some all-ins turn the cards face up at once. A seat
+  whose steady stack drops to 0 with no call or raise of its own nearby
+  went all in, if the pot rises next to it: the action gets the stack it
+  had (or the rise, when smaller). On two recordings each such drop matched
+  a pot rise no action explained;
 - **hand**: a new hand starts when the steady pot goes down, the board goes
   back to preflop, the dealer button moves, or after a readable table
   showed no hand in progress. A hand already running when observation
@@ -78,6 +84,8 @@ class AAActionHistory:
         self._hand_over = False
         self._steady = None                      # last steady pot value
         self._dealers = deque(maxlen=2)          # last dealer readings
+        self._stack_reads = {}                   # seat -> (value, count, first)
+        self._stacks = {}                        # seat -> last steady stack
 
     # -- hands -----------------------------------------------------------------
 
@@ -164,6 +172,9 @@ class AAActionHistory:
         settled later. Other calls and raises take what is left of the
         nearest rise.
         """
+        if "stack" in action:
+            self._price_all_in(action, now)
+            return
         owed = self._owed(action)
         if owed == "pending":
             action["amount_source"] = "pending"
@@ -199,6 +210,47 @@ class AAActionHistory:
             self._shares[found[0]] = self._shares.get(found[0], 0) + min(owed, found[1])
             if found[1] <= owed:
                 action["amount"], action["amount_source"] = str(found[1]), "pot_rise"
+
+    def _price_all_in(self, action, now):
+        """An all-in seen from the stack takes the chips it had out of the
+        nearest rise (the rise wins when smaller). Without a rise it is not
+        confirmed and is dropped."""
+        found = self._rise(action["frame"], now)
+        if found == "pending":
+            return
+        if found is None:
+            action["amount_source"] = "unconfirmed"
+            return
+        chips = min(action["stack"], found[1])
+        self._shares[found[0]] = self._shares.get(found[0], 0) + chips
+        action["amount"] = str(chips)
+        action["amount_source"] = "stack" if chips == action["stack"] else "pot_rise"
+
+    def _watch_stacks(self, payload, frame):
+        """Add an all-in for a seat whose steady stack drops to 0 with no call
+        or raise of its own nearby."""
+        hand = self._hand
+        for slot, item in (payload.get("stacks") or {}).items():
+            value = _amount((item or {}).get("value"))
+            if value is None:
+                continue
+            last, count, first = self._stack_reads.get(slot, (None, 0, frame))
+            count, first = (count + 1, first) if value == last else (1, frame)
+            self._stack_reads[slot] = (value, count, first)
+            if count != 2:
+                continue
+            before, self._stacks[slot] = self._stacks.get(slot), value
+            if value != 0 or not before or first < hand["start_frame"]:
+                continue
+            seat = int(slot)
+            if any(a["slot"] == seat and a["kind"] in PRICED
+                   and abs(a["frame"] - first) <= AFTER for a in hand["actions"]):
+                continue
+            hand["actions"].append({
+                "frame": first, "street": self._street_at(first), "slot": seat,
+                "kind": "all_in", "amount": None, "amount_source": "pending",
+                "cash_amount": None, "stack": before})
+        hand["actions"].sort(key=lambda action: action["frame"])
 
     # -- frames ----------------------------------------------------------------
 
@@ -237,11 +289,14 @@ class AAActionHistory:
         if street in STREETS:
             self._streets.append((frame, street))
         self._take(payload, frame)
+        self._watch_stacks(payload, frame)
         for action in self._hand["actions"]:
             if action["amount_source"] == "pending":
                 self._price(action, frame)
             elif "owed" in action:
                 self._settle(action, frame)
+        self._hand["actions"] = [action for action in self._hand["actions"]
+                                 if action["amount_source"] != "unconfirmed"]
         return self.snapshot()
 
     def _street_at(self, frame):
@@ -259,6 +314,10 @@ class AAActionHistory:
             if event["frame"] < hand["start_frame"]:
                 continue                  # belongs to a hand already over
             priced = kind in PRICED
+            if priced and any("stack" in other and other["slot"] == event.get("slot")
+                              and abs(other["frame"] - event["frame"]) <= AFTER
+                              for other in hand["actions"]):
+                continue                  # the all-in already seen from the stack
             hand["actions"].append({
                 "frame": event["frame"], "street": self._street_at(event["frame"]),
                 "slot": event.get("slot"), "kind": kind,
@@ -282,7 +341,8 @@ class AAActionHistory:
                                        for a in actions),
                 "missing_amounts": sum(a["amount_source"] == "unknown"
                                        for a in actions),
-                "basis": "reader action badges, pot rises, betting, board-card street"}
+                "basis": "reader action badges, pot rises, betting, stacks, "
+                         "board-card street"}
 
 
 __all__ = ["AAActionHistory", "steady_runs"]
