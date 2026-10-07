@@ -1,6 +1,6 @@
 "use strict";
 const ruleFields = {
-  table_label: ["桌规名称／备注（可选）", "text"], dealt_players: ["本桌发牌人数", ["", "6", "7", "8"]],
+  table_label: ["桌规名称／备注（可选）", "text"], dealt_players: ["本桌发牌人数", ["", "5", "6", "7", "8"]],
   small_blind: ["小盲", "decimal"], big_blind: ["大盲", "decimal"], ante: ["每人前注", "decimal"],
   straddle_mode: ["Straddle 类型", {unknown:"未知", none:"没有", mandatory_utg:"UTG 强制", optional_explicit_utg:"UTG 可选（逐手确认）"}],
   straddle_amount: ["Straddle 金额", "decimal"], rake_percent: ["抽水比例", "decimal"],

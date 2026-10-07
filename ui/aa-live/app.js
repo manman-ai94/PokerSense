@@ -160,7 +160,7 @@ const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没�
   raise_not_in_solution:"对手的下注额不在求解树里", action_not_in_solution:"对手的动作不在求解树里"};
 const ADVICE_ACTIONS = {check:"过牌", call:"跟注", fold:"弃牌", bet:"下注", raise:"加注"};
 function adviceReason(reason) {
-  if (typeof reason === "string" && reason.startsWith("players_")) return `${reason.slice(8)} 人桌，规则模型只支持 6–8 人`;
+  if (typeof reason === "string" && reason.startsWith("players_")) return `${reason.slice(8)} 人桌，规则模型只支持 5–8 人`;
   return ADVICE_REASONS[reason] || text(reason);
 }
 function signed(value) { return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(1)}`; }
