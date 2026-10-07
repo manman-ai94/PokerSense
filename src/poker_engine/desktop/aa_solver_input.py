@@ -18,7 +18,8 @@ that replay, and checks the hand on the way:
   a hand joined after preflop can fit a wrong dealer with its flop checks
   taken for preflop calls. An earlier street is fine: the first action on a
   new street is often read before its board cards.) Two actions read in the
-  same frame may be in either order.
+  same frame may be in either order; a fold read again for a seat that already
+  folded is skipped.
 
 Anything that does not fit stops the replay with a reason: no advice should
 be given from such a hand. The opening pot is compared with the antes,
@@ -40,7 +41,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .aa_action_history import COMPACT_FIELDS
 
 RULES_PATH = (Path(__file__).resolve().parents[3]
-              / "configs/game/aa-scoreboard-rules-v1.json")
+              / "configs/game/aa-scoreboard-rules-v2.json")
 IN_HAND = frozenset({"active", "folded", "all_in"})
 PLAYERS = range(6, 9)               # table sizes the AA rules cover
 DEEP = Decimal(100000)              # stacks for checking the betting alone
@@ -159,7 +160,10 @@ def _steps(seats, dealer, actions, board, stacks):
         _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
         starting_stacks={seat: (stacks or {}).get(seat, DEEP) for seat in seats})
     arena.reset(0, deck=replay_deck(board_history(board), len(seats)))
+    folded = set()
     for index, action in enumerate(actions):
+        if action["kind"] == "fold" and action["slot"] in folded:
+            continue                  # the same fold read again (badge flicker)
         if arena.terminal:
             return "stopped", "action_after_hand_end", index, arena
         if arena.actor != action["slot"]:
@@ -174,6 +178,8 @@ def _steps(seats, dealer, actions, board, stacks):
             arena.step(step)
         except ValueError:
             return "stopped", "illegal_at_the_table", index, arena
+        if step == "fold":
+            folded.add(action["slot"])
     return "ok", None, len(actions), arena
 
 

@@ -23,7 +23,7 @@ from poker_engine.scoreboard.runner import POOLS, run_scoreboard
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
-                 / "configs/game/aa-scoreboard-rules-v1.json")
+                 / "configs/game/aa-scoreboard-rules-v2.json")
 
 
 def table(report):
