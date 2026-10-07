@@ -257,9 +257,14 @@ class AARecognitionSession:
                     self._status = "STOPPED"
 
 
+_ACTION_KEYS = ("frame", "confirmed_at", "slot", "kind", "glyph", "amount", "street",
+                "epoch", "status")
+
+
 def frame_summary(payload):
     """The compact per-frame fields used for measurement, not the raw payload."""
     cards = payload.get("cards") or {}
+    actions = payload.get("action_history_candidate") or []
     observed = payload.get("observed_state_v2") or {}
     controls = payload.get("hero_controls_v1") or {}
     legacy = {slot: (value or {}).get("state") for slot, value in (
@@ -283,6 +288,14 @@ def frame_summary(payload):
         "hero_controls": {key: controls.get(key)
                           for key in ("visible", "button", "call_amount", "reason")},
         "table_math": payload.get("table_math_v1"),
+        # Betting history as read so far: the count and the latest actions
+        # (enough to rebuild the sequence from consecutive frames), and the
+        # chips in front of each seat on this street.
+        "actions_count": len(actions),
+        "actions_tail": [{key: action.get(key) for key in _ACTION_KEYS}
+                         for action in actions[-3:]],
+        "street_wagers": payload.get("street_wagers"),
+        "causal_wagers": payload.get("causal_street_wagers_v2"),
     }
 
 
