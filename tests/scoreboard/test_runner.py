@@ -9,6 +9,7 @@ from poker_engine.scoreboard.runner import lineup, pairwise, run_scoreboard, sum
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 RULES = Path(__file__).resolve().parents[2] / "configs/game/aa-scoreboard-rules-v1.json"
+RAKED = Path(__file__).resolve().parents[2] / "configs/game/aa-scoreboard-rules-v2.json"
 
 
 def test_lineup_repeats_the_pool_and_depends_only_on_the_deal():
@@ -35,6 +36,17 @@ def test_runs_are_reproducible_and_independent_of_workers():
     for key in ("strategies", "versus_reference", "hands_per_strategy"):
         assert one[key] == two[key]
     assert one["hands_per_strategy"] == 24
+
+
+def test_rake_lowers_every_strategy_on_the_same_deals():
+    kwargs = {"deals": 4, "base_seed": 3, "reference": "always_call"}
+    results = {}
+    for name, path in (("free", RULES), ("raked", RAKED)):
+        rules = AARuleProfileV2.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        results[name] = run_scoreboard(rules, ["population", "always_call"], **kwargs)
+    for strategy in ("population", "always_call"):
+        assert (results["raked"]["strategies"][strategy]["bb_per_100"]
+                < results["free"]["strategies"][strategy]["bb_per_100"])
 
 
 def test_too_little_input_is_refused():
