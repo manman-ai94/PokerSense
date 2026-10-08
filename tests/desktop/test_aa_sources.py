@@ -330,6 +330,37 @@ def test_without_the_phone_the_chosen_device_is_used_and_said_so():
         source.close()
 
 
+def test_a_chosen_card_without_a_picture_is_kept_and_the_camera_left_alone(monkeypatch):
+    # The phone is locked: the card (chosen, device 1) stays black.
+    backend, opened = devices({0: "camera", 1: "black"})
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    source = AACaptureSource({"device_index": 1, "find_phone": True},
+                             backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_index"] == 1
+        assert source.device["device_check"] == "no_phone_found"
+        assert source.device["device_seen"] == {"1": "dark"}
+        assert 0 not in [index for index, _ in opened]
+    finally:
+        source.close()
+
+
+def test_without_the_phone_a_black_card_is_used_rather_than_the_camera(monkeypatch):
+    backend, opened = devices({0: "camera", 1: "black"})
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    source = AACaptureSource({"device_index": 0, "find_phone": True},
+                             backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_index"] == 1
+        assert source.device["device_seen"] == {"0": "other", "1": "dark", "2": None,
+                                                "3": None}
+        assert opened[-1] == (1, True)          # reads the card, not the camera
+    finally:
+        source.close()
+
+
 def test_without_find_phone_no_other_device_is_opened():
     backend, opened = devices({0: "camera", 1: "phone"})
     source = AACaptureSource({"device_index": 0}, backend_factory=backend)
