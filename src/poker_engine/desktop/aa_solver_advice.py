@@ -10,8 +10,9 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
 - On the turn or the river, with one opponent left, the scoreboard's solver
   strategy (``solver_turn`` in human mode, on ``aa_preflop``: everyone's
   earlier play is read as AA players play) works out how often to check,
-  call, fold or bet, and how much. The solve runs on a background thread, so
-  recognition never waits for it.
+  call, fold or bet, and how much, and your share of the pot against the
+  opponent's range there (``range_equity``, exact over the river cards). The
+  solve runs on a background thread, so recognition never waits for it.
 
 The flop is not covered: a flop solve takes about a minute. Every frame
 reports where the current decision stands:
@@ -35,6 +36,7 @@ import time
 
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
+from poker_engine.scoreboard.strength import range_equity
 from poker_engine.solver.texassolver import amount_of
 
 from .aa_session import frame_summary
@@ -72,6 +74,13 @@ def advice_rows(strategy, observation):
             row.update(chips=str(chips), to=str(mine + chips))
         rows.append(row)
     return rows
+
+
+def range_report(observation, weights):
+    """Your share of the pot against the opponent's range, and how many of
+    its hands your cards and the board leave; None when it leaves none."""
+    value, hands = range_equity(observation["own_hole"], observation["board"], weights)
+    return None if value is None else {"value": round(value, 3), "hands": hands}
 
 
 class AASolverAdvice:
@@ -190,12 +199,17 @@ class AASolverAdvice:
 
     def _solve(self, observation, started):
         try:
-            strategy = self._bot.solved_strategy(observation, SALT)
+            strategy, villain = self._bot.solved_spot(observation, SALT)
         except Fallback as reason:
             return {"status": "abstain", "reason": str(reason)}
+        try:
+            edge = range_report(observation, villain)
+        except (KeyError, ValueError):     # never lose the advice over it
+            edge = None
         return {"status": "ready", "advice": advice_rows(strategy, observation),
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": observation.get("pot_offset"),
+                "range_equity": edge,
                 "seconds": round(time.monotonic() - started, 2)}
 
     def _outcome(self, key, street):
@@ -211,7 +225,7 @@ class AASolverAdvice:
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
                                 "advice", "options", "pot", "to_call", "pot_offset",
-                                "stacks_assumed", "seconds", "basis")
+                                "stacks_assumed", "range_equity", "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):
@@ -220,4 +234,4 @@ class AASolverAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "advice_rows"]
+__all__ = ["AASolverAdvice", "advice_rows", "range_report"]

@@ -157,3 +157,23 @@ def test_a_persons_past_actions_are_read_with_the_population_model():
     hero, _ = person.street_ranges("preflop", limp(("7c", "2d")), 3, 5, weights,
                                    weights, "salt", (), "7c2d")
     assert hero == weights                # an action the model never takes
+
+
+def test_the_opponents_range_at_a_decision_follows_his_actions_on_the_street(
+        monkeypatch):
+    # Seat 3 bet 29 on the river; it is seat 4's turn. In the solution AhKd
+    # bets 29 half the time and QsQd never does.
+    bet = decision("raise", raise_to="29", seat=3, bets={"3": "0", "4": "0"})
+    tree = {**NODE, "childrens": {"BET 29.000000": {
+        "actions": ["CALL", "FOLD"], "strategy": {"actions": ["CALL", "FOLD"],
+                                                  "strategy": {"3d2c": [0.25, 0.75]}}}}}
+    monkeypatch.setattr(solver_bot, "public_replay", lambda observation: [bet])
+    bot = SolverBot("solver_river")
+    monkeypatch.setattr(bot, "street_solution", lambda *args: (tree, 3))
+    board = ["2h", "5s", "8d", "Jc", "9h"]
+    observation = {"observing_seat": 4, "street": "river", "occupied_seats": [3, 4],
+                   "folded": [], "board": board, "own_hole": ["2c", "3d"]}
+    strategy, villain = bot.solved_spot(observation, "salt")
+    assert strategy == {"CALL": 0.25, "FOLD": 0.75}
+    assert villain == {"AhKd": 0.5}
+    assert bot.solved_strategy(observation, "salt") == strategy

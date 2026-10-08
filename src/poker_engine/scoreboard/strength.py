@@ -106,5 +106,45 @@ def equity(hero, board, opponents, trials, rng):
     return won / trials
 
 
+def range_equity(hero, board, weights):
+    """Exact share of the pot won against one opponent's weighted range.
+
+    ``weights`` is {"AhKd": weight} as the solver keeps ranges. Hands that
+    use one of your cards or a board card are left out; on the turn every
+    river card the two hands leave is dealt. Returns (equity, hands counted),
+    or (None, 0) when no hand of the range is left.
+    """
+    if len(board) not in (4, 5):
+        raise ValueError("range equity is worked out on the turn or the river")
+    dead = set(hero) | set(board)
+    first, second = (CARD_ID[card] for card in hero)
+    known = [CARD_ID[card] for card in board]
+    rivers = [None] if len(board) == 5 else [CARD_ID[card] for card in DECK
+                                             if card not in dead]
+
+    def dealt(river):
+        return known if river is None else (*known, river)
+
+    mine = {river: _EVALUATE_7(first, second, *dealt(river)) for river in rivers}
+    won = total = 0.0
+    hands = 0
+    for key, weight in weights.items():
+        a, b = key[:2], key[2:]
+        if weight <= 0 or a in dead or b in dead:
+            continue
+        x, y = CARD_ID[a], CARD_ID[b]
+        share = count = 0
+        for river in rivers:
+            if river == x or river == y:
+                continue
+            his = _EVALUATE_7(x, y, *dealt(river))
+            share += 2 if mine[river] < his else 1 if mine[river] == his else 0
+            count += 1
+        won += weight * share / (2 * count)
+        total += weight
+        hands += 1
+    return (won / total, hands) if total else (None, 0)
+
+
 __all__ = ["DECK", "all_classes", "class_combos", "equity", "hand_class",
-           "preflop_percentile", "preflop_table"]
+           "preflop_percentile", "preflop_table", "range_equity"]

@@ -105,6 +105,15 @@ class SolverBot(_Policy):
         ``observation["pot_offset"]`` (chips, optional) is added to every pot
         the solver sees: a live table can hold chips the AA rules do not post.
         """
+        return self.solved_spot(observation, salt)[0]
+
+    def solved_spot(self, observation, salt):
+        """``solved_strategy``, and the opponent's range at this decision.
+
+        The range ({combo key: weight}) is the one the street was solved
+        with, cut by how often each hand takes the opponent's actions on this
+        street in the solution.
+        """
         self._pot_offset = float(observation.get("pot_offset") or 0)
         me, street = observation["observing_seat"], observation["street"]
         decisions = public_replay(observation)
@@ -123,9 +132,12 @@ class SolverBot(_Policy):
                                            board)
         node = tree
         for decision in now:
-            node = node_at(node, [self.label(node, decision)])
+            label = self.label(node, decision)
+            if decision.seat == villain:
+                other = weighted(other, node, label) or other
+            node = node_at(node, [label])
         try:
-            return strategy_of(node, observation["own_hole"])
+            return strategy_of(node, observation["own_hole"]), other
         except KeyError:
             raise Fallback("own_hand_not_in_range") from None
 

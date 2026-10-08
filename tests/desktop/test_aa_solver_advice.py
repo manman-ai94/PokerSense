@@ -49,14 +49,19 @@ def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
 
 
 class Bot:
-    def __init__(self, strategy=None, error=None):
-        self.strategy, self.error, self.seen = strategy, error, []
+    # The opponent's range at the decision: on Ah Kd 7c 2s, kings up beat
+    # your queens, a seven does not.
+    RANGE = {"KhKc": 1.0, "AcKs": 1.0, "7d7h": 0.5, "Qc7s": 2.0, "QsJd": 1.0}
 
-    def solved_strategy(self, observation, salt):
+    def __init__(self, strategy=None, error=None, villain=None):
+        self.strategy, self.error, self.seen = strategy, error, []
+        self.villain = self.RANGE if villain is None else villain
+
+    def solved_spot(self, observation, salt):
         self.seen.append(observation)
         if self.error:
             raise Fallback(self.error)
-        return self.strategy
+        return self.strategy, self.villain
 
 
 class Inline:
@@ -92,6 +97,19 @@ def test_your_turn_on_the_turn_gets_the_solvers_frequencies():
     # The table shows 2 chips more than the AA rules post: the solver sees them.
     assert ready["pot_offset"] == "2" and bot.seen[0]["pot_offset"] == "2"
     assert len(bot.seen) == 1 and ready["acts_on_client"] is False
+    # Your equity against his range there, exact over the river cards; QsJd
+    # uses your queen of spades and is left out.
+    assert ready["range_equity"]["hands"] == 4
+    assert 0.1 < ready["range_equity"]["value"] < 0.5
+    assert frame_summary({"solver_advice_v1": ready})["solver_advice"][
+        "range_equity"] == ready["range_equity"]
+
+
+def test_an_empty_or_unreadable_range_gives_advice_without_range_equity():
+    for villain in ({"QsJd": 1.0}, {"XxYy": 1.0}):
+        advice = AASolverAdvice(Bot({"CALL": 1.0}, villain=villain), Inline())
+        ready = run(advice, range(50))[-1]
+        assert ready["status"] == "ready" and ready["range_equity"] is None
 
 
 def test_the_solve_runs_in_the_background_once_per_decision():

@@ -72,6 +72,11 @@ assert.equal(view.price, "CO 下注，跟注要 28");
 assert.deepEqual(view.numbers.map(item => [item.label, item.value]),
   [["要赢多少才不亏", "25%"], ["对随机牌能赢", "31%"], ["有效筹码", "160"]]);
 assert.equal(view.numbers[0].note, "跟 28，底池会到 113");
+// With the opponent's range from the solve, equity against it replaces equity against random cards.
+view = signalView(running(base({solver_advice_v1: {...river.solver_advice_v1,
+  range_equity: {value: 0.21, hands: 312}}})), 1000, {});
+assert.deepEqual([view.numbers[1].label, view.numbers[1].value, view.numbers[1].note],
+  ["你对他的范围能赢", "21%", "按 AA 真人打法推算，他还可能有 312 种牌"]);
 assert.deepEqual(view.basis, ["单挑求解器 · 1.2 秒算完", "对手范围按 AA 真人打法推算",
   "底池比规则多 2，已算进去", "只显示建议，不替你点"]);
 assert.equal(view.header.health.text, "采集卡 · 识别正常 · 64 毫秒");

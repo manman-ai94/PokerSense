@@ -1,10 +1,12 @@
-"""Preflop ranking and Monte Carlo equity for scoreboard bots."""
+"""Preflop ranking, Monte Carlo equity and range equity for scoreboard bots."""
 
 import random
 
+import pytest
+
 from poker_engine.scoreboard.strength import (
     DECK, all_classes, class_combos, combo_percentile, equity, hand_class,
-    preflop_percentile, preflop_table)
+    preflop_percentile, preflop_table, range_equity)
 
 
 def test_hand_classes_cover_every_starting_hand():
@@ -47,3 +49,21 @@ def test_equity_against_random_hands():
     assert equity(["As", "Ah"], [], 0, 10, rng) == 1.0
     made = equity(["As", "Ah"], ["Ad", "Ac", "2s", "7h", "9d"], 3, 200, rng)
     assert made == 1.0            # four aces on a dry river cannot lose
+
+
+def test_equity_against_a_weighted_range_on_the_river_and_the_turn():
+    river = ("2c", "3c", "4d", "7s", "9h")
+    aces = ("Ah", "Ad")
+    assert range_equity(aces, river, {"KhKd": 1.0}) == (1.0, 1)
+    assert range_equity(aces, river, {"AsAc": 1.0}) == (0.5, 1)       # a tie
+    # Weights count: kings three times as likely as the other aces.
+    value, hands = range_equity(aces, river, {"KhKd": 3.0, "AsAc": 1.0})
+    assert hands == 2 and value == pytest.approx((3 * 1 + 0.5) / 4)
+    # A hand using one of your cards or a board card cannot be his.
+    assert range_equity(aces, river, {"AhKd": 1.0, "9c9d": 1.0}) == (0.0, 1)
+    assert range_equity(aces, river, {"AhKd": 1.0}) == (None, 0)
+    # On the turn every river card is dealt: 2 of the 44 left give him kings.
+    value, hands = range_equity(aces, river[:4], {"KhKd": 1.0})
+    assert hands == 1 and value == pytest.approx(42 / 44)
+    with pytest.raises(ValueError):
+        range_equity(aces, river[:3], {"KhKd": 1.0})

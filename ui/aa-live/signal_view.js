@@ -237,7 +237,8 @@
     const range = advice?.range_equity;
     const equity = math?.equity;
     if (range && isNumber(range.value)) {
-      list.push({label: "你对他的范围能赢", value: pct(range.value), note: "按 AA 真人打法推算他的牌"});
+      list.push({label: "你对他的范围能赢", value: pct(range.value),
+        note: isNumber(range.hands) ? `按 AA 真人打法推算，他还可能有 ${range.hands} 种牌` : "按 AA 真人打法推算他的牌"});
     } else if (equity?.available) {
       list.push({label: "对随机牌能赢", value: pct(equity.value),
         note: `${equity.opponents} 个对手；真人的牌通常更强`});
