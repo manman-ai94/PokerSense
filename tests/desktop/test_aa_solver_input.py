@@ -221,3 +221,46 @@ def test_the_losers_fold_badge_at_the_showdown_does_not_stop_the_replay():
     assert replay_hand(facts(all_in))["status"] == "ok"
     folded = ACTIONS[:8] + [(34, "flop", 2, "fold", "0"), (40, "flop", 5, "fold", "0")]
     assert replay_hand(facts(folded))["status"] == "ok"
+
+
+def comeback(price, wagers=None):
+    """Seat 3 is first to act after posting a big blind on coming back: 100
+    before the hand, 2 ante, 2 posted, 96 behind."""
+    stacks = {seat: Decimal(96 if seat == 3 else 100) for seat in range(6)}
+    return {**facts(actions=[], stacks=stacks), "board": [],
+            "wagers": wagers or {0: Decimal(1), 1: Decimal(2), 2: Decimal(4),
+                                 3: Decimal(2)},
+            "price": price}
+
+
+def test_a_big_blind_posted_on_coming_back_is_live():
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    observation, reason = solver_observation(comeback(Decimal(2)), 3, ["Qs", "Qh"])
+    assert reason is None
+    assert (observation["to_call"], observation["pot"], observation["posted"]) == (
+        "2", "21", "2")                     # 6 antes + 1 + 2 + 4 + the post
+    assert observation["bets"]["3"] == "2" and observation["stacks"]["3"] == "96"
+    assert observation["betting"]["max_raise_to"] == "98"
+    assert "raise_to:98" in [action["id"] for action in observation["legal_actions"]]
+
+
+def test_a_post_counts_only_when_your_button_shows_the_price_it_leaves():
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    plain, reason = solver_observation(comeback(Decimal(4), {}), 3, ["Qs", "Qh"])
+    assert reason is None and plain["to_call"] == "4" and "posted" not in plain
+    assert solver_observation(comeback(Decimal(3)), 3, ["Qs", "Qh"]) == (
+        None, "price_does_not_match")
+    unread, reason = solver_observation(comeback(None), 3, ["Qs", "Qh"])
+    assert unread["to_call"] == "4" and "posted" not in unread
+
+
+def test_only_chips_in_before_acting_beyond_the_blinds_are_a_post():
+    from poker_engine.desktop.aa_solver_input import own_post
+    hand = comeback(Decimal(2))
+    observation = {"street": "preflop", "bets": {"1": "2", "3": "0"}}
+    assert own_post(hand, observation, 3) == 2
+    assert own_post(hand, observation, 1) == 0          # the big blind itself
+    acted = {**hand, "actions": [{"frame": 1, "street": "preflop", "slot": 3,
+                                  "kind": "call", "amount": "4"}]}
+    assert own_post(acted, observation, 3) == 0
+    assert own_post(hand, {**observation, "street": "flop"}, 3) == 0
