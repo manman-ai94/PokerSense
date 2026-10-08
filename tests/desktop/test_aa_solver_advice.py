@@ -127,6 +127,54 @@ def test_decisions_the_solver_does_not_cover_stay_idle():
     assert (first["reason"], first["street"]) == ("street_not_covered", "flop")
 
 
+# The same hand three-handed: seat 1 completes its big blind and checks along.
+MULTI = [
+    (10, "preflop", 3, "fold", "0", "no_chips"), (12, "preflop", 4, "call", "4",
+                                                  "pot_rise"),
+    (14, "preflop", 5, "fold", "0", "no_chips"), (16, "preflop", 0, "fold", "0",
+                                                  "no_chips"),
+    (18, "preflop", 1, "call", "2", "pot_rise"), (20, "preflop", 2, "check", "0",
+                                                  "no_chips"),
+    (28, "flop", 1, "check", "0", "no_chips"), (30, "flop", 2, "check", "0",
+                                                "no_chips"),
+    (32, "flop", 4, "check", "0", "no_chips"), (36, "turn", 1, "check", "0",
+                                                "no_chips"),
+    (40, "turn", 2, "raise", "10", "pot_rise"),
+]
+
+
+def three_handed(frame, **options):
+    row = payload(frame, **options)
+    row["action_history_v1"]["actions"] = [
+        dict(zip(("frame", "street", "slot", "kind", "amount", "amount_source"), a))
+        for a in MULTI if a[0] < frame]
+    row["pot"] = {"value": str(int(row["pot"]["value"]) + (2 if frame > 18 else 0))}
+    return row
+
+
+def test_more_than_one_opponent_gets_equity_against_their_ranges():
+    bot = Bot({"CALL": 1.0})
+    advice = AASolverAdvice(bot, Inline())
+    report = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
+    assert (report["status"], report["reason"]) == ("idle", "more_than_one_opponent")
+    edge = report["range_equity"]
+    assert edge["opponents"] == 2 and edge["hands"] is None
+    assert set(edge["hands_each"]) == {"1", "2"} and 0 < edge["value"] < 1
+    assert bot.seen == [] and report["advice_emitted"] is False
+    # The ranges are worked out in the background: the report does not wait.
+    waiting = AASolverAdvice(bot, Inline(finish=False))
+    report = [waiting.observe(three_handed(frame), frame) for frame in range(50)][-1]
+    assert report["reason"] == "more_than_one_opponent" and "range_equity" not in report
+
+
+def test_the_flop_gets_equity_against_the_opponents_range():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    report = advice.observe({**payload(31), "hero_controls_v1": {"visible": True}}, 31)
+    edge = report["range_equity"]
+    assert edge["opponents"] == 1 and edge["hands"] == edge["hands_each"]["2"] > 0
+    assert 0 < edge["value"] < 1
+
+
 def preflop_turn(hero):
     """Your first preflop decision: seat 3 folded, it is seat 4's turn."""
     return {**payload(12, hero=hero, extra_pot=0),

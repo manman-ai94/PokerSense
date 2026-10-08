@@ -14,8 +14,12 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   opponent's range there (``range_equity``, exact over the river cards). The
   solve runs on a background thread, so recognition never waits for it.
 
-The flop is not covered: a flop solve takes about a minute. Every frame
-reports where the current decision stands:
+The flop is not covered: a flop solve takes about a minute. On the flop, and
+with more than one opponent, there is no advice, but your share of the pot
+against every opponent's range (read from their actions with the same
+population model, ``scoreboard.ranges``) is worked out in the background
+and added to the report when it is ready. Every frame reports where the
+current decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -34,7 +38,9 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 import time
 
+from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
+from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import range_equity
 from poker_engine.solver.texassolver import amount_of
@@ -44,6 +50,7 @@ from .aa_solver_input import hand_facts, solver_observation
 
 HERO = 4                        # your seat: bottom centre
 STREETS = ("preflop", "turn", "river")   # a flop solve takes about a minute
+POSTFLOP = ("flop", "turn", "river")
 THREADS = 4                     # solver threads (the scoreboard uses one)
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
@@ -86,10 +93,11 @@ def range_report(observation, weights):
 class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
-    def __init__(self, bot=None, executor=None, preflop=None):
+    def __init__(self, bot=None, executor=None, preflop=None, model=None):
         self._bot = bot
         self._executor = executor
         self._preflop = preflop
+        self._model = model
         self.reset()
 
     def reset(self):
@@ -122,7 +130,7 @@ class AASolverAdvice:
         if not (fields.get("hero_controls") or {}).get("visible"):
             return self._report("idle", "not_your_turn")
         street = fields.get("street")
-        if street not in STREETS:
+        if street not in STREETS and street not in POSTFLOP:
             return self._report("idle", "street_not_covered", street=street)
         cards = [card for card in fields.get("hero") or () if card]
         if len(cards) != 2:
@@ -144,16 +152,20 @@ class AASolverAdvice:
             # read: look again shortly.
             return {"status": "idle", "reason": "waiting_for_last_action",
                     "retry_at": frame + RETRY}
+        flop = fields.get("street") not in STREETS
         if observation is None:
-            return {"status": "abstain", "reason": reason}
+            return ({"status": "idle", "reason": "street_not_covered"} if flop
+                    else {"status": "abstain", "reason": reason})
         if observation["street"] != fields.get("street"):
             return {"status": "abstain", "reason": "street_mismatch"}
         if observation["street"] == "preflop":
             return self._preflop_advice(observation, fields)
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
-        if len(live) != 2:
-            return {"status": "idle", "reason": "more_than_one_opponent"}
+        if flop or len(live) != 2:
+            reason = "street_not_covered" if flop else "more_than_one_opponent"
+            return {"status": "idle", "reason": reason,
+                    "range_job": self._submit(self._ranges, observation)}
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
         pot = _decimal(fields.get("pot"))
@@ -162,10 +174,26 @@ class AASolverAdvice:
         if self._bot is None:
             self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
                                   base=self._preflop_policy())
+        return self._submit(self._solve, observation, time.monotonic())
+
+    def _submit(self, function, *args):
         if self._executor is None:
             self._executor = ThreadPoolExecutor(max_workers=1,
                                                 thread_name_prefix="solver-advice")
-        return self._executor.submit(self._solve, observation, time.monotonic())
+        return self._executor.submit(function, *args)
+
+    def _ranges(self, observation):
+        """Your share of the pot against every opponent's range, or None."""
+        if self._model is None:
+            self._model = PopulationBot(adjusted=self._preflop_policy().adjusted)
+        ranges = opponent_ranges(observation, self._model)
+        value, counts = ranges_equity(observation["own_hole"], observation["board"],
+                                      ranges)
+        if value is None:
+            return None
+        return {"value": round(value, 3), "opponents": len(counts),
+                "hands": sum(counts.values()) if len(counts) == 1 else None,
+                "hands_each": {str(seat): count for seat, count in counts.items()}}
 
     def _preflop_policy(self):
         if self._preflop is None:
@@ -224,8 +252,25 @@ class AASolverAdvice:
                 "seconds": round(time.monotonic() - started, 2)}
 
     def _settle(self, key):
-        """The decision's outcome, or None while the solve is running."""
+        """The decision's outcome, or None while the solve is running.
+
+        An outcome without advice is there at once; its equity against the
+        opponents' ranges joins it when worked out.
+        """
         job = self._jobs[key]
+        if isinstance(job, dict) and isinstance(job.get("range_job"), Future):
+            future = job["range_job"]
+            job = {name: value for name, value in job.items() if name != "range_job"}
+            if not future.done():
+                return job
+            try:
+                edge = future.result()
+            except Exception:              # never lose the report over it
+                edge = None
+            if edge is not None:
+                job["range_equity"] = edge
+            self._jobs[key] = job
+            return job
         if isinstance(job, Future):
             if not job.done():
                 return None

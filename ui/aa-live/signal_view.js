@@ -383,7 +383,10 @@
     }
     const range = advice?.range_equity;
     const equity = math?.equity;
-    if (range && isNumber(range.value)) {
+    if (range && isNumber(range.value) && num(range.opponents) > 1) {
+      list.push({label: "你对他们的牌能赢", value: pct(range.value),
+        note: `按 AA 真人打法推算 ${range.opponents} 个对手可能拿的牌`});
+    } else if (range && isNumber(range.value)) {
       list.push({label: "你对他的范围能赢", value: pct(range.value),
         note: isNumber(range.hands) ? `按 AA 真人打法推算，他还可能有 ${range.hands} 种牌` : "按 AA 真人打法推算他的牌"});
     } else if (equity?.available) {
@@ -552,7 +555,9 @@
     }
     if (reason === "more_than_one_opponent") {
       return {...view, tone: "info", title: "多人底池不给打法",
-        note: "胜率是对随机牌算的。还在局里的真人牌通常更强，你实际能赢的多半更少，只当上限参考。"};
+        note: isNumber(advice.range_equity?.value)
+          ? "几个人的底池没有求解器。胜率按 AA 真人打法推算每个对手可能拿的牌，只当参考。"
+          : "胜率是对随机牌算的。还在局里的真人牌通常更强，你实际能赢的多半更少，只当上限参考。"};
     }
     if (reason === "your_cards_not_read") {
       return {...view, tone: "warn", title: "识别不全", note: "还没读到你的两张牌，这一步不给建议。"};

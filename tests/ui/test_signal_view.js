@@ -256,6 +256,16 @@ assert.equal(view.title, "你先决定");
 view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "hand_incomplete"}})), 0, {},
   {afterAct: true});
 assert.equal(view.title, "这一手不给建议");
+// With more than one opponent (or on the flop) the equity against their ranges arrives a moment later.
+view = signalView(running(base({solver_advice_v1: {status: "idle", reason: "more_than_one_opponent",
+  range_equity: {value: 0.42, opponents: 2, hands: null, hands_each: {"2": 315, "6": 103}}}})), 0, {});
+assert.deepEqual([view.numbers[1].label, view.numbers[1].value, view.numbers[1].note],
+  ["你对他们的牌能赢", "42%", "按 AA 真人打法推算 2 个对手可能拿的牌"]);
+assert.match(view.note, /按 AA 真人打法推算每个对手可能拿的牌/);
+view = signalView(running(base({street_v1: {street: "flop"}, solver_advice_v1: {status: "idle",
+  reason: "street_not_covered", street: "flop", range_equity: {value: 0.6, opponents: 1, hands: 240}}})), 0, {});
+assert.equal(view.title, "翻牌不给打法");
+assert.deepEqual([view.numbers[1].label, view.numbers[1].note], ["你对他的范围能赢", "按 AA 真人打法推算，他还可能有 240 种牌"]);
 // Equity against random hands overstates it against the hands still in: an upper bound.
 view = signalView(running(base({solver_advice_v1: {status: "idle", reason: "more_than_one_opponent"}})), 0, {});
 assert.match(view.note, /只当上限参考/);
