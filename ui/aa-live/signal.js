@@ -225,6 +225,8 @@
       const response = await fetch("/api/status", {headers, cache: "no-store", signal: abort.signal});
       if (!response.ok) throw Error(`HTTP ${response.status}`);
       const state = await response.json();
+      // A new launch replaced the window this page came from: load its page.
+      if (instance !== null && state.instance_id !== instance) { location.reload(); return; }
       if (state.instance_id !== instance || state.generation !== generation) {
         instance = state.instance_id; generation = state.generation; memory = {}; sequence = null;
       }

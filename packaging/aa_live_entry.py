@@ -5,11 +5,13 @@ import json
 import multiprocessing
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 
 
@@ -147,14 +149,82 @@ def create_app(args):
     return app
 
 
-def open_listener(preferred):
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def stop_source(port):
+    """Ask the window on ``port`` to stop its source; a recording it makes is
+    finished before it answers. Best effort."""
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/stop", data=b"{}", method="POST",
+        headers={"X-AA-Live": "1", "Content-Type": "application/json"})
     try:
-        listener.bind(("127.0.0.1", preferred))
-    except OSError:
-        listener.close()
+        urllib.request.urlopen(request, timeout=15).read()
+    except (OSError, ValueError):
+        pass
+
+
+def take_over(port, *, run=subprocess.run, kill=os.kill, stop=stop_source,
+              me=None, seconds=10, clock=time.monotonic, sleep=time.sleep):
+    """Close an older window of this program that listens on ``port``, so a
+    new launch keeps the page's address (and what the page remembers there)
+    and only one window owns the capture card. Its source is stopped first,
+    then the process gets a normal kill. Anything else on the port is left
+    alone (``open_listener`` then picks another port). Returns the process
+    ids closed; nothing where ``lsof`` is missing (Windows)."""
+    me = os.getpid() if me is None else me
+    try:
+        listed = run(["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                     capture_output=True, text=True, timeout=10).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return []
+    closed = []
+    for pid in sorted({int(item) for item in listed if item.isdigit()} - {me}):
+        try:
+            command = run(["ps", "-ww", "-o", "command=", "-p", str(pid)],
+                          capture_output=True, text=True, timeout=10).stdout
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if "aa_live_entry.py" not in command:
+            continue
+        stop(port)
+        try:
+            kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+        deadline = clock() + seconds
+        while clock() < deadline:
+            try:
+                kill(pid, 0)
+            except OSError:
+                break
+            sleep(0.2)
+        print(f"[AA] 关掉了之前开着的窗口（进程 {pid}）", flush=True)
+        closed.append(pid)
+    return closed
+
+
+def open_listener(preferred, *, wait=0.0):
+    """A listening socket on ``preferred``, tried for ``wait`` seconds (the
+    connections of a window just closed may hold it up to half a minute on a
+    Mac), else on a free port."""
+    deadline, said = time.monotonic() + wait, False
+    while True:
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        listener.bind(("127.0.0.1", 0))
+        if os.name != "nt":
+            # A window just closed leaves its connections waiting a while;
+            # this still refuses a port another program listens on.
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            listener.bind(("127.0.0.1", preferred))
+            break
+        except OSError:
+            listener.close()
+        if time.monotonic() >= deadline:
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listener.bind(("127.0.0.1", 0))
+            break
+        if not said:
+            print(f"[AA] 等之前的窗口放开端口 {preferred}……", flush=True)
+            said = True
+        time.sleep(0.25)
     listener.listen(128)
     return listener
 
@@ -163,7 +233,8 @@ def serve(args):
     import uvicorn
 
     app = create_app(args)
-    with open_listener(args.port) as listener:
+    closed = take_over(args.port) if args.port else []
+    with open_listener(args.port, wait=40 if closed else 0) as listener:
         port = listener.getsockname()[1]
         server = uvicorn.Server(uvicorn.Config(
             app, host="127.0.0.1", port=port, log_level="warning"))
