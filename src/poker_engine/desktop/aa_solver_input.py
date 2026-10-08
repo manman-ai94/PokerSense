@@ -117,7 +117,8 @@ def hand_facts(rows):
             "wagers": {int(seat): Decimal(value) for seat, value in
                        (latest.get("street_wagers") or {}).items()
                        if value not in (None, "")},
-            "price": _price(latest.get("hero_controls") or {})}
+            "price": _price(latest.get("hero_controls") or {}),
+            "all_in": _all_in(latest.get("hero_controls") or {})}
 
 
 def _price(controls):
@@ -131,6 +132,13 @@ def _price(controls):
     if controls.get("button") == "call" and amount not in (None, ""):
         return Decimal(str(amount))
     return None
+
+
+def _all_in(controls):
+    """Your button says "All in" (with your stack read): calling takes every
+    chip you have."""
+    return bool(controls.get("visible") and controls.get("button") == "all_in"
+                and controls.get("call_amount") not in (None, ""))
 
 
 def _board(fields):
@@ -454,7 +462,7 @@ def solver_observation(facts, seat, cards):
     action before has not been read yet), when the stack readings do not fit
     the betting, when the table would have dealt a board card the reader
     has not seen, or when the price to call is not what your button shows
-    (``facts["price"]``, when the button shows one).
+    (``facts["price"]``, or your whole stack when it says "All in").
     """
     if facts.get("complete") is not True:
         return None, "hand_incomplete"
@@ -483,11 +491,11 @@ def solver_observation(facts, seat, cards):
     post = own_post(facts, observation, seat)
     if post and to_call - post == facts.get("price"):
         observation, to_call = with_post(observation, seat, post), to_call - post
-    if (facts.get("price") is not None and to_call != facts["price"]
-            and to_call < Decimal(observation["stacks"][str(seat)])):
+    stack = Decimal(observation["stacks"][str(seat)])
+    shown = stack if facts.get("all_in") else facts.get("price")
+    if shown is not None and min(to_call, stack) != shown:
         # A missed action rebuilt wrong (or a dealer moved by one seat): the
-        # table asks a price your button does not show. (Calling all in, the
-        # button shows no price; it can be read as a check.)
+        # table asks a price your button does not show.
         return None, "price_does_not_match"
     missing = [other for other in facts["seats"] if other not in stacks]
     observation = with_hole(observation, cards)

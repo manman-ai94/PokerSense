@@ -254,6 +254,37 @@ def test_a_post_counts_only_when_your_button_shows_the_price_it_leaves():
     assert unread["to_call"] == "4" and "posted" not in unread
 
 
+def short(behind, price=None, all_in=False):
+    """Seat 3 first to act with 4 to call (no post) and ``behind`` left."""
+    hand = comeback(price, {})
+    return {**hand, "stacks": {**hand["stacks"], 3: behind}, "all_in": all_in}
+
+
+def test_calling_your_whole_stack_needs_an_all_in_button():
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    observation, reason = solver_observation(short(Decimal(3), all_in=True), 3,
+                                             ["Qs", "Qh"])
+    assert reason is None and observation["stacks"]["3"] == "3"
+    # The table asks for every chip, but the button shows a check or a price
+    # other than the stack: the hand was rebuilt wrong.
+    for price in (Decimal(0), Decimal(4)):
+        assert solver_observation(short(Decimal(3), price), 3, ["Qs", "Qh"]) == (
+            None, "price_does_not_match")
+    # "All in" with chips left after calling: wrong as well.
+    assert solver_observation(short(Decimal(96), all_in=True), 3, ["Qs", "Qh"]) == (
+        None, "price_does_not_match")
+
+
+def test_an_all_in_button_counts_once_your_stack_is_read():
+    shown = {"visible": True, "button": "all_in", "call_amount": "3"}
+    found = rows()
+    found[-1]["fields"] = {**found[-1]["fields"], "hero_controls": shown}
+    assert hand_facts(found)["all_in"] is True and hand_facts(found)["price"] is None
+    found[-1]["fields"]["hero_controls"] = {**shown, "call_amount": None}
+    assert hand_facts(found)["all_in"] is False
+    assert hand_facts(rows())["all_in"] is False
+
+
 def test_only_chips_in_before_acting_beyond_the_blinds_are_a_post():
     from poker_engine.desktop.aa_solver_input import own_post
     hand = comeback(Decimal(2))
