@@ -13,6 +13,8 @@ also split by how its hand reached the flop (``by_flop``): over before it
 (folded, won, or all in before the flop), heads-up, or with two or more
 opponents. The parts add up to the whole, and the split of the difference to
 the reference shows where a strategy wins or loses.
+
+With ``mushroom`` the AA mushroom pool is played too (see ``mushroom``).
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 from .allin_ev import runout_ev
 from .bots import make_policy
+from .mushroom import Mushroom, main_pot_shares, pool_result
 
 # Opponent pools by name. "population" plays like real players (see
 # population.py) and is the default; "aa" like them but as loose before the
@@ -51,10 +54,13 @@ def _salt(base_seed, seed, seat):
     return hashlib.sha256(f"{base_seed}:{seed}:{seat}".encode()).hexdigest()
 
 
-def play_hand(arena, seed, deciders, hero, *, all_in_ev=True):
+def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
     """Hero's result in chips, whether the all-in EV replaced the runout, and
     how the hand reached the flop for hero (one of ``FLOP``)."""
     arena.reset(seed)
+    if mushroom is not None:
+        post, carried = mushroom.pool(seed, float(arena.rules.big_blind))
+        pool = f"{carried + post:g}"
     actions = 0
     flop, reached = "preflop", False
     while not arena.terminal:
@@ -63,20 +69,28 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True):
             raise RuntimeError("hand did not finish")
         seat = arena.actor
         observation = arena.observe(seat)
+        if mushroom is not None:
+            observation["mushroom_pool"] = pool
         if not reached and observation["street"] != "preflop":
             reached = True                  # the first decision after the flop
             if hero not in observation["folded"]:
                 live = len(observation["occupied_seats"]) - len(observation["folded"])
                 flop = "heads_up" if live == 2 else "multiway"
         arena.step(deciders[seat](observation))
-    if all_in_ev:
-        expected = runout_ev(arena, seed=seed)
-        if expected is not None:
-            return expected[hero], True, flop
-    return float(arena.terminal_returns()[hero]), False, flop
+    expected = runout_ev(arena, seed=seed, main_pot=True) if all_in_ev else None
+    if expected is not None:
+        (returns, shares), adjusted = expected, True
+    else:
+        returns, adjusted = arena.terminal_returns(), False
+        shares = main_pot_shares(arena) if mushroom is not None else {}
+    value = float(returns[hero])
+    if mushroom is not None:
+        value += pool_result(arena, mushroom, carried, post, hero, shares)
+    return value, adjusted, flop
 
 
-def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
+def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
+                mushroom=None):
     """Per deal and strategy: (average result in big blinds, all-in hands).
 
     Also returns, per strategy that keeps them, the counts of how it decided
@@ -86,6 +100,7 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
     arena = AAFullHandArena(rules)
     seats = arena.occupied_seats
     big_blind = float(rules.big_blind)
+    mushroom = None if mushroom is None else Mushroom(**mushroom)
     bots = {name: make_policy(name) for name in {*strategies, *pool}}
     rows = []
     for seed in seeds:
@@ -100,7 +115,8 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
                 deciders = dict(bound)
                 deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
                 value, was_adjusted, flop = play_hand(arena, seed, deciders, hero,
-                                                      all_in_ev=all_in_ev)
+                                                      all_in_ev=all_in_ev,
+                                                      mushroom=mushroom)
                 total += value
                 adjusted += was_adjusted
                 split[flop][0] += value
@@ -194,8 +210,10 @@ def pairwise(rows, strategies):
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
-                   progress=None):
+                   progress=None, mushroom=None):
     """Score ``strategies`` over ``deals`` deals; same arguments, same result.
+
+    ``mushroom``: None, or a ``Mushroom`` to play the AA mushroom pool.
 
     ``progress(done, total, seconds)`` is called after each batch of deals.
     """
@@ -207,8 +225,10 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     chunk = chunk or max(2, deals // (max(1, workers) * 32))
     chunks = [seeds[i:i + chunk] for i in range(0, len(seeds), chunk)]
     started = time.perf_counter()
-    args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev)
-            for part in chunks]
+    pool_rule = None if mushroom is None else {"post": mushroom.post,
+                                               "take": mushroom.take}
+    args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev,
+             pool_rule) for part in chunks]
     results = []
 
     def finished(result):
@@ -246,6 +266,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "deals": deals,
         "hands_per_strategy": deals * seats,
         "all_in_ev": all_in_ev,
+        "mushroom": None if mushroom is None else mushroom.to_dict(),
         "base_seed": base_seed,
         "strategies": summary,
         "reference": reference,

@@ -49,6 +49,10 @@ def test_turn_all_in_is_averaged_over_every_river():
     expected = runout_ev(table)
     assert expected[0] == pytest.approx(200 * 42 / 44 - 100)
     assert expected[1] == pytest.approx(-(200 * 42 / 44 - 100))
+    # The main pot's expected shares: the aces' chance of winning it.
+    returns, shares = runout_ev(table, main_pot=True)
+    assert returns == expected
+    assert shares == pytest.approx({0: 42 / 44, 1: 2 / 44})
 
 
 def test_preflop_all_in_is_sampled_and_folded_seats_keep_their_loss():

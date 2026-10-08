@@ -55,8 +55,12 @@ def settle(contributions, ranks, rake_share=0.0):
     return [credits[i] - contributions[i] for i in range(len(contributions))]
 
 
-def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
-    """Expected return per seat (chips) for an all-in runout, else None."""
+def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0, main_pot=False):
+    """Expected return per seat (chips) for an all-in runout, else None.
+
+    With ``main_pot`` also each seat's expected share of the main pot (the
+    one every player still in can win): (returns, shares).
+    """
     if not arena.terminal:
         raise ValueError("hand is not finished")
     seats, history = arena._seats, arena._history
@@ -79,7 +83,7 @@ def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
         runouts = [rng.sample(deck, need) for _ in range(samples)]
     contributions = [float(value) for value in arena._contributions]
     rake_share = _rake_share(arena.rules, arena._contributions)
-    totals = [0.0] * len(seats)
+    totals, shares = [0.0] * len(seats), [0.0] * len(seats)
     known = [CARD_ID[card] for card in known]
     hole_ids = [[CARD_ID[card] for card in hole] for hole in holes]
     for extra in runouts:
@@ -87,8 +91,15 @@ def runout_ev(arena, *, samples=RUNOUT_SAMPLES, seed=0):
         ranks = {i: _EVALUATE_7(*hole_ids[i], *full) for i in alive}
         for i, value in enumerate(settle(contributions, ranks, rake_share)):
             totals[i] += value
+        best = min(ranks.values())
+        winners = [i for i in alive if ranks[i] == best]
+        for i in winners:
+            shares[i] += 1 / len(winners)
     unit = float(arena.rules.minimum_chip)
-    return {seat: totals[i] / len(runouts) * unit for i, seat in enumerate(seats)}
+    returns = {seat: totals[i] / len(runouts) * unit for i, seat in enumerate(seats)}
+    if not main_pot:
+        return returns
+    return returns, {seat: shares[i] / len(runouts) for i, seat in enumerate(seats)}
 
 
 def _rake_share(rules, contributions):

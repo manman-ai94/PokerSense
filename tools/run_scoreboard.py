@@ -3,12 +3,14 @@
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
         [--pool population|aa|styles|tag,lag] \\
-        [--workers 10] [--out result.json]
+        [--mushroom 3 [--mushroom-take 0.135]] [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
 pool is a name from ``runner.POOLS`` or a comma-separated list of policies;
-the default, "population", plays like real players.
+the default, "population", plays like real players. ``--mushroom 3`` plays
+the AA mushroom pool with the dealer putting in 3 big blinds (see
+``scoreboard/mushroom.py``).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from pathlib import Path
 import sys
 
 from poker_engine.scoreboard.bots import POLICY_NAMES
+from poker_engine.scoreboard.mushroom import TAKE, Mushroom
 from poker_engine.scoreboard.runner import POOLS, run_scoreboard
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
@@ -60,6 +63,10 @@ def table(report):
                          + ("" if delta is None else
                             f" vs ref {delta['delta_bb_per_100']:+.1f}"))
         lines.append(f"  {name}: " + " | ".join(cells))
+    if report.get("mushroom"):
+        lines.append("mushroom pool: the dealer puts in "
+                     f"{report['mushroom']['post_big_blinds']:g} big blinds, the small "
+                     f"blind takes it {report['mushroom']['take']:.1%} of hands")
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
@@ -87,6 +94,10 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--rules", type=Path, default=DEFAULT_RULES)
     parser.add_argument("--no-all-in-ev", action="store_true")
+    parser.add_argument("--mushroom", type=float, metavar="BIG_BLINDS",
+                        help="play the AA mushroom pool: the dealer's post")
+    parser.add_argument("--mushroom-take", type=float, default=TAKE,
+                        help="chance a hand's small blind takes the pool")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     rules = AARuleProfileV2.from_dict(
@@ -95,7 +106,9 @@ def main(argv=None):
                             pool=POOLS.get(args.pool) or tuple(args.pool.split(",")),
                             workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
-                            all_in_ev=not args.no_all_in_ev, progress=show_progress)
+                            all_in_ev=not args.no_all_in_ev, progress=show_progress,
+                            mushroom=None if args.mushroom is None else Mushroom(
+                                args.mushroom, args.mushroom_take))
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
