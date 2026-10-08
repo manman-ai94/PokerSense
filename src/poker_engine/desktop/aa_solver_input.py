@@ -42,6 +42,12 @@ should be given from such a hand. The opening pot is compared with the antes,
 blinds and straddle for the seats found (it differs when extra chips such as
 a mushroom or bomb pot go in); the solver should take the pot from the
 table, not from the replay.
+
+A big blind posted on coming back to the table (after a rebuy or on sitting
+down) is not in the replay either. For the seat asking for advice it is read
+from its bet before it has acted and, when the button's price agrees, put
+into the observation: the post is live, so calling costs that much less
+(``with_post``).
 """
 
 from __future__ import annotations
@@ -101,6 +107,9 @@ def hand_facts(rows):
             "opening_pot": _opening_pot(rows, fields, first),
             "states": {int(seat): state for seat, state in
                        (latest.get("participants") or {}).items()},
+            "wagers": {int(seat): Decimal(value) for seat, value in
+                       (latest.get("street_wagers") or {}).items()
+                       if value not in (None, "")},
             "price": _price(latest.get("hero_controls") or {})}
 
 
@@ -443,6 +452,9 @@ def solver_observation(facts, seat, cards):
     if len(observation["board"]) > len(facts["board"]):
         return None, "board_not_read"
     to_call = Decimal(observation["to_call"])
+    post = own_post(facts, observation, seat)
+    if post and to_call - post == facts.get("price"):
+        observation, to_call = with_post(observation, seat, post), to_call - post
     if (facts.get("price") is not None and to_call != facts["price"]
             and to_call < Decimal(observation["stacks"][str(seat)])):
         # A missed action rebuilt wrong (or a dealer moved by one seat): the
@@ -455,6 +467,53 @@ def solver_observation(facts, seat, cards):
     observation["inferred_actions"] = len(replay["inferred"]) + sum(
         action.get("source") == "inferred" for action in facts["actions"])
     return observation, None
+
+
+def _money(value):
+    """Chips as the table writes them ("25", "0.5")."""
+    return format(value.normalize(), "f") if value else "0"
+
+
+def own_post(facts, observation, seat):
+    """Chips ``seat`` posted on coming back to the table (after a rebuy or on
+    sitting down): before it has acted preflop, its bet on the table above
+    the blind or straddle the replay has it put in. 0 when there is none."""
+    if observation["street"] != "preflop" or any(
+            action["slot"] == seat and action["street"] == "preflop"
+            for action in facts["actions"]):
+        return Decimal(0)
+    read = facts.get("wagers", {}).get(seat)
+    owed = Decimal(observation["bets"][str(seat)])
+    return read - owed if read is not None and read > owed else Decimal(0)
+
+
+def with_post(observation, seat, post):
+    """``observation`` with ``post`` more of ``seat``'s chips in its bet.
+
+    AA has a player who comes back post a big blind, and it is live: calling
+    costs that much less, the pot holds it, and going all in raises to that
+    much more. The replay has no such post; the stack behind is already the
+    one read on the table.
+    """
+    key, extra = str(seat), Decimal(post)
+    result = deepcopy(observation)
+
+    def more(value):
+        return _money(Decimal(value) + extra)
+
+    top = observation["betting"]["max_raise_to"]
+    result["to_call"] = _money(Decimal(observation["to_call"]) - extra)
+    result["pot"] = more(observation["pot"])
+    for part in ("bets", "contributions", "starting_stacks"):
+        result[part][key] = more(observation[part][key])
+    if top is not None:
+        result["betting"]["max_raise_to"] = more(top)
+        for action in result["legal_actions"]:
+            if action["kind"] == "raise_to" and action["raise_to"] == top:
+                action["raise_to"] = more(top)
+                action["id"] = "raise_to:" + action["raise_to"]
+    result["posted"] = _money(extra)
+    return result
 
 
 def check_hand(rows):
@@ -477,5 +536,5 @@ def check_hand(rows):
             "opening_pot_matches": facts["opening_pot"] == expected}
 
 
-__all__ = ["board_history", "check_hand", "fill_to_seat", "hand_facts", "replay_hand",
-           "solver_observation", "starting_stacks"]
+__all__ = ["board_history", "check_hand", "fill_to_seat", "hand_facts", "own_post",
+           "replay_hand", "solver_observation", "starting_stacks", "with_post"]
