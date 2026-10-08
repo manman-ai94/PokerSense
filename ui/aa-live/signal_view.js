@@ -340,7 +340,8 @@
       if (verdict) {
         const basis = verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
           : ["单挑求解器", "对手范围按 AA 真人打法推算"];
-        if (isNumber(advice.seconds)) basis[0] += ` · ${advice.seconds} 秒算完`;
+        if (isNumber(advice.seconds))
+          basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
         if (isNumber(advice.pot_offset) && Number(advice.pot_offset) > 0)
           basis.push(`底池比规则多 ${chips(advice.pot_offset)}，已算进去`);
         if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length)

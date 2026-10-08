@@ -113,7 +113,7 @@ assert.equal(view.tone, "raise"); assert.equal(view.verdict.word, "加注到"); 
 assert.equal(view.verdict.note, "比跟注 4 多赢 1.2 大盲，比弃牌多赢 1.6 大盲");
 assert.deepEqual(view.verdict.options.map(item => [item.text, item.value, item.best, item.width]),
   [["加注到 14", "+1.6 大盲", true, 100], ["跟注 4", "+0.4 大盲", false, 25], ["弃牌", "0.0 大盲", false, 0]]);
-assert.equal(view.basis[0], "翻前算法 · 0.003 秒算完");
+assert.equal(view.basis[0], "翻前算法 · 不到 0.01 秒算完");
 assert.equal(view.price, "UTG 加注，跟注要 4");
 assert.equal(view.verdict.mix, undefined);
 // From the big blind with nothing to call, calling is a check.
