@@ -12,9 +12,20 @@ over deals, which are independent of each other. Each strategy's result is
 also split by how its hand reached the flop (``by_flop``): over before it
 (folded, won, or all in before the flop), heads-up, or with two or more
 opponents. The parts add up to the whole, and the split of the difference to
-the reference shows where a strategy wins or loses.
+the reference shows where a strategy wins or loses. A second split
+(``by_end``) is by where the hand ended for the strategy: the street it
+folded on or won without a showdown, or the showdown (all-in hands included).
+Losing without showdowns points at folding too much or bluffing into callers;
+losing at showdowns at calling or betting too thin.
 
-With ``mushroom`` the AA mushroom pool is played too (see ``mushroom``).
+With ``mushroom`` the AA mushroom pool is played too (see ``mushroom``), and
+each strategy's report says how often the small blind took the pool on its
+tables (``mushroom_take``). The pool carried in from earlier hands is drawn
+as if the small blind takes it ``mushroom.take`` of the time; where the
+measured share differs much, the draws add or remove chips that no earlier
+hand paid in (a table where the small blind wins half the pots carries far
+less than the default assumes), so the run should be repeated with the
+measured share (``run_gauntlet.py`` does this itself).
 """
 
 from __future__ import annotations
@@ -25,22 +36,31 @@ import math
 import random
 from statistics import fmean, stdev
 import time
+from typing import NamedTuple
 
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 from .allin_ev import runout_ev
 from .bots import make_policy
-from .mushroom import Mushroom, main_pot_shares, pool_result
+from .mushroom import Mushroom, main_pot_shares, pool_result, small_blind
 
 # Opponent pools by name. "population" plays like real players (see
 # population.py) and is the default; "aa" like them but as loose before the
-# flop as AA players; "styles" is the first version's mix.
+# flop as AA players; "styles" is the first version's mix. The tougher ones
+# (opponents.py): "reg", "maniac" and "nit" alone, "tough" all three next to
+# AA players; "mirror" is the AI itself; "solver" regulars that play heads-up
+# turns and rivers with TexasSolver (installed solver only, slow).
 POOLS = {"population": ("population",), "aa": ("aa_population",),
-         "styles": ("tag", "lag", "rock", "station")}
+         "styles": ("tag", "lag", "rock", "station"),
+         "reg": ("reg",), "maniac": ("maniac",), "nit": ("nit",),
+         "tough": ("reg", "maniac", "nit", "aa_population"),
+         "mirror": ("range_multiway+aa_preflop",),
+         "solver": ("solver_turn+reg",)}
 DEFAULT_POOL = POOLS["population"]
 MAX_ACTIONS = 400
 FLOP = ("preflop", "heads_up", "multiway")      # how a hand reached the flop
+END = ("preflop", "flop", "turn", "river", "showdown")   # where it ended
 
 
 def lineup(seed, pool, seats):
@@ -54,9 +74,28 @@ def _salt(base_seed, seed, seat):
     return hashlib.sha256(f"{base_seed}:{seed}:{seat}".encode()).hexdigest()
 
 
+def ended(observation, hero):
+    """Where a finished hand ended for ``hero`` (one of ``END``)."""
+    history = observation["public_history"]
+    if hero in observation["folded"]:
+        return next(row["street"] for row in reversed(history)
+                    if row["actor"] == hero and row["kind"] == "fold")
+    if len(observation["occupied_seats"]) - len(observation["folded"]) > 1:
+        return "showdown"
+    return history[-1]["street"]
+
+
+class Hand(NamedTuple):
+    value: float            # hero's result in chips
+    adjusted: bool          # the all-in EV replaced the runout
+    flop: str               # how the hand reached the flop for hero (``FLOP``)
+    end: str                # where it ended for hero (``END``)
+    small_blind: float      # the small blind's share of the main pot (0 without
+    #                         a mushroom pool): how often it takes the pool
+
+
 def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
-    """Hero's result in chips, whether the all-in EV replaced the runout, and
-    how the hand reached the flop for hero (one of ``FLOP``)."""
+    """One hand from ``hero``'s seat, as a ``Hand``."""
     arena.reset(seed)
     if mushroom is not None:
         post, carried = mushroom.pool(seed, float(arena.rules.big_blind))
@@ -83,10 +122,11 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
     else:
         returns, adjusted = arena.terminal_returns(), False
         shares = main_pot_shares(arena) if mushroom is not None else {}
-    value = float(returns[hero])
+    value, taken = float(returns[hero]), 0.0
     if mushroom is not None:
         value += pool_result(arena, mushroom, carried, post, hero, shares)
-    return value, adjusted, flop
+        taken = shares.get(small_blind(arena), 0.0)
+    return Hand(value, adjusted, flop, ended(arena.observe(hero), hero), taken)
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
@@ -109,22 +149,27 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                  for seat in seats}
         row = {}
         for name in strategies:
-            total, adjusted = 0.0, 0
+            total, adjusted, taken = 0.0, 0, 0.0
             split = {part: [0.0, 0] for part in FLOP}
+            end = {part: [0.0, 0] for part in END}
             for hero in seats:
                 deciders = dict(bound)
                 deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
-                value, was_adjusted, flop = play_hand(arena, seed, deciders, hero,
-                                                      all_in_ev=all_in_ev,
-                                                      mushroom=mushroom)
-                total += value
-                adjusted += was_adjusted
-                split[flop][0] += value
-                split[flop][1] += 1
+                hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
+                                 mushroom=mushroom)
+                total += hand.value
+                adjusted += hand.adjusted
+                taken += hand.small_blind
+                for parts, part in ((split, hand.flop), (end, hand.end)):
+                    parts[part][0] += hand.value
+                    parts[part][1] += 1
             scale = len(seats) * big_blind
             row[name] = (total / scale, adjusted,
                          {part: (chips / scale, hands)
-                          for part, (chips, hands) in split.items()})
+                          for part, (chips, hands) in split.items()},
+                         {part: (chips / scale, hands)
+                          for part, (chips, hands) in end.items()},
+                         taken)
         rows.append((seed, row))
     counts = {name: dict(bots[name].counts) for name in strategies
               if getattr(bots[name], "counts", None)}
@@ -164,19 +209,21 @@ def summarize(rows, strategies, reference, seats):
     return summary, versus
 
 
-def flop_split(rows, strategies, reference, seats):
+def flop_split(rows, strategies, reference, seats, index=2, parts=FLOP):
     """Each strategy's bb/100 from hands that ended before the flop, went to
     it heads-up or multiway (adding up to its whole result), with the share
-    of its hands in each; and each part of its difference to the reference."""
+    of its hands in each; and each part of its difference to the reference.
+
+    ``index=3, parts=END`` splits by where the hand ended instead."""
     def part(name, flop):
-        return [row[name][2][flop][0] for _, row in rows]
+        return [row[name][index][flop][0] for _, row in rows]
 
     split, versus = {}, {}
     for name in strategies:
         split[name] = {}
-        for flop in FLOP:
+        for flop in parts:
             mean, half = _interval(part(name, flop))
-            hands = sum(row[name][2][flop][1] for _, row in rows)
+            hands = sum(row[name][index][flop][1] for _, row in rows)
             split[name][flop] = {
                 "bb_per_100": round(mean * 100, 2),
                 "ci95": None if half is None else [round((mean - half) * 100, 2),
@@ -184,7 +231,7 @@ def flop_split(rows, strategies, reference, seats):
                 "share": round(hands / (len(rows) * seats), 4)}
         if reference in strategies and name != reference:
             versus[name] = {}
-            for flop in FLOP:
+            for flop in parts:
                 mean, half = _interval([a - b for a, b in zip(
                     part(name, flop), part(reference, flop))])
                 versus[name][flop] = {
@@ -254,11 +301,17 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     seats = rules.table_size
     reference = reference or strategies[0]
     summary, versus = summarize(rows, strategies, reference, seats)
-    by_flop, by_flop_versus = flop_split(rows, strategies, reference, seats)
-    for name, parts in by_flop.items():
-        summary[name]["by_flop"] = parts
-    for name, parts in by_flop_versus.items():
-        versus[name]["by_flop"] = parts
+    if mushroom is not None:
+        for name in strategies:
+            taken = sum(row[name][4] for _, row in rows)
+            summary[name]["mushroom_take"] = round(taken / (len(rows) * seats), 4)
+    for key, index, names in (("by_flop", 2, FLOP), ("by_end", 3, END)):
+        split, split_versus = flop_split(rows, strategies, reference, seats,
+                                         index, names)
+        for name, parts in split.items():
+            summary[name][key] = parts
+        for name, parts in split_versus.items():
+            versus[name][key] = parts
     return {
         "schema_version": 1,
         "rules": rules_dict,
@@ -284,5 +337,6 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     }
 
 
-__all__ = ["DEFAULT_POOL", "FLOP", "POOLS", "flop_split", "lineup", "pairwise",
-           "play_hand", "run_scoreboard", "score_deals", "summarize"]
+__all__ = ["DEFAULT_POOL", "END", "FLOP", "POOLS", "Hand", "ended", "flop_split",
+           "lineup", "pairwise", "play_hand", "run_scoreboard", "score_deals",
+           "summarize"]
