@@ -72,3 +72,21 @@ def test_resume_reuses_saved_pools(tmp_path, monkeypatch):
     main(["--deals", "3", *args[2:], "--resume"])          # other settings: rerun
     assert len(played) == 2
     assert (tmp_path / "aa.json").read_text(encoding="utf-8") != saved
+
+
+def test_reads_are_given_and_count_for_resume(tmp_path, monkeypatch):
+    args = ["--deals", "2", "--workers", "1", "--strategies",
+            "aa_preflop,noreads+aa_preflop", "--pools", "nit", "--out", str(tmp_path)]
+    main(args + ["--reads", "40"])
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["reads"] == 40
+    report = json.loads((tmp_path / "nit.json").read_text(encoding="utf-8"))
+    assert report["reads"]["hands"] == 40
+    played = []
+    real = run_gauntlet.run_scoreboard
+    monkeypatch.setattr(run_gauntlet, "run_scoreboard",
+                        lambda *a, **k: played.append(k["reads"]) or real(*a, **k))
+    main(args + ["--reads", "40", "--resume"])
+    assert played == []
+    main(args + ["--resume"])                               # without reads: rerun
+    assert played == [None]

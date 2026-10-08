@@ -225,6 +225,9 @@ def make_policy(name):
     if name.startswith("nomushroom+"):
         from .mushroom import Blind              # imports this module
         return Blind(make_policy(name.partition("+")[2]), name)
+    if name.startswith("noreads+"):
+        from .reads import Unread                # imports this module
+        return Unread(make_policy(name.partition("+")[2]), name)
     if name.startswith("range_multiway") and "+" in name:
         from .multiway_bot import from_name      # imports this module
         return from_name(name, make_policy)

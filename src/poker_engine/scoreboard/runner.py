@@ -26,6 +26,11 @@ measured share differs much, the draws add or remove chips that no earlier
 hand paid in (a table where the small blind wins half the pots carries far
 less than the default assumes), so the run should be repeated with the
 measured share (``run_gauntlet.py`` does this itself).
+
+With ``reads`` (a number of hands) each strategy's decisions carry what a
+player would have seen of every opponent in that many hands
+(``observation["reads"]``, see ``reads``); ``aa_preflop`` adjusts the
+ranges it expects by them.
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .allin_ev import runout_ev
 from .bots import make_policy
 from .mushroom import Mushroom, main_pot_shares, pool_result, small_blind
+from . import reads as opponent_reads
 
 # Opponent pools by name. "population" plays like real players (see
 # population.py) and is the default; "aa" like them but as loose before the
@@ -96,8 +102,12 @@ class Hand(NamedTuple):
     #                         a mushroom pool): how often it takes the pool
 
 
-def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
-    """One hand from ``hero``'s seat, as a ``Hand``."""
+def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
+              reads=None):
+    """One hand from ``hero``'s seat, as a ``Hand``.
+
+    ``reads``: added to ``hero``'s observations as ``observation["reads"]``.
+    """
     arena.reset(seed)
     if mushroom is not None:
         post, carried = mushroom.pool(seed, float(arena.rules.big_blind))
@@ -112,6 +122,8 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
         observation = arena.observe(seat)
         if mushroom is not None:
             observation["mushroom_pool"] = pool
+        if reads is not None and seat == hero:
+            observation["reads"] = reads
         if not reached and observation["street"] != "preflop":
             reached = True                  # the first decision after the flop
             if hero not in observation["folded"]:
@@ -132,8 +144,10 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None):
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
-                mushroom=None):
+                mushroom=None, reads=None):
     """Per deal and strategy: (average result in big blinds, all-in hands).
+
+    ``reads``: None, or {"hands": n, "shares": ``reads.measure`` result}.
 
     Also returns, per strategy that keeps them, the counts of how it decided
     (for example how often a solver strategy fell back to its base policy).
@@ -157,8 +171,10 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
             for hero in seats:
                 deciders = dict(bound)
                 deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
+                seen = None if reads is None else opponent_reads.sample(
+                    reads["shares"], styles, hero, seed, reads["hands"])
                 hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
-                                 mushroom=mushroom)
+                                 mushroom=mushroom, reads=seen)
                 total += hand.value
                 adjusted += hand.adjusted
                 taken += hand.small_blind
@@ -259,10 +275,11 @@ def pairwise(rows, strategies):
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
-                   progress=None, mushroom=None):
+                   progress=None, mushroom=None, reads=None):
     """Score ``strategies`` over ``deals`` deals; same arguments, same result.
 
     ``mushroom``: None, or a ``Mushroom`` to play the AA mushroom pool.
+    ``reads``: None, or the hands of reads on the opponents each decision has.
 
     ``progress(done, total, seconds)`` is called after each batch of deals.
     """
@@ -276,8 +293,11 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     started = time.perf_counter()
     pool_rule = None if mushroom is None else {"post": mushroom.post,
                                                "take": mushroom.take}
+    seen = None if not reads else {
+        "hands": reads,
+        "shares": opponent_reads.measure(rules, pool, base_seed=base_seed)}
     args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev,
-             pool_rule) for part in chunks]
+             pool_rule, seen) for part in chunks]
     results = []
 
     def finished(result):
@@ -323,6 +343,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "all_in_ev": all_in_ev,
         "mushroom": None if mushroom is None else mushroom.to_dict(),
         "base_seed": base_seed,
+        "reads": seen,
         "strategies": summary,
         "reference": reference,
         "versus_reference": versus,

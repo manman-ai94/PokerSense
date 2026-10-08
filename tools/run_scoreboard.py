@@ -109,6 +109,9 @@ def main(argv=None):
                         help="play the AA mushroom pool: the dealer's post")
     parser.add_argument("--mushroom-take", type=float, default=TAKE,
                         help="chance a hand's small blind takes the pool")
+    parser.add_argument("--reads", type=int, metavar="HANDS",
+                        help="give every decision reads on the opponents from this "
+                        "many hands (aa_preflop uses them; noreads+name ignores them)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     rules = AARuleProfileV2.from_dict(
@@ -119,7 +122,8 @@ def main(argv=None):
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
                             mushroom=None if args.mushroom is None else Mushroom(
-                                args.mushroom, args.mushroom_take))
+                                args.mushroom, args.mushroom_take),
+                            reads=args.reads)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
