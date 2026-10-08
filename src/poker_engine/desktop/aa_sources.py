@@ -5,10 +5,14 @@ phone before it reads (``AACaptureSource.find``): the device number chosen
 first, then devices 0-3, each until it shows the phone between black bars
 (``aa_recorder.picture``), something else, or ``LOOK_SECONDS`` of black. On a
 Mac the computer's own camera also gives 1920x1080 and can be device 0, and
-the card's number changes with the cable or hub. When no device shows the
-phone the chosen one is used. ``device`` says which one was used, whether
-it showed the phone (``device_check``) and what each device looked at showed
-(``device_seen``); the session reports it and a recording keeps it.
+the card's number changes with the cable or hub. Black is the card with no
+picture from the phone yet (a camera always shows something): a chosen
+device that stays black is kept without opening the others, so the Mac's
+camera does not light up while the phone is locked or not mirroring yet.
+When no device shows the phone, the first black one is used, else the
+chosen one. ``device`` says which one was used, whether it showed the phone
+(``device_check``) and what each device looked at showed (``device_seen``);
+the session reports it and a recording keeps it.
 
 ``CameraList`` names the cameras macOS lists, so the window can say whether
 the card is there at all (a card plugged into a hub instead of the Mac is
@@ -150,16 +154,18 @@ class AACaptureSource:
             if self.cancel.is_set():
                 break
             seen[str(index)] = self._look(index)
-            if seen[str(index)] == "phone":
+            if seen[str(index)] == "phone" or (index == chosen
+                                               and seen[str(index)] == "dark"):
                 break
-        found = next((int(i) for i, kind in seen.items() if kind == "phone"), None)
-        if found is not None and found != chosen:
+        phone = next((int(i) for i, kind in seen.items() if kind == "phone"), None)
+        dark = next((int(i) for i, kind in seen.items() if kind == "dark"), None)
+        found = phone if phone is not None else dark if dark is not None else chosen
+        if found != chosen:
             self.backend.release()
             self.backend = self._backend(found, normalization=self.normalization)
             self.target = CaptureTarget(f"uvc-{found}")
-        self.device = {**self.device,
-                       "device_index": chosen if found is None else found,
-                       "device_check": NO_PHONE if found is None else PHONE_FOUND,
+        self.device = {**self.device, "device_index": found,
+                       "device_check": NO_PHONE if phone is None else PHONE_FOUND,
                        "device_seen": seen}
 
     def _look(self, index):
