@@ -19,9 +19,15 @@
 | `feat/hu-range-equity` | 1d12deb（已并进本机 main） | 还没有 | 单挑转牌、河牌算你对对手范围的胜率，显示在新界面 |
 | `feat/grade-after-acting` | ded65f9（已并进本机 main） | 还没有 | 你行动后给这一步打分、本场记录、“行动后再看”开关 |
 | `feat/floating-window` | f81b5ea（已并进本机 main） | 还没有 | 置顶小窗（Chrome 画中画） |
-| `feat/record-in-window` | 本条提交 | 还没有 | 窗口里直接录采集卡画面；Mac 上用 Chrome 打开窗口 |
+| `feat/record-in-window` | 6ef3278（已并进本机 main） | 还没有 | 窗口里直接录采集卡画面；Mac 上用 Chrome 打开窗口 |
+| `docs/roadmap-ui-done` | 本条提交 | 还没有 | 路线图：界面重做完成，下一步多人底池与保险 |
 
 ## 记录
+
+**2026-10-08 · `docs/roadmap-ui-done`（本机）**
+- 做了什么：路线图和 AGENTS.md 改成现状：里程碑 7 界面重做完成（主人确认置顶小窗在 Chrome 能用），翻前建议已接到实时页面，下一步是里程碑 6 多人底池与保险。
+- 怎么验证的：只改文档；AGENTS.md 仍在 200 行以内。
+- 还剩什么：转牌、河牌建议的真人验收还要约 20 个决策，等主人打牌时点“录像”。
 
 **2026-10-08 · `feat/record-in-window`（本机）**
 - 做了什么：设计稿第 5 步（最后一步）。接采集卡观察时窗口顶上有“录像”按钮，边识别边录，红色“录制中 分:秒”，再点停止；Mac 上装了 Chrome 就用 Chrome 打开窗口；在 Safari 里点“置顶小窗”会提示改用 Chrome；页面自己的提示留 15 秒，不再被下一次取数据冲掉。
