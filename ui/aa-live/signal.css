@@ -151,6 +151,20 @@ a { color: #9CC2FF; }
   .side > *, .signal > * { flex-shrink: 0; }
 }
 
+/* The grade's session numbers are for the small window: the big one has the side panel. */
+.signal.tone-grade .numbers { display: none; }
+.floating .verdict p { margin: 0; }
+
+/* The always-on-top small window (Chrome picture-in-picture): the colour field only. */
+.mini-bar { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--soft); flex-shrink: 0; }
+.mini-bar strong { color: var(--text); font-weight: 800; }
+.mini-bar button { margin-left: auto; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--edge); background: var(--raised); color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.mini .signal { flex: 1 1 auto; }
+.mini .cards-block + .cards-block, .mini .cards-block .cap, .mini .context, .mini .compare { display: none; }
+.mini .numbers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.mini .numbers div:nth-child(n+3) { display: none; }
+.mini .signal.tone-grade .numbers { display: grid; }
+
 /* A narrow window (the small always-on-top size) keeps only the colour field. */
 @media (max-width: 560px) {
   .side, .source, .bar .link, .bar .session, .toggle, .rule { display: none; }

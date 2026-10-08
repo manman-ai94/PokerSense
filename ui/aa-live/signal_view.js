@@ -317,13 +317,18 @@
     return parts.join("，");
   }
 
-  function gradeScreen(item) {
+  // The grade, and (for the small window, which has no side panel) how this
+  // session is going.
+  function gradeScreen(item, grades) {
     const graded = gradeView(item);
+    const lost = num(grades?.preflop_lost_big_blinds);
     return {tone: "grade", graded, title: graded.word, note: graded.note, rule: RULE,
       tags: [STREETS[item.street], "你已行动 · 打分"].filter(Boolean),
       price: `${clockText(item.at)} 这一步 · 下次轮到你之前一直显示`.trim(),
       cards: {hero: cardList(item.hero, 2, 2), board: cardList(item.board, 5, BOARD[item.street] ?? 0)},
-      potCap: chips(item.pot), context: gradeContext(item), numbers: [], basis: ["只显示建议和打分，不替你点"]};
+      potCap: chips(item.pot), context: gradeContext(item), basis: ["只显示建议和打分，不替你点"],
+      numbers: isNumber(grades?.graded) ? [{label: "本场照着打", value: `${grades.best}/${grades.graded}`, note: ""},
+        {label: "翻前少赢", value: one(lost ?? 0), note: "大盲"}] : []};
   }
 
   function sessionView(grades) {
@@ -444,7 +449,7 @@
     if (yourTurn && (controls.button === "check" || isNumber(price))) {
       view.price = controls.button === "check" ? "现在可以过牌" : priceText(history, names, street, price, stack);
     }
-    if (!yourTurn && row.grade_v1?.last) return {...view, ...gradeScreen(row.grade_v1.last)};
+    if (!yourTurn && row.grade_v1?.last) return {...view, ...gradeScreen(row.grade_v1.last, row.grade_v1)};
     if (!yourTurn) {
       const actor = Number.isInteger(row.current_actor) && row.current_actor !== HERO
         ? `${names[row.current_actor] || `${row.current_actor} 号位`} 在想` : null;

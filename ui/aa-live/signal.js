@@ -1,7 +1,10 @@
 "use strict";
 // Signal window: polls /api/status and draws what SignalView works out.
 (function () {
-  const el = id => document.getElementById(id);
+  // While the colour field floats in the always-on-top small window its
+  // elements live in that window's document.
+  let pip = null;
+  const el = id => pip?.document.getElementById(id) || document.getElementById(id);
   const headers = {"X-AA-Live": "1"};
   const SUITS = {c: "♣", d: "♦", h: "♥", s: "♠"};
   const now = () => globalThis.performance?.now?.() ?? Date.now();
@@ -162,6 +165,9 @@
     el("session").textContent = view.header.session || "";
     el("advice-live").setAttribute("aria-pressed", String(!afterAct));
     el("advice-after").setAttribute("aria-pressed", String(afterAct));
+    el("float").hidden = !("documentPictureInPicture" in window) || Boolean(pip);
+    const mini = pip?.document.getElementById("mini-state");
+    if (mini) mini.textContent = view.street ? `· ${view.street}` : `· ${view.header.health.text}`;
   }
 
   function draw(state) {
@@ -172,7 +178,7 @@
   function error(message) { el("error").textContent = message || ""; el("error").hidden = !message; }
 
   async function poll() {
-    if (pending || document.hidden) return;
+    if (pending || (document.hidden && !pip)) return;
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 2500);
     try {
       const response = await fetch("/api/status", {headers, cache: "no-store", signal: abort.signal});
@@ -232,6 +238,65 @@
   setInterval(() => {
     if (document.hidden) fetch("/api/heartbeat", {headers, cache: "no-store"}).catch(() => {});
   }, 20000);
+  // The small window: Chrome's document picture-in-picture keeps it above
+  // every other window. The colour field moves into it, and back when it
+  // closes. Polling runs on the small window's timers while it is open,
+  // since a hidden tab's timers are slowed down.
+  let loop = 0;
+  function run(host) {
+    const mine = ++loop;
+    (async function tick() {
+      if (mine !== loop) return;
+      await poll();
+      if (mine === loop) host.setTimeout(tick, 250);
+    })();
+  }
+
+  function dock() {
+    if (!pip) return;
+    const section = pip.document.getElementById("signal");
+    pip = null;
+    if (section) el("floating").before(section);
+    el("floating").hidden = true;
+    draw(status); run(window);
+  }
+
+  async function float() {
+    if (pip || !("documentPictureInPicture" in window)) return;
+    let small;
+    try { small = await documentPictureInPicture.requestWindow({width: 380, height: 600}); }
+    catch (failure) { error(`没有打开置顶小窗：${failure.message}`); return; }
+    const head = small.document.head;
+    for (const link of document.querySelectorAll('link[rel="stylesheet"], link[rel="preconnect"]')) {
+      const copy = small.document.createElement("link");
+      copy.rel = link.rel; copy.href = link.href;
+      head.append(copy);
+    }
+    small.document.title = "PokerSense";
+    small.document.documentElement.lang = "zh-CN";
+    small.document.body.className = "mini";
+    const bar = small.document.createElement("div");
+    bar.className = "mini-bar";
+    const name = small.document.createElement("strong");
+    name.textContent = "PokerSense";
+    const state = small.document.createElement("span");
+    state.id = "mini-state";
+    const back = small.document.createElement("button");
+    back.type = "button"; back.textContent = "回到大窗口";
+    back.addEventListener("click", () => small.close());
+    bar.append(name, state, back);
+    const shell = small.document.createElement("main");
+    shell.className = "layout";
+    shell.append(el("signal"));
+    small.document.body.append(bar, shell);
+    el("floating").hidden = false;
+    pip = small;
+    small.addEventListener("pagehide", dock);
+    draw(status); run(small);
+  }
+
+  el("float").addEventListener("click", float);
+  el("unfloat").addEventListener("click", () => pip?.close());
   draw({status: "STOPPED"});
-  (async function tick() { await poll(); setTimeout(tick, 250); })();
+  run(window);
 })();

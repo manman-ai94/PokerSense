@@ -36,7 +36,8 @@
     <button id="advice-live" type="button" aria-pressed="true">实时建议</button>
     <button id="advice-after" type="button" aria-pressed="false" title="轮到你时先不显示建议，你点完再打分">行动后再看</button>
   </div>
-  <a class="pill link" href="/classic">本桌设置和详细数据</a>
+  <button id="float" type="button" class="pill link" hidden title="浮在所有窗口上面的小窗，只放颜色区">置顶小窗</button>
+  <a class="pill link" href="/classic" title="本桌设置、详细数据和复查（旧观察页）">设置和数据</a>
 </header>
 <p id="error" class="error" role="alert" hidden></p>
 <main class="layout">
@@ -56,6 +57,11 @@
     <div id="compare" class="compare" hidden></div>
     <div id="numbers" class="numbers"></div>
     <p id="rule" class="rule" hidden></p>
+  </section>
+  <section id="floating" class="signal tone-wait floating" aria-label="建议在置顶小窗里" hidden>
+    <div class="verdict"><span class="word status">建议在置顶小窗里</span>
+      <p class="note">小窗浮在所有窗口上面。关掉小窗，建议就回到这里。</p>
+      <p><button id="unfloat" type="button" class="pill link">收回到这里</button></p></div>
   </section>
   <aside class="side" aria-label="牌桌和这一手">
     <div class="side-head"><span class="label">牌桌 · 识别结果</span><span id="speed" class="muted"></span></div>

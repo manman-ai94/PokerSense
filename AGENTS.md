@@ -91,7 +91,7 @@ PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <�
 ```
 
 浏览器会自动打开“信号灯”窗口，选好画面来源点“开始”；旧观察页（本桌设置、详细数据、复查）在右上角
-“本桌设置和详细数据”（`/classic`）。详见 [launch/mac/README.md](launch/mac/README.md)。
+“设置和数据”（`/classic`）。详见 [launch/mac/README.md](launch/mac/README.md)。
 
 ## 代码地图
 

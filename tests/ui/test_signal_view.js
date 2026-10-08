@@ -205,6 +205,8 @@ assert.match(view.price, /^\d\d:\d\d 这一步 · 下次轮到你之前一直显
 assert.equal(view.context, "SB · 你，UTG 加注 4，底池 13，跟注要 4");
 assert.deepEqual(view.cards.hero.map(card => card.rank + card.suit), ["Kc", "Tc"]);
 assert.equal(view.potCap, "13"); assert.match(view.rule, /^怎么打分/);
+// For the small window, which has no side panel: how the session is going.
+assert.deepEqual(view.numbers.map(item => [item.label, item.value]), [["本场照着打", "0/2"], ["翻前少赢", "1.2"]]);
 // The live table on the side and the session list stay current.
 assert.equal(view.pot, "85"); assert.equal(view.header.session, "本场 87 手 · 照建议 0/2");
 assert.deepEqual(view.session.stats.map(item => [item.label, item.value]),
