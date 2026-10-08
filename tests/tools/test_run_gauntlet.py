@@ -90,3 +90,20 @@ def test_reads_are_given_and_count_for_resume(tmp_path, monkeypatch):
     assert played == []
     main(args + ["--resume"])                               # without reads: rerun
     assert played == [None]
+
+
+def test_bomb_pots_are_scored_and_count_for_resume(tmp_path, monkeypatch):
+    args = ["--deals", "3", "--workers", "1", "--strategies", "population",
+            "--pools", "nit", "--out", str(tmp_path), "--bomb", "7"]
+    main(args + ["--bomb-share", "1"])
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["bomb"] == {"post_big_blinds": 7.0, "share": 1.0}
+    assert summary["strategies"]["population"]["nit"]["bomb"]["share"] == 1.0
+    played = []
+    real = run_gauntlet.run_scoreboard
+    monkeypatch.setattr(run_gauntlet, "run_scoreboard",
+                        lambda *a, **k: played.append(k["bomb"]) or real(*a, **k))
+    main(args + ["--bomb-share", "1", "--resume"])
+    assert played == []
+    main(args + ["--resume"])                         # another share: rerun
+    assert played == [run_gauntlet.Bomb(7, 0.07)]

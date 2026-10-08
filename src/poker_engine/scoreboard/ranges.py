@@ -8,6 +8,13 @@ their past actions, the hands the population model plays that way
 leaves that range as it was. Your share of the pot against those ranges is
 then worked out by dealing each opponent a hand from their range (weighted,
 without sharing cards) and the rest of the board, many times over.
+
+Reading an action asks the model about every hand, so a hand with many
+actions (a bomb pot, where everyone sees the flop) took seconds per decision
+when every decision read the whole hand again. The range each action leaves
+its player with depends only on the public hand up to it, so it is kept
+(``CACHE_SIZE`` actions) and a later decision of the same hand reads only the
+new actions; hands that the board dealt since then are dropped.
 """
 
 from __future__ import annotations
@@ -24,6 +31,8 @@ from .solver_bot import MODEL_SALT, kept
 from .strength import CARD_ID, DECK, _EVALUATE_7
 
 TRIALS = 4000
+CACHE_SIZE = 1000               # actions whose resulting range is kept
+_KEPT = {}
 MAX_DRAWS = 50                  # tries for one deal of hands that do not collide
 
 
@@ -34,11 +43,27 @@ def opponent_ranges(observation, model):
     seats = [seat for seat in observation["occupied_seats"]
              if seat not in observation["folded"] and seat != me]
     ranges = {seat: {key: 1.0 for key in all_combos(board)} for seat in seats}
-    for decision in public_replay(observation):
-        if decision.seat in ranges:
-            before = ranges[decision.seat]
-            ranges[decision.seat] = kept(before, decision, lambda obs: model.decide(
-                obs, _rng(MODEL_SALT, obs))) or before
+    dealt = set(board)
+    table = (type(model).__name__, getattr(model, "adjusted", None),
+             observation.get("rules_fingerprint"), tuple(observation["occupied_seats"]),
+             observation["dealer_seat"], observation.get("bomb_pot"),
+             tuple(sorted(observation["starting_stacks"].items())))
+    for index, decision in enumerate(public_replay(observation)):
+        if decision.seat not in ranges:
+            continue
+        key = (table, tuple(decision.observation["board"]),
+               tuple(row["id"] for row in observation["public_history"][:index + 1]))
+        if key in _KEPT:
+            ranges[decision.seat] = {
+                combo: weight for combo, weight in _KEPT[key].items()
+                if combo[:2] not in dealt and combo[2:] not in dealt}
+            continue
+        before = ranges[decision.seat]
+        ranges[decision.seat] = kept(before, decision, lambda obs: model.decide(
+            obs, _rng(MODEL_SALT, obs))) or before
+        if len(_KEPT) >= CACHE_SIZE:
+            _KEPT.clear()
+        _KEPT[key] = ranges[decision.seat]
     return ranges
 
 
