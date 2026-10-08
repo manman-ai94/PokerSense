@@ -256,6 +256,9 @@ assert.equal(view.title, "你先决定");
 view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "hand_incomplete"}})), 0, {},
   {afterAct: true});
 assert.equal(view.title, "这一手不给建议");
+// Equity against random hands overstates it against the hands still in: an upper bound.
+view = signalView(running(base({solver_advice_v1: {status: "idle", reason: "more_than_one_opponent"}})), 0, {});
+assert.match(view.note, /只当上限参考/);
 // Nothing graded yet: an empty list that says when it fills.
 const empty = sessionView({hands: 3, graded: 0, best: 0, preflop_lost_big_blinds: 0, last: null, rows: []});
 assert.deepEqual([empty.pill, empty.rows, empty.empty],

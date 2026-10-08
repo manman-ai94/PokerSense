@@ -521,7 +521,7 @@
     }
     if (reason === "more_than_one_opponent") {
       return {...view, tone: "info", title: "多人底池不给打法",
-        note: "胜率是对随机牌算的，真人的牌通常更强，只当下限参考。"};
+        note: "胜率是对随机牌算的。还在局里的真人牌通常更强，你实际能赢的多半更少，只当上限参考。"};
     }
     if (reason === "your_cards_not_read") {
       return {...view, tone: "warn", title: "识别不全", note: "还没读到你的两张牌，这一步不给建议。"};
