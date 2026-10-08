@@ -365,8 +365,9 @@ def _advice(advice):
     return {key: advice[key] for key in ("status", "reason", "hand_id", "street",
                                          "decision", "kind", "heads_up", "advice",
                                          "options", "cuts", "to_call", "pot_offset",
-                                         "mushroom_pool", "stacks_assumed",
-                                         "inferred_actions", "range_equity", "seconds")
+                                         "mushroom_pool", "reads_hands",
+                                         "stacks_assumed", "inferred_actions",
+                                         "range_equity", "seconds")
             if key in advice}
 
 

@@ -315,6 +315,24 @@ def test_the_mushroom_pool_on_screen_goes_to_the_preflop_policy(monkeypatch):
     assert "mushroom_pool" not in seen and result["mushroom_pool"] is None
 
 
+def test_the_opponents_reads_from_finished_hands_go_to_the_preflop_policy():
+    policy = Preflop()
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), preflop=policy)
+    first = advice.observe(preflop_turn(("Ks", "Qs")), 12)
+    assert "reads" not in policy.seen[-1] and first["reads_hands"] == 0
+    run(advice, range(13, 50))                       # hand_1: you limp, seat 2 checks
+    turn = preflop_turn(("Ks", "Qs"))
+    turn["action_history_v1"] = {**turn["action_history_v1"], "hand_id": "hand_2"}
+    result = advice.observe(turn, 70)
+    reads = policy.seen[-1]["reads"]
+    assert reads["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0} and "4" not in reads
+    assert result["reads_hands"] == 1
+    assert frame_summary({"solver_advice_v1": result})["solver_advice"][
+        "reads_hands"] == 1
+    advice.reset()                                   # a new observation
+    assert advice.reads.snapshot() == {}
+
+
 def test_a_solver_fallback_abstains_with_its_reason():
     advice = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
     result = run(advice, range(50))[-1]

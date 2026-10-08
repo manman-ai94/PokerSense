@@ -127,6 +127,9 @@ assert.ok(!view.basis.some(line => line.includes("蘑菇池")));
 // As the small blind the mushroom pool read on the table is counted.
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1, mushroom_pool: "48"}}), 0, {});
 assert.ok(view.basis.includes("算上蘑菇池 48：你是小盲，赢下底池就一起拿走"));
+assert.ok(!view.basis.some(line => line.includes("本场看到")));
+view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1, reads_hands: 37}}), 0, {});
+assert.ok(view.basis.includes("各对手爱不爱入池、加注，按本场看到的 37 手调整"));
 // From the big blind with nothing to call, calling is a check.
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1,
   options: [{action: "call", chips: 0.5, big_blinds: 0.25, chips_in: "0"}, {action: "raise", chips: -1, big_blinds: -0.5, to: "12", chips_in: "10"}]}}), 0, {});

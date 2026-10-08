@@ -572,6 +572,8 @@
           basis.push(`底池比规则多 ${chips(advice.pot_offset)}，已算进去`);
         if (verdict.kind === "preflop" && isNumber(advice.mushroom_pool) && Number(advice.mushroom_pool) > 0)
           basis.push(`算上蘑菇池 ${chips(advice.mushroom_pool)}：你是小盲，赢下底池就一起拿走`);
+        if (verdict.kind === "preflop" && Number(advice.reads_hands) > 0)
+          basis.push(`各对手爱不爱入池、加注，按本场看到的 ${advice.reads_hands} 手调整`);
         if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length)
           basis.push("有人筹码没读到，按很深算");
         if (num(advice.inferred_actions) > 0)
