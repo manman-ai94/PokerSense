@@ -42,6 +42,7 @@ IN_HAND = ("active", "all_in")
 STALL = 1.0          # seconds between two shown frames that count as a stall
 STALE = 2.0          # the live window clears the table after this long
 LATE = 3.0           # advice later than this after your buttons showed
+MISREAD = 3          # frames a second reading of one card needs to count
 
 
 def load(path):
@@ -133,6 +134,11 @@ def hand_report(rows, advice, gaps=()):
                     if f.get("hero") and all(f["hero"]))
     history = hand_from(rows)
     replay = check_hand(rows) if facts["complete"] else None
+    boards = [[] for _ in range(5)]
+    for f in fields:
+        for slot, card in enumerate((f.get("board") or [])[:5]):
+            if card:
+                boards[slot].append(card)
     return {
         "hand_id": facts["hand_id"], "start_pts": round(rows[0]["pts_seconds"], 1),
         "video_seconds": rows[0].get("video_seconds"),
@@ -142,6 +148,10 @@ def hand_report(rows, advice, gaps=()):
         if cards else None,
         "your_cards_read_share": round(sum(cards.values()) / len(in_hand), 2)
         if in_hand else None,
+        # Two readings of your cards, each in at least MISREAD frames: one
+        # of them is wrong.
+        "your_cards_readings": sum(n >= MISREAD for n in cards.values()),
+        "board_slots_with_two_readings": sum(map(flickers, boards)),
         "decisions": decisions(rows, advice),
         "skipped_seats": len(skipped_seats(history)),
         "unexplained_pot_rises": len(unexplained_rises(history)),
@@ -151,6 +161,20 @@ def hand_report(rows, advice, gaps=()):
         "bomb_pot": None if replay is None else replay.get("bomb_pot"),
         "stalls": [gap for gap in gaps
                    if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]]}
+
+
+def flickers(readings):
+    """Whether one board card was read another way for at least MISREAD
+    frames in the middle of its usual reading. (The last hand's board still
+    showing as a new hand starts comes before it, and does not count.)"""
+    counts = Counter(readings)
+    if len(counts) < 2:
+        return False
+    usual = counts.most_common(1)[0][0]
+    first = readings.index(usual)
+    last = len(readings) - 1 - readings[::-1].index(usual)
+    inside = Counter(card for card in readings[first:last] if card != usual)
+    return any(n >= MISREAD for n in inside.values())
 
 
 def hand_from(rows):
@@ -189,8 +213,13 @@ def summarize(hands):
     causes = Counter(t["cause"] for t in turns if t.get("cause"))
     problems = Counter()
     for hand in real:
-        if hand["you_in"] and (hand["your_cards_read_share"] or 0) < 0.5:
-            problems["your_cards_mostly_unread"] += 1
+        unread = sum(not turn["cards_read"] for turn in hand["decisions"])
+        if unread:
+            problems["decisions_with_your_cards_unread"] += unread
+        if hand["your_cards_readings"] > 1:
+            problems["your_cards_read_two_ways"] += 1
+        if hand["board_slots_with_two_readings"]:
+            problems["board_card_read_two_ways"] += 1
         if hand["complete"] and not hand["dealer_read"]:
             problems["dealer_unread"] += 1
         if hand["replay"] not in (None, "ok"):

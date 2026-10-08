@@ -34,5 +34,24 @@ def test_decisions_advice_causes_and_stalls_are_counted():
     assert summary["stalls_over_2s"] == 1
     first, second = report["hands"]
     assert first["decisions"][0]["first_ready"] == 0.1
-    assert first["your_cards"] == "As Kd"
+    assert first["your_cards"] == "As Kd" and first["your_cards_readings"] == 1
     assert second["decisions"][0]["cards_read"] is False
+
+
+def test_a_card_read_two_ways_in_one_hand_is_flagged():
+    rows = ([row(f, f * 0.1) for f in range(4)]
+            + [row(f, f * 0.1, cards=("Ah", "Kd")) for f in range(4, 8)])
+    for item in rows:
+        item["fields"]["board"] = ["7c", "8d", "9h", None, None]
+    for item in rows[3:6]:
+        item["fields"]["board"] = ["7c", "8d", "9s", None, None]
+    summary = session_report([("log", rows)])["summary"]
+    assert summary["hand_problems"] == {"your_cards_read_two_ways": 1,
+                                        "board_card_read_two_ways": 1}
+    # The last hand's board still showing as this one starts does not count.
+    for item in rows[:3]:
+        item["fields"]["board"] = ["Qs", "Js", "2d", None, None]
+    for item in rows[3:]:
+        item["fields"]["board"] = ["7c", "8d", "9h", None, None]
+    summary = session_report([("log", rows)])["summary"]
+    assert summary["hand_problems"] == {"your_cards_read_two_ways": 1}
