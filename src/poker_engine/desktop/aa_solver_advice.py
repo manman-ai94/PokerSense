@@ -23,6 +23,13 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   opponent): bet, raise, call, check or fold, with the shares where the
   action changes (``cuts``). The report's ``heads_up`` says which.
 
+  Reading the ranges is plain Python and takes seconds when many players
+  are in (a bomb pot, 暴击), and would hold the interpreter lock 5 ms at
+  a time, slowing recognition many-fold (on 2026-10-08 in a 5-handed bomb
+  pot the window lost its picture for over 2 seconds). Starting the
+  background thread makes the interpreter switch threads every
+  ``SWITCH_SECONDS`` instead.
+
 An action the history missed but the table shows (``aa_solver_input``) is
 filled in; the report's ``inferred_actions`` counts them. A decision is the
 actions read so far, the street and what your button shows
@@ -59,6 +66,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
+import sys
 import time
 
 from poker_engine.core.enums import Position
@@ -83,6 +91,7 @@ SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
 THREADS = 4                     # solver threads (the scoreboard uses one)
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
+SWITCH_SECONDS = 0.0005         # thread switch while a background job runs
 SALT = "live-advice"
 BASIS = ("heads-up TexasSolver strategy; ranges from a population model of "
          "public hand histories fitted to AA players' preflop play; for study only")
@@ -240,6 +249,10 @@ class AASolverAdvice:
 
     def _submit(self, function, *args):
         if self._executor is None:
+            # The frame loop gets the lock back within half a millisecond
+            # instead of 5: on a frame-like load next to a 3-second range
+            # job, 4x slower instead of 15x; the job itself 2% slower.
+            sys.setswitchinterval(min(sys.getswitchinterval(), SWITCH_SECONDS))
             self._executor = ThreadPoolExecutor(max_workers=1,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(function, *args)

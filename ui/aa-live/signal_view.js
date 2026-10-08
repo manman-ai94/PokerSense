@@ -545,7 +545,7 @@
       const failed = String(state?.status).toUpperCase() === "ERROR";
       return {...base, tone: stale || failed ? "warn" : "wait",
         title: stale ? "画面断了" : top.active ? "等画面" : failed ? "没开起来" : "还没开始",
-        note: stale ? "超过 3 秒没有新画面，旧的牌面已经清掉" : top.active ? "第一帧马上就到"
+        note: stale ? "画面卡住了，旧的牌面先清掉；画面一来就自己接上" : top.active ? "第一帧马上就到"
           : failed ? `原因写在上面红字里，弄好后再点“开始”${cameras(state, "。")}`
             : `选好来源，点“开始”${cameras(state, "。")}`};
     }

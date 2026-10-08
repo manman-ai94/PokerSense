@@ -22,6 +22,14 @@ class AARecognitionSession:
     Sources yield normalized BGR frames or None at exhaustion. Reader sequence
     numbers count processed frames; source frame numbers retain their original
     meaning. Source receipt and pixel hashes do not prove device liveness.
+
+    A result older than ``stale_after`` (counted from when its frame was
+    read) is never shown: the status turns ``STALE`` and the payload and
+    preview are cleared. The source keeps running, and the next frame that
+    is in time shows again (``RUNNING``): a stall, such as the advice
+    working out a big multiway pot or a hiccup of the card, does not end
+    the observation. A result that comes back late is cleared the moment it
+    is published.
     """
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
@@ -78,10 +86,8 @@ class AARecognitionSession:
             age_from = self._last_result
         if (self._status == "RUNNING" and age_from is not None
                 and now - age_from > self._stale_after):
-            self._generation += 1
-            self._cancel.set()
             self._status = "STALE"
-            self._error = "Source or recognition exceeded the stale deadline"
+            self._error = None
             self._clear()
 
     def _snapshot(self):
@@ -298,9 +304,9 @@ class AARecognitionSession:
                         "physical_source_timestamp": None,
                         "end_to_end_latency_ms": None,
                     }
-                    # A late first result must not receive a fresh stale window.
-                    self._expire()
                     timing = dict(self._timing)
+                    # A result that comes back late is cleared at once.
+                    self._expire()
                 if self._frame_log is not None:
                     _append_frame_log(self._frame_log, processed, record, timing,
                                       payload)

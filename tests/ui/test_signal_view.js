@@ -46,6 +46,7 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "还没开始");
 assert.equal(view.header.health.text, "还没开始");
 view = signalView({status: "STALE"}, 0, {});
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面断了");
+assert.equal(view.note, "画面卡住了，旧的牌面先清掉；画面一来就自己接上");
 // A start that failed (no card on the Mac): the red text above says why.
 view = signalView({status: "ERROR", source_kind: "capture-card", capture_available: true,
   capture_devices: ["FaceTime HD Camera"]}, 0, {});
