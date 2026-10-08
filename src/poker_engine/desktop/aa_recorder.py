@@ -13,6 +13,12 @@ recording crops the same pixels again. A crop that cannot be put back (a
 rotation or a resize) is refused rather than recorded in another layout.
 Encoding runs on its own thread; a frame that arrives while the encoder is
 busy is skipped and the clock repeats the one before.
+
+A recording needs room: the service does not start one with less than
+``MIN_FREE_GB`` free on the disk, and one stops (``low_disk_space``, what was
+recorded is kept) once a new segment finds less than ``STOP_FREE_GB``. The
+size written so far is in the status (``megabytes``): about 0.1-1.5 GB an
+hour on the recordings made so far.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import queue
+import shutil
 import threading
 import time
 
@@ -30,6 +37,17 @@ FPS = 30
 SIZE = (1920, 1080)
 SEGMENT_SECONDS = 60
 LIMIT_SECONDS = 2 * 3600            # about 2 hours; a forgotten recording stops
+GB = 1024 ** 3
+MIN_FREE_GB = 20                    # free space a recording starts with
+STOP_FREE_GB = 10                   # and stops at
+
+
+def free_bytes(path):
+    """Free space on the disk holding ``path`` (or its nearest existing folder)."""
+    path = Path(path)
+    while not path.exists() and path != path.parent:
+        path = path.parent
+    return shutil.disk_usage(path).free
 
 
 def avc1_writer(path, fps, size):
@@ -101,12 +119,15 @@ class AARecorder:
     """One recording of the strips the capture source delivers."""
 
     def __init__(self, out, normalization, *, meta=None, clock=time.monotonic,
-                 writer_factory=avc1_writer, limit_seconds=LIMIT_SECONDS):
+                 writer_factory=avc1_writer, limit_seconds=LIMIT_SECONDS,
+                 free=free_bytes, stop_free=STOP_FREE_GB * GB):
         self.box = strip_box(normalization)
         self.out = Path(out)
         self.out.mkdir(parents=True, exist_ok=False)
         self.segments = SegmentWriter(self.out, writer_factory=writer_factory)
         self.clock, self.limit = clock, limit_seconds
+        self.free, self.stop_free = free, stop_free
+        self.megabytes = 0.0
         self.begin = clock()
         self.queue = queue.Queue(maxsize=2)
         self.offered = self.skipped = 0
@@ -151,6 +172,7 @@ class AARecorder:
     def _run(self):
         canvas = np.zeros((SIZE[1], SIZE[0], 3), np.uint8)
         x0, y0, x1, y1 = self.box
+        checked = None
         try:
             while True:
                 item = self.queue.get()
@@ -159,6 +181,13 @@ class AARecorder:
                 image, seconds = item
                 canvas[y0:y1, x0:x1] = image
                 self.segments.offer(canvas, seconds)
+                if self.segments.segment != checked:      # a new segment began
+                    checked = self.segments.segment
+                    self._measure()
+                    if self.free(self.out) < self.stop_free:
+                        self.stopping = True
+                        self.reason = self.reason or "low_disk_space"
+                        break
         except Exception as exc:
             self.error = exc
             self.stopping = True
@@ -168,17 +197,25 @@ class AARecorder:
                 self.segments.close()
             except Exception as exc:
                 self.error = self.error or exc
+            self._measure()
             self.meta.update(recorded_seconds=round(self.segments.seconds, 3),
+                             megabytes=self.megabytes,
                              offered_frames=self.offered, skipped_frames=self.skipped,
                              stopped_reason=self.reason,
                              error=None if self.error is None else str(self.error))
             (self.out / "recording.json").write_text(
                 json.dumps(self.meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
+    def _measure(self):
+        self.megabytes = round(sum(path.stat().st_size for path in
+                                   self.out.glob("segment_*.mp4")) / 1e6, 1)
+
     def status(self):
         return {"active": not self.stopping, "seconds": round(self.segments.seconds, 1),
-                "folder": self.out.name, "stopped_reason": self.reason,
+                "folder": self.out.name, "megabytes": self.megabytes,
+                "stopped_reason": self.reason,
                 "error": None if self.error is None else str(self.error)}
 
 
-__all__ = ["AARecorder", "SegmentWriter", "strip_box"]
+__all__ = ["AARecorder", "GB", "MIN_FREE_GB", "STOP_FREE_GB", "SegmentWriter",
+           "free_bytes", "strip_box"]

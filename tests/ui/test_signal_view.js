@@ -371,6 +371,9 @@ assert.deepEqual(stopped({seconds: 1260, stopped_reason: "stopped", folder: "202
   {can: false, active: false, text: "录像", note: "已存好 · 21 分钟", folder: "20261008-020000-live"});
 assert.equal(stopped({seconds: 12, stopped_reason: "source_stopped"}).note, "已存好 · 不到 1 分钟");
 assert.equal(stopped({seconds: 7200, stopped_reason: "time_limit"}).note, "已存好 · 满 2 小时自动停");
+assert.equal(stopped({seconds: 1260, stopped_reason: "stopped", megabytes: 52.96}).note, "已存好 · 21 分钟 · 53 MB");
+assert.equal(stopped({seconds: 3600, stopped_reason: "low_disk_space", megabytes: 1530}).note,
+  "已存好 · 磁盘快满了，自动停 · 1.5 GB");
 assert.equal(stopped({seconds: 3, error: "the H.264 encoder did not open"}).note,
   "录像出错：the H.264 encoder did not open");
 console.log("signal view cases passed");

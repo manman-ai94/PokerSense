@@ -8,7 +8,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from poker_engine.desktop.aa_recorder import AARecorder, SegmentWriter, strip_box
+from poker_engine.desktop.aa_recorder import (
+    GB, AARecorder, SegmentWriter, free_bytes, strip_box)
 from poker_engine.desktop.aa_sources import AACaptureSource
 from poker_engine.desktop.aa_video_source import AAVideoSource
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
@@ -103,7 +104,7 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
     recorder.offer(strip)
     wait_for(lambda: len(Writer.made[0].frames) == 16)
     assert recorder.status() == {"active": True, "seconds": 0.5,
-                                 "folder": "20261008-020000-live",
+                                 "folder": "20261008-020000-live", "megabytes": 0.0,
                                  "stopped_reason": None, "error": None}
     status = recorder.stop()
     assert (status["active"], status["stopped_reason"]) == (False, "stopped")
@@ -131,6 +132,40 @@ def test_a_forgotten_recording_stops_at_the_limit(tmp_path):
     recorder.thread.join(timeout=3)
     assert recorder.status()["stopped_reason"] == "time_limit"
     assert not recorder.status()["active"]
+
+
+class FileWriter(Writer):
+    """Leaves a 0.4 MB file, as a segment on disk, and keeps no frames."""
+
+    def __init__(self, path, fps, size):
+        super().__init__(path, fps, size)
+        path.write_bytes(bytes(400_000))
+
+    def write(self, frame):
+        pass
+
+
+def test_a_recording_stops_when_the_disk_gets_full_and_keeps_what_it_has(tmp_path):
+    clock, free = Clock(), [50 * GB]
+    recorder = AARecorder(tmp_path / "r", AA8, clock=clock, writer_factory=FileWriter,
+                          free=lambda path: free[0])
+    strip = np.zeros((1080, 498, 3), np.uint8)
+    recorder.offer(strip)
+    wait_for(lambda: recorder.megabytes == 0.4)
+    assert recorder.status()["active"]
+    free[0] = 9 * GB                    # the next segment finds the disk nearly full
+    clock.now += 61
+    recorder.offer(strip)
+    recorder.thread.join(timeout=3)
+    status = recorder.status()
+    assert (status["active"], status["stopped_reason"]) == (False, "low_disk_space")
+    assert status["megabytes"] == 0.8 and status["error"] is None
+    summary = json.loads((tmp_path / "r" / "recording.json").read_text())
+    assert (summary["stopped_reason"], summary["megabytes"]) == ("low_disk_space", 0.8)
+
+
+def test_free_space_is_read_from_the_nearest_folder_there_is(tmp_path):
+    assert free_bytes(tmp_path / "not" / "made" / "yet") == free_bytes(tmp_path) > 0
 
 
 def test_an_encoder_failure_ends_the_recording_with_its_error(tmp_path):

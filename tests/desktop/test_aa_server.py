@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from poker_engine.desktop import aa_server
+from poker_engine.desktop import aa_recorder, aa_server
 
 
 class Session:
@@ -256,7 +256,10 @@ def test_the_service_grades_your_decisions_against_its_own_advice(tmp_path):
     assert service._grades._advice is service._solver_advice
 
 
-def test_recording_is_asked_for_by_the_page_and_only_from_the_capture_card(tmp_path):
+def test_recording_is_asked_for_by_the_page_and_only_from_the_capture_card(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(aa_recorder, "free_bytes", lambda path: 100 * aa_recorder.GB)
+
     class Recording(Session):
         kind = "capture-card"
 
@@ -288,3 +291,31 @@ def test_recording_is_asked_for_by_the_page_and_only_from_the_capture_card(tmp_p
         session.kind = "video-replay"
         refused = client.post("/api/recording", json={"on": True}, headers=HEADERS)
         assert refused.status_code == 409 and len(session.calls) == 2
+
+
+def test_recording_does_not_start_with_little_room_left(tmp_path, monkeypatch):
+    class Recording(Session):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def snapshot(self):
+            return {**super().snapshot(), "source_kind": "capture-card"}
+
+        def record(self, on, out=None):
+            self.calls.append((on, out))
+
+    session = Recording()
+    app = aa_server.create_app(tmp_path / "missing.json", session=session,
+                               recordings_dir=tmp_path / "recordings")
+    monkeypatch.setattr(aa_recorder, "free_bytes", lambda path: 12 * aa_recorder.GB)
+    with TestClient(app) as client:
+        refused = client.post("/api/recording", json={"on": True}, headers=HEADERS)
+        assert refused.status_code == 409 and session.calls == []
+        assert "磁盘只剩 12 GB" in refused.json()["detail"]
+        # Stopping always works.
+        assert client.post("/api/recording", json={"on": False},
+                           headers=HEADERS).status_code == 200
+        monkeypatch.setattr(aa_recorder, "free_bytes", lambda path: 30 * aa_recorder.GB)
+        assert client.post("/api/recording", json={"on": True},
+                           headers=HEADERS).status_code == 200

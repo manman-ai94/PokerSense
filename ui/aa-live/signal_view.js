@@ -469,9 +469,12 @@
     const can = running && state?.source_kind === "capture-card";
     if (rec?.active) return {can: true, active: true, text: `录制中 ${duration(rec.seconds)}`, note: ""};
     const minutes = Math.round((num(rec?.seconds) ?? 0) / 60);
+    const mb = num(rec?.megabytes);
+    const size = mb === null || mb <= 0 ? "" : mb >= 1000 ? ` · ${one(mb / 1000)} GB` : ` · ${Math.max(1, Math.round(mb))} MB`;
     const note = !rec ? "" : rec.error ? `录像出错：${rec.error}`
-      : rec.stopped_reason === "time_limit" ? "已存好 · 满 2 小时自动停"
-        : `已存好 · ${minutes < 1 ? "不到 1" : minutes} 分钟`;
+      : rec.stopped_reason === "time_limit" ? `已存好 · 满 2 小时自动停${size}`
+        : rec.stopped_reason === "low_disk_space" ? `已存好 · 磁盘快满了，自动停${size}`
+          : `已存好 · ${minutes < 1 ? "不到 1" : minutes} 分钟${size}`;
     return {can, active: false, text: "录像", note, folder: rec?.folder || ""};
   }
 

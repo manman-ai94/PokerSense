@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, Response
 
+from . import aa_recorder
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession
 from .aa_grading import AAGrades
@@ -516,6 +517,11 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                 raise HTTPException(409, "接采集卡时才能录像")
             root = Path(recordings_dir) if recordings_dir else (
                 private_root() / "aa-mac-recordings")
+            free = aa_recorder.free_bytes(root) if on else None
+            if free is not None and free < aa_recorder.MIN_FREE_GB * aa_recorder.GB:
+                raise HTTPException(
+                    409, f"磁盘只剩 {free / aa_recorder.GB:.0f} GB，不到 "
+                         f"{aa_recorder.MIN_FREE_GB} GB，没有开始录像。先腾出一些空间")
             out = root / time.strftime("%Y%m%d-%H%M%S-live")
             try:
                 service.record(on, out if on else None)
