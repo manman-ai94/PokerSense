@@ -7,6 +7,11 @@
   const now = () => globalThis.performance?.now?.() ?? Date.now();
   let memory = {}, generation = null, instance = null, sequence = null, progressAt = 0;
   let status = {}, pending = false, modeTouched = false;
+  // The capture card's device number on this Mac (it can swap with the
+  // built-in camera), remembered in this browser.
+  const DEVICE_KEY = "pokersense.signal.device";
+  try { const saved = localStorage.getItem(DEVICE_KEY); if (saved !== null) el("device").value = saved; }
+  catch (ignored) { /* storage can be unavailable */ }
 
   function node(tag, className, text) {
     const item = document.createElement(tag);
@@ -110,6 +115,10 @@
     else if (!modeTouched && !available[el("mode").value])
       el("mode").value = Object.keys(available).find(mode => available[mode]) || "capture-card";
     el("mode").disabled = view.header.active || pending;
+    const device = status.source_options?.device_index;
+    if (view.header.active && Number.isInteger(device) && device >= 0 && device <= 2) el("device").value = String(device);
+    el("device").hidden = el("mode").value !== "capture-card";
+    el("device").disabled = view.header.active || pending;
     el("start").disabled = view.header.active || pending || !available[el("mode").value] ||
       status.profile?.ready === false;
     el("stop").disabled = !view.header.active && !pending;
@@ -149,7 +158,7 @@
     pending = true; error(""); draw({...status, payload: null});
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      const body = action === "start" ? {mode: el("mode").value, device_index: 0,
+      const body = action === "start" ? {mode: el("mode").value, device_index: Number(el("device").value),
         api: status.capture_api_default || "AVFOUNDATION", fps: 30} : {};
       const response = await fetch(`/api/${action}`, {method: "POST",
         headers: {...headers, "Content-Type": "application/json"}, body: JSON.stringify(body), signal: abort.signal});
@@ -166,7 +175,10 @@
     event.preventDefault(); if (!el("start").disabled) command("start");
   });
   el("stop").addEventListener("click", () => command("stop"));
-  el("mode").addEventListener("change", () => { modeTouched = true; });
+  el("mode").addEventListener("change", () => { modeTouched = true; draw({...status, payload: null}); });
+  el("device").addEventListener("change", () => {
+    try { localStorage.setItem(DEVICE_KEY, el("device").value); } catch (ignored) { /* not kept */ }
+  });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
   draw({status: "STOPPED"});
   (async function tick() { await poll(); setTimeout(tick, 250); })();

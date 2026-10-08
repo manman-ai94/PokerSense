@@ -53,6 +53,8 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "看不到牌桌");
 view = signalView(running({...base(), scene_supported: false}), 9000, blind);
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面看不清");
 assert.match(view.note, /^已经 9 秒看不到牌桌/);
+// From the capture card it may be the wrong device (the Mac camera).
+assert.match(view.note, /换一个设备编号/);
 
 // Heads-up river: the solver mix, in words and numbers.
 const memory = {};

@@ -21,6 +21,12 @@
       <option value="video-replay">录像回放</option>
       <option value="development-replay">开发回放</option>
     </select>
+    <label class="sr" for="device">采集卡设备</label>
+    <select id="device" title="Mac 上采集卡有时是 0 号，有时是 1 号：看不到牌桌就换一个">
+      <option value="0">设备 0</option>
+      <option value="1">设备 1</option>
+      <option value="2">设备 2</option>
+    </select>
     <button id="start" type="submit" disabled>开始</button>
     <button id="stop" type="button" class="ghost" disabled>停止</button>
   </form>

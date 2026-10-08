@@ -301,7 +301,8 @@
       const blind = since(memory, "blind", "scene", now);
       return blind < BLIND_SECONDS
         ? {...base, tone: "wait", title: "看不到牌桌", note: "多半是两手牌之间的动画，牌桌回来就接着读"}
-        : {...base, tone: "warn", title: "画面看不清", note: `已经 ${Math.floor(blind)} 秒看不到牌桌：手机画面被挡住，或现在不是牌桌`};
+        : {...base, tone: "warn", title: "画面看不清", note: `已经 ${Math.floor(blind)} 秒看不到牌桌：手机画面被挡住，或现在不是牌桌${
+          state?.source_kind === "capture-card" ? "。一直这样的话，停止后换一个设备编号再开始" : ""}`};
     }
     since(memory, "blind", null, now);
     const history = row.action_history_v1;

@@ -38,6 +38,7 @@ def test_the_signal_window_is_the_front_page_and_the_old_page_stays(tmp_path):
         page = client.get("/")
         assert page.status_code == 200
         assert 'id="signal"' in page.text and "/signal.js" in page.text
+        assert 'id="device"' in page.text      # the card is not always device 0
         for path, kind in (("/signal.js", "javascript"),
                            ("/signal_view.js", "javascript"),
                            ("/signal.css", "text/css")):
