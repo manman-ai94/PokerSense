@@ -331,6 +331,35 @@
         {label: "翻前少赢", value: one(lost ?? 0), note: "大盲"}] : []};
   }
 
+  // Betting is over with someone all in (one player may cover the rest) and cards still to come:
+  // AA offers the player ahead insurance on the turn or river card, with up to 3 players in the pot.
+  // Board cards flicker while they are dealt and at the showdown, so once all five were read with
+  // the same seats, a board read as shorter again is not a new runout.
+  function runout(row, street, memory) {
+    const seats = row.seat_states_v1?.seats || {};
+    const states = Object.values(seats).map(seat => seat?.state);
+    const inHand = states.filter(state => IN_HAND.has(state));
+    const key = Object.keys(seats).sort().map(seat => `${seat}:${seats[seat]?.state}`).join(",");
+    const dealt = Math.max(BOARD[street] ?? 0, memory.runout?.key === key ? memory.runout.dealt : 0);
+    memory.runout = {key, dealt};
+    if (dealt >= 5 || !IN_HAND.has(seats[HERO]?.state) || inHand.length < 2 || !inHand.includes("all_in")
+        || inHand.filter(state => state === "active").length > 1 || Number.isInteger(row.current_actor)
+        || !(street in BOARD)) return null;
+    return {players: inHand.length};
+  }
+
+  function runoutScreen(view, run) {
+    const insurable = run.players <= 3;
+    return {...view, tone: "info", tags: ["全下了", "等发牌"],
+      title: insurable ? "保险别买" : "全下了，等发牌",
+      note: insurable ? "如果弹出买保险，一般别买：AA 给的赔率比公平赔率低，买了通常亏掉保费的 2 到 5 成。"
+        : "超过 3 个人，这一手不能买保险。",
+      numbers: [{label: "底池", value: view.pot ?? "—", note: ""},
+        {label: "还在局", value: `${run.players} 人`, note: ""}],
+      basis: insurable ? ["按牌桌“保险说明”的赔率表算：每张补牌的赔率都低于公平赔率", "只显示建议，不替你点"]
+        : ["只显示建议，不替你点"]};
+  }
+
   function sessionView(grades) {
     if (!grades || !isNumber(grades.graded)) return null;
     return {pill: `本场 ${grades.hands} 手 · 照建议 ${grades.best}/${grades.graded}`,
@@ -469,6 +498,8 @@
     if (yourTurn && (controls.button === "check" || isNumber(price))) {
       view.price = controls.button === "check" ? "现在可以过牌" : priceText(history, names, street, price, stack);
     }
+    const run = runout(row, street, memory);
+    if (run && !yourTurn) return runoutScreen(view, run);
     if (!yourTurn && row.grade_v1?.last) return {...view, ...gradeScreen(row.grade_v1.last, row.grade_v1)};
     if (!yourTurn) {
       const actor = Number.isInteger(row.current_actor) && row.current_actor !== HERO

@@ -266,6 +266,35 @@ assert.deepEqual([empty.pill, empty.rows, empty.empty],
 assert.equal(sessionView(undefined), null);
 view = signalView(running(base({hero_controls_v1: {visible: false}})), 0, {});
 assert.equal(view.session, null); assert.equal(view.header.session, null);
+// All in with cards to come: AA may offer insurance, which the table prices below fair.
+const allIn = (states, extra = {}) => running(base({current_actor: null, hero_controls_v1: {visible: false},
+  seat_states_v1: seats(states), street_v1: {street: "turn"}, ...extra}));
+const headsUp = ["folded", "folded", "all_in", "folded", "all_in", "folded", "folded", "folded"];
+view = signalView(allIn(headsUp), 0, {});
+assert.deepEqual([view.tone, view.title, view.tags], ["info", "保险别买", ["全下了", "等发牌"]]);
+assert.match(view.note, /^如果弹出买保险，一般别买.*2 到 5 成。$/);
+assert.deepEqual(view.numbers.map(item => [item.label, item.value]), [["底池", "85"], ["还在局", "2 人"]]);
+assert.match(view.basis[0], /赔率都低于公平赔率/);
+// You cover the player all in: the betting is over too.
+view = signalView(allIn(["folded", "folded", "all_in", "folded", "active", "folded", "folded", "folded"]), 0, {});
+assert.equal(view.title, "保险别买");
+// Four players in the pot cannot buy insurance.
+view = signalView(allIn(["all_in", "folded", "all_in", "folded", "all_in", "active", "folded", "folded"]), 0, {});
+assert.deepEqual([view.title, view.note], ["全下了，等发牌", "超过 3 个人，这一手不能买保险。"]);
+// Someone still to act, two players still betting, the river out, or you folded: not this screen.
+assert.equal(signalView(allIn(headsUp, {current_actor: 6}), 0, {}).title, "还没轮到你");
+assert.equal(signalView(allIn(["folded", "folded", "active", "folded", "all_in", "active", "folded", "folded"]),
+  0, {}).title, "还没轮到你");
+assert.equal(signalView(allIn(headsUp, {street_v1: {street: "river"}}), 0, {}).title, "还没轮到你");
+assert.equal(signalView(allIn(["folded", "all_in", "all_in", "folded", "folded", "folded", "folded", "folded"]),
+  0, {}).title, "还没轮到你");
+// Once all five cards were read with the same seats, a board read short again (dealing, showdown) is not a new runout.
+const flicker = {};
+signalView(allIn(headsUp, {street_v1: {street: "river"}}), 0, flicker);
+assert.equal(signalView(allIn(headsUp, {street_v1: {street: "preflop"}}), 100, flicker).title, "还没轮到你");
+// It comes before the grade of the all in, which stays in this session's list.
+view = signalView(allIn(headsUp, {grade_v1: grades}), 0, {});
+assert.equal(view.title, "保险别买"); assert.equal(view.session.rows.length, grades.rows.length);
 // The "录像" button: only while the capture card is being watched, with a running clock.
 view = signalView(running(base()), 0, {});
 assert.deepEqual(view.header.recording, {can: true, active: false, text: "录像", note: "", folder: ""});

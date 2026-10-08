@@ -101,7 +101,7 @@ PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <�
 | `src/poker_engine/realtime/` | 帧来源、变化检测、多帧共识、手牌边界、实时流水线 |
 | `src/poker_engine/core/`、`state_engine/`、`memory/`、`confidence/` | 不可变数据合同、Decimal 金额、权威牌局状态、手牌记忆、置信度门槛 |
 | `src/poker_engine/equity/` | 胜率计算：枚举、蒙特卡洛、范围对范围 |
-| `src/poker_engine/strategy/` | 通用策略路由/Provider/建议；AA 规则、研究用 MCCFR；`frozen_postflop.py` 查询已保存的翻后求解结果 |
+| `src/poker_engine/strategy/` | 通用策略路由/Provider/建议；AA 规则、研究用 MCCFR；`frozen_postflop.py` 查询已保存的翻后求解结果；`aa_insurance.py` 按 AA 赔率表算全下后的保险值多少 |
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
 | `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、观察时直接录采集卡画面 `aa_recorder.py`、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、当前这手牌的行动记录 `aa_action_history.py`（动作、金额、街道；全下从筹码变化推断）、把这手牌接成求解器输入（在模拟牌桌上重放）`aa_solver_input.py`、轮到你时的策略建议 `aa_solver_advice.py`（翻前用 `aa_preflop` 当场算各选择值多少；单挑转牌/河牌在后台用求解器）、你行动后给这一步打分和本场记录 `aa_grading.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 前端（原生 HTML/JS，无构建步骤）：首页是“信号灯”窗口 `signal.html`（`signal_view.js` 算出要显示什么，`signal.js` 画出来，见 [设计说明](docs/design/signal-window.md)）；旧观察页 `index.html` 在 `/classic` |
