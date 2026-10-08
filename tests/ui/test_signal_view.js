@@ -217,7 +217,7 @@ const states = [
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
-  [{status: "abstain", reason: "players_5"}, "info", "这一手不给建议"],
+  [{status: "abstain", reason: "players_4"}, "info", "这一手不给建议"],
 ];
 for (const [advice, tone, title] of states) {
   const seen = {};
@@ -229,8 +229,8 @@ for (const [advice, tone, title] of states) {
   assert.equal(view.numbers[0].value, "25%", title);
   assert.equal(view.verdict, undefined, title);
 }
-view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_5"}})), 0, {});
-assert.equal(view.note, "5 人桌，现在只支持 6–8 人，这一步不给建议。");
+view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_4"}})), 0, {});
+assert.equal(view.note, "4 人桌，现在只支持 5–8 人，这一步不给建议。");
 const solving = {};
 signalView(running(base({solver_advice_v1: states[0][0]})), 0, solving);
 view = signalView(running(base({solver_advice_v1: states[0][0]})), 2100, solving);

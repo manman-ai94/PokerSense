@@ -73,7 +73,7 @@
 
   function reasonText(reason) {
     if (typeof reason === "string" && reason.startsWith("players_"))
-      return `${reason.slice(8)} 人桌，现在只支持 6–8 人`;
+      return `${reason.slice(8)} 人桌，现在只支持 5–8 人`;
     return REASONS[reason] || "这一步的条件不够";
   }
 
