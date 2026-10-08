@@ -6,6 +6,11 @@ stack). Its white text is read inside the button only, so the rim never
 reaches the digit reader, and specks smaller than a stroke are ignored. The
 amount digits are cut out with a margin of plain button around them.
 
+"All in" and "让牌" are told apart by how wide the text is: 42 pixels against
+28-32 on the 9/9, 9/17 and 10/07 recordings. The thin "ll" strokes of
+"All in" are too faint in the Mac capture to count on (10/07: both all-in
+calls read as checks); text of a width between the two is not read.
+
 The digit reader was built from stack amounts, whose digits are 11-12 pixels
 tall; the button's digits are 17-18. They are scaled to the stack height
 before reading, so the strokes look like the ones the reader knows.
@@ -27,6 +32,8 @@ TEXT_RADIUS = 30             # the text sits well inside; the rim lies outside
 WHITE = 170                  # minimum of B, G and R for white text
 MIN_PART = 6                 # pixels; smaller specks are the rim's antialiasing
 STACK_DIGIT_HEIGHT = 12      # digit height of the stack amounts the reader knows
+ALL_IN_WIDTH = 38            # "All in" is 42 pixels wide, "让牌" 28-32
+CHECK_WIDTH = 35
 
 
 def _bands(parts):
@@ -82,12 +89,13 @@ def button_text(image):
     centred = len(bands) == 1 and abs(
         (bands[0]["top"] + bands[0]["bottom"]) / 2 - middle) <= 7
     if centred:
-        band = bands[0]
-        height = band["bottom"] - band["top"] + 1
-        # "All in" has two thin full-height strokes ("ll"); "让牌" has none.
-        thin = sum(1 for _, _, width, part_height in band["parts"]
-                   if width <= 3 and part_height >= 0.7 * height)
-        return {"kind": "all_in" if thin >= 2 else "check"}
+        parts = bands[0]["parts"]
+        width = (max(x + w for x, _, w, _ in parts)
+                 - min(x for x, _, _, _ in parts))
+        if width >= ALL_IN_WIDTH:
+            return {"kind": "all_in"}
+        if width <= CHECK_WIDTH:
+            return {"kind": "check"}
     return {"kind": None, "reason": "unexpected_button_text"}
 
 

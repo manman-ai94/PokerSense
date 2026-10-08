@@ -113,9 +113,9 @@ def test_button_price_requires_positive_controls_actor_and_stability(monkeypatch
 
 
 @pytest.mark.parametrize("bands, button, amount", [
-    (((867, 881, 345, 393),), "check", "0"),                        # "让牌"
-    (((868, 880, 350, 362), (868, 880, 366, 367), (868, 880, 371, 372),
-      (868, 880, 377, 390)), "all_in", "150"),                     # "All in"
+    (((867, 881, 354, 366), (867, 881, 370, 383)), "check", "0"),    # "让牌"
+    (((868, 880, 349, 357), (868, 880, 361, 362), (868, 880, 365, 366),
+      (868, 880, 374, 374), (871, 880, 378, 389)), "all_in", "150"),  # "All in"
 ])
 def test_check_and_all_in_buttons_give_their_call_amount(monkeypatch, bands,
                                                          button, amount):
@@ -134,6 +134,16 @@ def test_check_and_all_in_buttons_give_their_call_amount(monkeypatch, bands,
     if button == "all_in":
         row.update(frame=2, stacks={})
         assert reader.observe(image, row)["reason"] == "all_in_stack_unknown"
+
+
+@pytest.mark.parametrize("bands, kind", [
+    (((868, 880, 349, 357), (871, 880, 378, 389)), "all_in"),   # faint "ll"
+    (((867, 881, 354, 366), (867, 881, 370, 383)), "check"),
+    (((867, 881, 351, 387),), None),                            # 37 wide
+])
+def test_all_in_and_check_are_told_apart_by_the_width_of_the_text(bands, kind):
+    # In the Mac capture the thin "ll" of "All in" can drop out entirely.
+    assert aa_hero_controls.button_text(green_button(*bands))["kind"] == kind
 
 
 def test_button_text_reads_digits_at_stack_height_and_ignores_rim_specks():
