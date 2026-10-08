@@ -142,3 +142,10 @@ def test_the_population_can_be_the_whole_opponent_pool():
                             pool=("population",), reference="tag")
     assert report["pool"] == ["population"]
     assert report["strategies"]["population"]["hands"] == 16
+
+
+def test_read_factors_scale_the_shares_below_the_continue_cap():
+    from poker_engine.scoreboard.population import read_shares
+    assert read_shares(0.1, 0.2) == (0.1, 0.2)
+    assert read_shares(0.1, 0.2, (2.0, 0.5)) == (0.2, 0.1)
+    assert read_shares(0.6, 0.6, (2.0, 1.0)) == (0.98, 0.0)
