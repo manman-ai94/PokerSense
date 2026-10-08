@@ -45,9 +45,11 @@ policy counts it as extra pot when you are the small blind (the report's
 raise rates over the hands seen so far (``aa_reads``) go to the preflop
 policy too, which widens or narrows that seat's expected range by them (the
 report's ``reads_hands`` is how many hands they come from; every report's
-``seat_reads`` has each seat's numbers and word for the window). The advice comes
-from a model of how people play and is for study only; nothing here acts on
-the client.
+``seat_reads`` has each seat's numbers and word for the window). A bomb pot
+(暴击) is replayed as one (``aa_solver_input.bomb_post``) and advised like
+any other hand after the flop; the report's ``bomb_pot`` is each player's
+post. The advice comes from a model of how people play and is for study
+only; nothing here acts on the client.
 """
 
 from __future__ import annotations
@@ -271,6 +273,7 @@ class AASolverAdvice:
                 "pot_offset": None if offset is None else str(offset),
                 "stacks_assumed": observation["stacks_unknown"],
                 "inferred_actions": observation.get("inferred_actions", 0),
+                "bomb_pot": observation.get("bomb_pot"),
                 "basis": HEADS_UP_BASIS if heads_up else MULTIWAY_BASIS,
                 "seconds": round(time.monotonic() - started, 2)}
 
@@ -342,6 +345,7 @@ class AASolverAdvice:
                 "pot_offset": observation.get("pot_offset"),
                 "range_equity": edge,
                 "inferred_actions": observation.get("inferred_actions", 0),
+                "bomb_pot": observation.get("bomb_pot"),
                 "seconds": round(time.monotonic() - started, 2)}
 
     def _settle(self, key):
@@ -366,7 +370,7 @@ class AASolverAdvice:
                                 "kind", "heads_up", "advice", "options", "cuts", "pot",
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
-                                "seconds", "basis")
+                                "bomb_pot", "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

@@ -152,7 +152,7 @@ const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没�
   your_cards_not_read:"还没读到你的两张牌", more_than_one_opponent:"对手不止一个，你的筹码没读到或推算不出对手范围（只给胜率）",
   heads_up_flop:"单挑翻牌，你的筹码没读到或推算不出对手范围（只给胜率）",
   waiting_for_last_action:"等对手刚才的动作进入行动记录", hand_incomplete:"这手牌是中途接入的，前面的动作不知道",
-  starts_after_preflop:"没有翻牌前下注（多半是暴击局），规则模型不支持", not_this_seats_turn:"重放时轮到的人对不上，可能漏记了动作",
+  starts_after_preflop:"没有读到翻牌前下注，底池也不像暴击局", not_this_seats_turn:"重放时轮到的人对不上，可能漏记了动作",
   street_mismatch:"重放时街道对不上", illegal_at_the_table:"有下注额在牌桌上不合法", raise_without_amount:"有加注没读到金额",
   stacks_do_not_fit:"筹码读数和下注对不上", stack_unknown:"你或对手的筹码读不出来", board_not_read:"公共牌还没读全",
   dealer_ambiguous:"庄位无法确定", no_dealer_fits:"找不到能对上的庄位", action_after_hand_end:"这手牌结束后还有动作",

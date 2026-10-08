@@ -28,7 +28,7 @@
     "not_this_seats_turn", "street_mismatch", "action_after_hand_end"]);
   const REASONS = {
     hand_incomplete: "这手牌是中途接上的，前面的动作不知道",
-    starts_after_preflop: "没有翻前下注（多半是暴击局），规则模型不支持",
+    starts_after_preflop: "没有读到翻前下注，底池也不像暴击局",
     not_this_seats_turn: "重放时轮到的人对不上，可能漏记了动作",
     street_mismatch: "重放时街道对不上",
     illegal_at_the_table: "有下注额在牌桌上不合法",
@@ -584,6 +584,8 @@
             : ["单挑求解器", "对手范围按 AA 真人打法推算"];
         if (isNumber(advice.seconds))
           basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
+        if (isNumber(advice.bomb_pot) && Number(advice.bomb_pot) > 0)
+          basis.push(`暴击局：每人先投 ${chips(advice.bomb_pot)}，直接发翻牌`);
         if (isNumber(advice.pot_offset) && Number(advice.pot_offset) > 0)
           basis.push(`底池比规则多 ${chips(advice.pot_offset)}，已算进去`);
         if (verdict.kind === "preflop" && isNumber(advice.mushroom_pool) && Number(advice.mushroom_pool) > 0)

@@ -392,3 +392,36 @@ def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
     assert hand == "hand_1" and outcomes[(9, "turn", "call:10")]["status"] == "ready"
     done.reset()
     assert done.settled() == (None, {})
+
+
+# A bomb pot of six (dealer 5): each put in 14 and the flop came at once;
+# seat 0 bets 20 into 84 and seats 1 to 3 fold to you.
+BOMB = [(30, "flop", 0, "raise", "20", "pot_rise")] + [
+    (31 + seat, "flop", seat, "fold", "0", "no_chips") for seat in (1, 2, 3)]
+
+
+def bomb_turn(frame):
+    row = payload(frame)
+    row["pot"] = {"value": "84" if frame <= 30 else "104"}
+    row["street_v1"] = {"street": "flop"}
+    row["cards"]["board_slots"] = BOARD["flop"] + [None, None]
+    row["stacks"] = {str(s): {"value": "186"} for s in range(6)}
+    row["hero_controls_v1"] = {"visible": frame >= 35, "button": "call",
+                               "call_amount": "20"}
+    row["action_history_v1"]["actions"] = [
+        dict(zip(("frame", "street", "slot", "kind", "amount", "amount_source"), a))
+        for a in BOMB if a[0] < frame]
+    return row
+
+
+def test_a_bomb_pot_gets_advice_after_the_flop_like_any_other_hand():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    report = [advice.observe(bomb_turn(frame), frame) for frame in range(36)][-1]
+    assert (report["status"], report["kind"], report["street"]) == (
+        "ready", "multiway", "flop")
+    assert report["bomb_pot"] == "14" and report["pot"] == "104"
+    assert report["range_equity"]["opponents"] == 2
+    assert report["cuts"]["call"] == round(20 / 124, 3)
+    # A normal hand's report says it is not one.
+    normal = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
+    assert normal["bomb_pot"] is None

@@ -43,6 +43,12 @@ blinds and straddle for the seats found (it differs when extra chips such as
 a mushroom or bomb pot go in); the solver should take the pot from the
 table, not from the replay.
 
+A bomb pot (暴击: everyone puts in 7 big blinds, no preflop betting, the
+hand starts on the flop) is told by its first pot (``bomb_post``) and
+replayed as one; the observation then says ``bomb_pot`` and the range and
+solver replays rebuild it so. Any other hand whose first action read is
+after the flop stops ("starts_after_preflop").
+
 A big blind posted on coming back to the table (after a rebuy or on sitting
 down) is not in the replay either. For the seat asking for advice it is read
 from its bet before it has acted and, when the button's price agrees, put
@@ -73,6 +79,7 @@ MAX_INFERRED = 3                    # missed actions filled in from the table
 BOARD = (("flop", 3), ("turn", 4), ("river", 5))
 STREETS = ("preflop", "flop", "turn", "river")
 HERO = 4                            # your seat: bottom centre
+BOMB_BIG_BLINDS = 7                 # the table setting "暴击:7BB"
 
 
 def _rules(players):
@@ -156,6 +163,24 @@ def _opening_pot(rows, fields, first):
     return Decimal(steady[0]) if steady else None
 
 
+def bomb_post(facts):
+    """Each player's post in chips when the hand is a bomb pot (暴击), else
+    None.
+
+    A bomb pot has every player put in the same amount (7 big blinds) and
+    starts on the flop: no preflop action is read, and the hand's first pot
+    is that post from every seat in it (98 = 7 players x 14 on the 9/9
+    recording, 112 = 8 x 14 on 10/07). A normal hand's first pot is the
+    antes, blinds and straddle, even when its preflop actions were missed.
+    """
+    if facts.get("opening_pot") is None or not facts["seats"] or any(
+            action.get("street") in (None, "preflop") for action in facts["actions"]):
+        return None
+    raw = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    post = Decimal(raw["big_blind"]) * BOMB_BIG_BLINDS
+    return post if facts["opening_pot"] == post * len(facts["seats"]) else None
+
+
 def board_history(board):
     rows, done = [], 0
     for street, count in BOARD:
@@ -175,9 +200,9 @@ def replay_hand(facts, stacks=None):
     seats, actions = facts["seats"], facts["actions"]
     if len(seats) not in PLAYERS:
         return _result("stopped", f"players_{len(seats)}", None, None, 0, None)
-    if actions and actions[0].get("street") not in (None, "preflop"):
-        # No preflop betting: most likely a bomb pot (everyone puts in, the
-        # flop comes at once), which the AA rules do not model.
+    bomb = bomb_post(facts)
+    if bomb is None and actions and actions[0].get("street") not in (None, "preflop"):
+        # No preflop betting, and not the pot a bomb pot opens with.
         return _result("stopped", "starts_after_preflop", None, None, 0, None)
     reported = facts["dealer"]
     candidates = ([reported] if reported in seats else []) + [
@@ -185,7 +210,8 @@ def replay_hand(facts, stacks=None):
     tried = {}
     for dealer in candidates:
         table = facts if dealer == reported else None
-        tried[dealer] = _replay(seats, dealer, actions, facts["board"], stacks, table)
+        tried[dealer] = _replay(seats, dealer, actions, facts["board"], stacks, table,
+                                bomb)
         if dealer == reported and tried[dealer][0] == "ok":
             return _result("ok", None, dealer, "reader", *tried[dealer][2:])
     fits = [dealer for dealer, outcome in tried.items() if outcome[0] == "ok"]
@@ -206,18 +232,19 @@ def _result(status, reason, dealer, source, replayed, arena, inferred=()):
             "inferred": list(inferred)}
 
 
-def _replay(seats, dealer, actions, board, stacks, table=None):
+def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None):
     """(status, reason, replayed, arena, inferred) for one dealer; swaps two
     actions read within SAME_FRAME frames of each other when that is what
-    fits, and with ``table`` (the hand's facts) fills in missed actions."""
+    fits, and with ``table`` (the hand's facts) fills in missed actions.
+    ``bomb``: each player's post when the hand is a bomb pot."""
     actions, inferred = list(actions), []
-    outcome = _steps(seats, dealer, actions, board, stacks)
+    outcome = _steps(seats, dealer, actions, board, stacks, bomb)
     while outcome[0] != "ok":
         at = outcome[2]
         if at + 1 < len(actions) and abs(actions[at + 1]["frame"]
                                          - actions[at]["frame"]) <= SAME_FRAME:
             swapped = actions[:at] + [actions[at + 1], actions[at]] + actions[at + 2:]
-            retry = _steps(seats, dealer, swapped, board, stacks)
+            retry = _steps(seats, dealer, swapped, board, stacks, bomb)
             if retry[2] > at + 1:
                 actions, outcome = swapped, retry
                 continue
@@ -226,7 +253,7 @@ def _replay(seats, dealer, actions, board, stacks, table=None):
                   and len(inferred) < MAX_INFERRED else None)
         if filled is None:
             return (*outcome, inferred)
-        retry = _steps(seats, dealer, filled, board, stacks)
+        retry = _steps(seats, dealer, filled, board, stacks, bomb)
         if retry[2] <= at + 1:
             return (*outcome, inferred)
         inferred.append(filled[at])
@@ -344,11 +371,12 @@ def _still_to_act(arena, seat, table):
     return order
 
 
-def _steps(seats, dealer, actions, board, stacks):
+def _steps(seats, dealer, actions, board, stacks, bomb=None):
     arena = AAFullHandArena(
         _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
         starting_stacks={seat: (stacks or {}).get(seat, DEEP) for seat in seats})
-    arena.reset(0, deck=replay_deck(board_history(board), len(seats)))
+    arena.reset(0, deck=replay_deck(board_history(board), len(seats)),
+                bomb=None if bomb is None else _money(bomb))
     folded, all_in = set(), set()
     for index, action in enumerate(actions):
         if action["kind"] == "fold" and action["slot"] in folded:
@@ -521,8 +549,10 @@ def check_hand(rows):
     facts = hand_facts(rows)
     replay = replay_hand(facts)
     players = len(facts["seats"])
-    expected = None
-    if players in PLAYERS:
+    expected, bomb = None, bomb_post(facts)
+    if bomb is not None:
+        expected = bomb * players
+    elif players in PLAYERS:
         rules = _rules(players)
         expected = (rules.ante * players + rules.small_blind + rules.big_blind
                     + rules.straddle_amount)
@@ -533,8 +563,10 @@ def check_hand(rows):
             "actions": len(facts["actions"]),
             "opening_pot": None if facts["opening_pot"] is None
             else str(facts["opening_pot"]),
-            "opening_pot_matches": facts["opening_pot"] == expected}
+            "opening_pot_matches": facts["opening_pot"] == expected,
+            "bomb_pot": None if bomb is None else _money(bomb)}
 
 
-__all__ = ["board_history", "check_hand", "fill_to_seat", "hand_facts", "own_post",
-           "replay_hand", "solver_observation", "starting_stacks", "with_post"]
+__all__ = ["BOMB_BIG_BLINDS", "board_history", "bomb_post", "check_hand",
+           "fill_to_seat", "hand_facts", "own_post", "replay_hand",
+           "solver_observation", "starting_stacks", "with_post"]
