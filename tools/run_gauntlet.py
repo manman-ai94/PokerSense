@@ -124,6 +124,7 @@ def finished(args, pool, strategies):
             and list(report["pool"]) == list(POOLS[pool])
             and set(strategies) <= set(report["strategies"])
             and post == args.mushroom
+            and (report.get("reads") or {}).get("hands") == (args.reads or None)
             and (args.mushroom_take is None or post is None
                  or report["mushroom"]["take"] == args.mushroom_take))
     return report if same else None
@@ -176,6 +177,9 @@ def main(argv=None):
     parser.add_argument("--mushroom-take", type=float,
                         help=f"one share for every pool (default: measured; "
                         f"the AA players' is {TAKE})")
+    parser.add_argument("--reads", type=int, metavar="HANDS",
+                        help="give every decision reads on the opponents from "
+                        "this many hands (noreads+name ignores them)")
     parser.add_argument("--calibration-deals", type=int, default=CALIBRATION_DEALS)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--resume", action="store_true",
@@ -214,6 +218,7 @@ def main(argv=None):
                         deals=min(args.deals, args.calibration_deals),
                         pool=POOLS[pool], workers=args.workers,
                         base_seed=args.seed, mushroom=Mushroom(args.mushroom, take),
+                        reads=args.reads,
                         progress=lambda done, total, seconds, pool=pool: progress(
                             f"{pool} (mushroom take)", done, total, seconds)))
             takes[pool] = take
@@ -222,7 +227,7 @@ def main(argv=None):
             rules, strategies, deals=args.deals, pool=POOLS[pool],
             workers=args.workers, base_seed=args.seed,
             reference=args.reference or strategies[0], mushroom=mushroom,
-            progress=lambda done, total, seconds, pool=pool: progress(
+            reads=args.reads, progress=lambda done, total, seconds, pool=pool: progress(
                 pool, done, total, seconds))
         if args.out:
             (args.out / f"{pool}.json").write_text(json.dumps(reports[pool], indent=1),
@@ -231,7 +236,7 @@ def main(argv=None):
     if args.out:
         (args.out / "summary.json").write_text(json.dumps({
             "deals": args.deals, "seed": args.seed, "pools": pools,
-            "reference": args.reference,
+            "reference": args.reference, "reads": args.reads,
             "mushroom": None if args.mushroom is None else {
                 "post_big_blinds": args.mushroom, "take": takes},
             "strategies": summary}, indent=1), encoding="utf-8")
@@ -239,7 +244,8 @@ def main(argv=None):
     hands = args.deals * rules.table_size
     print(f"{hands} hands per strategy and pool, seed {args.seed}"
           + ("" if args.mushroom is None else
-             f", mushroom {args.mushroom:g} big blinds"))
+             f", mushroom {args.mushroom:g} big blinds")
+          + ("" if not args.reads else f", reads from {args.reads} hands"))
 
 
 if __name__ == "__main__":

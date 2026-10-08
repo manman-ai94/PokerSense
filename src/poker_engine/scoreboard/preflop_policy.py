@@ -42,6 +42,15 @@ policy's few tuned parameters
 
 A live table can pass ``mushroom_pool`` (chips) in the observation: the small
 blind wins that pool with the pot, so it counts as extra pot for that seat.
+
+It can also pass ``reads`` ({seat: {"hands", "vpip", "pfr"}}, see ``reads``):
+how often each opponent has put chips in and raised so far. A seat that
+raises more often than the statistics say gets its raise shares (and the
+ranges its raises leave it with) widened by that much, and the same for
+its calls, so a maniac's raise is not read as a regular's. Only a seat's
+first decision of the hand is scaled: what share of its range continues
+after that (against a re-raise, say) stays the statistics' own, so a tight
+player's narrower range also continues with stronger hands.
 """
 
 from __future__ import annotations
@@ -57,7 +66,8 @@ import math
 from poker_engine.core.enums import Position
 
 from .bots import _Policy, position, raise_toward, raises_this_street
-from .population import NAMES, PopulationBot, actions, preflop_shares
+from .population import MAX_CONTINUE, NAMES, PopulationBot, actions, preflop_shares
+from .reads import MODEL, factors
 from .spots import preflop_spot
 from .strength import class_combos, hand_class, preflop_table
 
@@ -157,14 +167,28 @@ def stats_name(observation, seat):
     return NAMES[seat_position]
 
 
-def band(history, seat, name, adjusted=True):
-    """The band of hand percentiles ``seat``'s preflop actions leave it with."""
+def read_shares(raise_share, call_share, read=(1.0, 1.0)):
+    """(raise, call) shares scaled by a seat's read factors (see ``reads``)."""
+    raise_factor, call_factor = read
+    if raise_factor == call_factor == 1.0:
+        return raise_share, call_share
+    raise_share = min(raise_share * raise_factor, MAX_CONTINUE)
+    return raise_share, min(call_share * call_factor, MAX_CONTINUE - raise_share)
+
+
+def band(history, seat, name, adjusted=True, read=(1.0, 1.0)):
+    """The band of hand percentiles ``seat``'s preflop actions leave it with.
+
+    ``read``: the seat's (raise, call) factors from ``reads.factors``, for
+    its first decision.
+    """
     low, high = 0.0, 1.0
     for index, (player, kind) in enumerate(history):
         if player != seat:
             continue
-        raise_share, call_share = preflop_shares(
-            name, preflop_spot(history[:index], seat), adjusted)
+        raise_share, call_share = read_shares(*preflop_shares(
+            name, preflop_spot(history[:index], seat), adjusted), read)
+        read = (1.0, 1.0)
         width = high - low
         if kind == "r":
             high = low + raise_share * width
@@ -185,7 +209,8 @@ def situation(observation):
             tuple(sorted(observation["stacks"].items())),
             tuple((row["actor"], row["id"]) for row in observation["public_history"]),
             tuple(a["id"] for a in observation["legal_actions"]),
-            observation.get("mushroom_pool"))
+            observation.get("mushroom_pool"),
+            json.dumps(observation.get("reads"), sort_keys=True))
 
 
 def postflop_order(observation, seat):
@@ -281,6 +306,10 @@ class Table:
         if (observation.get("mushroom_pool")
                 and position(observation) == Position.SB):
             self.bonus = float(observation["mushroom_pool"])
+        model = MODEL["aa_population" if adjusted else "population"]
+        reads = observation.get("reads") or {}
+        self.reads = {seat: factors(reads.get(str(seat)), model)
+                      for seat in observation["occupied_seats"]}
 
     # -- pieces ---------------------------------------------------------------
 
@@ -288,12 +317,15 @@ class Table:
         return stats_name(self.o, seat)
 
     def shares(self, seat, history):
-        raise_share, call_share = preflop_shares(
-            self.name(seat), preflop_spot(history, seat), self.adjusted)
+        first = all(player != seat for player, _ in history)
+        raise_share, call_share = read_shares(*preflop_shares(
+            self.name(seat), preflop_spot(history, seat), self.adjusted),
+            self.reads[seat] if first else (1.0, 1.0))
         return raise_share, call_share, max(0.0, 1 - raise_share - call_share)
 
     def band(self, seat):
-        return band(self.history, seat, self.name(seat), self.adjusted)
+        return band(self.history, seat, self.name(seat), self.adjusted,
+                    self.reads[seat])
 
     def equity(self, low, high):
         return self.equities.versus(self.hand, low, high)
@@ -471,4 +503,5 @@ def from_name(name):
 
 
 __all__ = ["AAPreflopPolicy", "EquityTable", "PreflopParams", "band", "equity_table",
-           "from_name", "multiway", "postflop_order", "rake", "stats_name"]
+           "from_name", "multiway", "postflop_order", "rake", "read_shares",
+           "stats_name"]
