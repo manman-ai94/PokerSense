@@ -164,6 +164,8 @@ class AARecognitionSession:
             return self._snapshot()
 
     def stop(self):
+        """Stop the source; a recording it makes is finished before this
+        returns, so quitting right after loses none of it."""
         with self._lock:
             self._generation += 1
             self._cancel.set()
@@ -171,7 +173,11 @@ class AARecognitionSession:
             self._error = None
             self._status = ("STOPPING" if self._worker is not None
                             and self._worker.is_alive() else "STOPPED")
-            return self._snapshot()
+            source, result = self._source, self._snapshot()
+        status = getattr(source, "recording_status", None)
+        if callable(status) and (status() or {}).get("active"):
+            source.stop_recording("source_stopped")
+        return result
 
     def _finish(self, generation, cancel, status, error=None):
         with self._lock:
