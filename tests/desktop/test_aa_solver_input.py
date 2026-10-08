@@ -207,6 +207,32 @@ def test_a_bet_read_after_the_calls_is_moved_before_them():
     assert replay_hand(facts(late))["status"] == "stopped"
 
 
+def test_a_missed_raise_is_filled_in_from_the_seats_bet_on_the_table():
+    # 10/08, five-handed plus one: dealer 2, small blind 3, big blind 4 (you),
+    # straddle 5. Seat 0's raise to 27 was not read; the next seat folded to it,
+    # so only its bet still on the table tells what it did.
+    seen = [(133, "preflop", 7, "fold", "0"), (203, "preflop", 2, "fold", "0"),
+            (240, "preflop", 3, "raise", "134")]
+    hand = {**facts(seen, dealer=2, seats=[0, 2, 3, 4, 5, 7]), "board": [],
+            "states": {0: "active", 2: "folded", 3: "active", 4: "active",
+                       5: "active", 7: "folded"},
+            "wagers": {0: Decimal(27), 4: Decimal(2), 5: Decimal(4)},
+            "price": Decimal(133)}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(seen) + 1)
+    assert [(a["slot"], a["kind"], a["amount"]) for a in result["inferred"]] == [
+        (0, "raise", "27")]
+    assert result["arena"].actor == 4
+    # A bet that only matches the price was a call; without a bet, no telling.
+    called = replay_hand({**hand, "wagers": {0: Decimal(4)},
+                          "actions": hand["actions"][:2]})
+    assert [(a["slot"], a["kind"]) for a in called["inferred"]] == [(0, "call")]
+    assert replay_hand({**hand, "wagers": {}})["status"] == "stopped"
+    # A bet left from an earlier street says nothing about this one.
+    flop = replay_hand({**hand, "board": ["Ah", "Kd", "7c"]})
+    assert flop["status"] == "stopped"
+
+
 def test_the_seats_before_yours_are_filled_in_from_your_price():
     hand = {**facts(ACTIONS[:6]), "states": {2: "active", 5: "active"},
             "price": Decimal(10)}
