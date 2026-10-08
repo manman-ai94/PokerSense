@@ -165,7 +165,7 @@
     el("session").textContent = view.header.session || "";
     el("advice-live").setAttribute("aria-pressed", String(!afterAct));
     el("advice-after").setAttribute("aria-pressed", String(afterAct));
-    el("float").hidden = !("documentPictureInPicture" in window) || Boolean(pip);
+    el("float").hidden = Boolean(pip);
     const rec = view.header.recording;
     el("record").hidden = !rec.can;
     el("record").disabled = recordPending;
@@ -184,7 +184,12 @@
     renderHeader(view); renderSignal(view); renderSide(view);
   }
 
-  function error(message) { el("error").textContent = message || ""; el("error").hidden = !message; }
+  // The page's own messages (a failed click) stay a while; the service's error replaces them.
+  let notice = {text: "", until: 0};
+  function show(message) { el("error").textContent = message || ""; el("error").hidden = !message; }
+  function error(message) {
+    notice = {text: message || "", until: message ? Date.now() + 15000 : 0}; show(message);
+  }
 
   async function poll() {
     if (pending || (document.hidden && !pip)) return;
@@ -197,7 +202,8 @@
         instance = state.instance_id; generation = state.generation; memory = {}; sequence = null;
       }
       if (state.sequence !== sequence) { sequence = state.sequence; progressAt = now(); }
-      status = state; error(state.error ? String(state.error) : "");
+      status = state;
+      show(state.error ? String(state.error) : Date.now() < notice.until ? notice.text : "");
       const frozen = String(state.status).toUpperCase() === "RUNNING" && state.payload &&
         now() - progressAt > 3000;
       draw(frozen ? {...state, status: "STALE", payload: null} : state);
@@ -205,7 +211,7 @@
         ? `每帧 ${(state.processing_ms / 1000).toFixed(2)} 秒` : "";
     } catch (failure) {
       status = {...status, status: "ERROR", payload: null};
-      draw({status: "ERROR"}); error(`连不上本机服务：${failure.message}`);
+      draw({status: "ERROR"}); show(`连不上本机服务：${failure.message}`);
     } finally { clearTimeout(timeout); }
   }
 
@@ -285,7 +291,11 @@
   }
 
   async function float() {
-    if (pip || !("documentPictureInPicture" in window)) return;
+    if (pip) return;
+    if (!("documentPictureInPicture" in window)) {
+      error("置顶小窗只有 Chrome 有。请先关掉黑色的终端窗口，再双击桌面上的“PokerSense 开始”，它会用 Chrome 打开。");
+      return;
+    }
     let small;
     try { small = await documentPictureInPicture.requestWindow({width: 380, height: 600}); }
     catch (failure) { error(`没有打开置顶小窗：${failure.message}`); return; }
