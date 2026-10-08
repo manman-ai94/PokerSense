@@ -22,13 +22,16 @@ so there it is judged against the reference instead. Pools with a solver
 take hours; they are refused without it rather than quietly playing without.
 
 With ``--mushroom`` the pool carried in from earlier hands is drawn as if the
-small blind takes it as often as it does on that table: short runs of
-``--calibration-deals`` deals measure it, each starting from the share the
-last one measured, since a bigger pool makes the small blind play more hands
-(``--mushroom-take`` sets one share for every pool instead). On a table of
+small blind takes it as often as it does on that table with that strategy
+in the seat (``runner.calibrate_takes``): short runs of
+``--calibration-deals`` deals, on other deals than the scored ones, measure
+each strategy's share, each run starting from the shares the last one
+measured, since a bigger pool makes the small blind play more hands
+(``--mushroom-take`` sets one share for everything instead). On a table of
 tight players, where the small blind wins half the pots, the default share
 (13.5%, from the AA players) would carry in far more chips than such a table
-ever leaves in the pool.
+ever leaves in the pool; and one share for all strategies flattered the one
+that wins the small blind more often by about 3-7 bb/100.
 
 With ``--out`` every pool's full report is saved as <pool>.json next to
 summary.json; ``--resume`` reuses the pools a stopped run already saved there
@@ -45,7 +48,8 @@ import sys
 
 from poker_engine.scoreboard.bomb import SHARE, Bomb
 from poker_engine.scoreboard.mushroom import TAKE, Mushroom
-from poker_engine.scoreboard.runner import POOLS, run_scoreboard
+from poker_engine.scoreboard.runner import (CALIBRATION_DEALS, POOLS, calibrate_takes,
+                                            run_scoreboard)
 from poker_engine.solver.texassolver import solver_binary
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
@@ -53,9 +57,6 @@ DEFAULT_RULES = (Path(__file__).resolve().parents[1]
                  / "configs/game/aa-scoreboard-rules-v2.json")
 DEFAULT_POOLS = "aa,population,reg,maniac,nit,tough"
 LOSING_PARTS = 2          # parts listed where a strategy does not win
-CALIBRATION_DEALS = 200   # deals that measure how often the small blind takes
-CALIBRATION_PASSES = 2    # each from the share the last one measured
-MIN_TAKE = 0.01
 
 
 def needs_solver(pool):
@@ -113,19 +114,13 @@ def summarize(reports, strategies, reference):
     return summary
 
 
-def measured_take(report):
-    """How often the small blind took the pool, over every strategy's hands."""
-    shares = [row["mushroom_take"] for row in report["strategies"].values()]
-    return max(MIN_TAKE, sum(shares) / len(shares))
-
-
 def bomb_settings(args):
     if args.bomb is None:
         return None
     return Bomb(args.bomb, args.bomb_share).to_dict()
 
 
-def finished(args, pool, strategies):
+def finished(args, pool, strategies, rules):
     """With ``--resume``, the pool's report already saved by the same run
     settings (an interrupted run picks up where it stopped), else None."""
     path = args.out / f"{pool}.json" if args.out else None
@@ -136,6 +131,8 @@ def finished(args, pool, strategies):
     same = (report["deals"] == args.deals and report["base_seed"] == args.seed
             and list(report["pool"]) == list(POOLS[pool])
             and set(strategies) <= set(report["strategies"])
+            and report["reference"] == args.reference
+            and report["rules"] == rules.to_dict()
             and post == args.mushroom
             and (report.get("reads") or {}).get("hands") == (args.reads or None)
             and report.get("bomb") == bomb_settings(args)
@@ -157,7 +154,7 @@ def table(summary, pools, reference, takes=None):
                 delta = cell["vs_reference"]["delta_bb_per_100"]
                 text += f"  (vs {reference} {delta:+.1f})"
             if takes:
-                text += f"  [mushroom take {takes[pool]:.0%}]"
+                text += f"  [mushroom take {takes[pool][name]:.0%}]"
             if "bomb" in cell and cell["bomb"]["share"] < 1:
                 text += (f"  [bomb pots {cell['bomb']['bb_per_100']:+.1f} of it, "
                          f"{cell['bomb']['share']:.0%} of hands]")
@@ -207,7 +204,8 @@ def main(argv=None):
                         help="reuse pools already saved in --out by the same settings")
     args = parser.parse_args(argv)
     strategies = args.strategies.split(",")
-    if args.reference and args.reference not in strategies:
+    args.reference = args.reference or strategies[0]
+    if args.reference not in strategies:
         strategies.append(args.reference)
     pools = args.pools.split(",")
     unknown = [pool for pool in pools if pool not in POOLS]
@@ -223,32 +221,31 @@ def main(argv=None):
     reports, takes = {}, {}
     bomb = None if args.bomb is None else Bomb(args.bomb, args.bomb_share)
     for pool in pools:
-        saved = finished(args, pool, strategies)
+        saved = finished(args, pool, strategies, rules)
         if saved is not None:
             reports[pool] = saved
             if saved.get("mushroom"):
-                takes[pool] = saved["mushroom"]["take"]
+                takes[pool] = {name: saved["mushroom"].get("takes", {}).get(
+                    name, saved["mushroom"]["take"]) for name in strategies}
             continue
         mushroom = None
         if args.mushroom is not None:
-            take = args.mushroom_take
-            if take is None:
-                take = TAKE
-                for _ in range(CALIBRATION_PASSES):
-                    take = measured_take(run_scoreboard(
-                        rules, strategies,
-                        deals=min(args.deals, args.calibration_deals),
-                        pool=POOLS[pool], workers=args.workers,
-                        base_seed=args.seed, mushroom=Mushroom(args.mushroom, take),
-                        reads=args.reads, bomb=bomb,
-                        progress=lambda done, total, seconds, pool=pool: progress(
-                            f"{pool} (mushroom take)", done, total, seconds)))
-            takes[pool] = take
-            mushroom = Mushroom(args.mushroom, take)
+            if args.mushroom_take is not None:
+                own = {name: args.mushroom_take for name in strategies}
+            else:
+                own = calibrate_takes(
+                    rules, strategies, POOLS[pool], args.mushroom,
+                    deals=min(args.deals, args.calibration_deals),
+                    base_seed=args.seed, workers=args.workers,
+                    reads=args.reads, bomb=bomb,
+                    progress=lambda done, total, seconds, pool=pool: progress(
+                        f"{pool} (mushroom take)", done, total, seconds))
+            takes[pool] = own
+            mushroom = Mushroom(args.mushroom, args.mushroom_take or TAKE, own)
         reports[pool] = run_scoreboard(
             rules, strategies, deals=args.deals, pool=POOLS[pool],
             workers=args.workers, base_seed=args.seed,
-            reference=args.reference or strategies[0], mushroom=mushroom,
+            reference=args.reference, mushroom=mushroom,
             reads=args.reads, bomb=bomb,
             progress=lambda done, total, seconds, pool=pool: progress(
                 pool, done, total, seconds))

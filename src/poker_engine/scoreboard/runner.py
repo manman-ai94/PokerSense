@@ -20,12 +20,13 @@ losing at showdowns at calling or betting too thin.
 
 With ``mushroom`` the AA mushroom pool is played too (see ``mushroom``), and
 each strategy's report says how often the small blind took the pool on its
-tables (``mushroom_take``). The pool carried in from earlier hands is drawn
-as if the small blind takes it ``mushroom.take`` of the time; where the
-measured share differs much, the draws add or remove chips that no earlier
-hand paid in (a table where the small blind wins half the pots carries far
-less than the default assumes), so the run should be repeated with the
-measured share (``run_gauntlet.py`` does this itself).
+tables (``mushroom_take``, with a 95% interval). The pool carried in from
+earlier hands is drawn as if the small blind takes it ``mushroom.take`` of
+the time (or the strategy's own share in ``mushroom.takes``); where the
+measured share differs, the draws add or remove chips that no earlier hand
+paid in (a table where the small blind wins half the pots carries far less
+than the default assumes). ``calibrate_takes`` measures every strategy's own
+share on other deals first; both tools do this unless a share is given.
 
 With ``bomb`` a share of the deals are bomb pots (see ``bomb``) and each
 result is also split into normal hands and bomb pots (``by_kind``).
@@ -52,7 +53,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .allin_ev import runout_ev
 from .bomb import KINDS, Bomb
 from .bots import make_policy
-from .mushroom import Mushroom, main_pot_shares, pool_result, small_blind
+from .mushroom import TAKE, Mushroom, main_pot_shares, pool_result, small_blind
 from . import reads as opponent_reads
 
 # Opponent pools by name. "population" plays like real players (see
@@ -166,7 +167,10 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
     big_blind = float(rules.big_blind)
     mushroom = None if mushroom is None else Mushroom(**mushroom)
     bomb = None if bomb is None else Bomb(**bomb)
-    bots = {name: make_policy(name) for name in {*strategies, *pool}}
+    bots = {name: make_policy(name) for name in pool}
+    # The strategies get their own objects, so the counts they keep are of
+    # their own decisions even when the pool plays the same policy.
+    heroes = {name: make_policy(name) for name in strategies}
     rows = []
     for seed in seeds:
         styles = lineup(seed, pool, seats)
@@ -175,17 +179,18 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
         posted = None if bomb is None else bomb.chips(seed, big_blind)
         row = {}
         for name in strategies:
+            pool_rule = None if mushroom is None else mushroom.for_strategy(name)
             total, adjusted, taken = 0.0, 0, 0.0
             split = {part: [0.0, 0] for part in FLOP}
             end = {part: [0.0, 0] for part in END}
             kind = {part: [0.0, 0] for part in KINDS}
             for hero in seats:
                 deciders = dict(bound)
-                deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
+                deciders[hero] = heroes[name].for_game(_salt(base_seed, seed, hero))
                 seen = None if reads is None else opponent_reads.sample(
                     reads["shares"], styles, hero, seed, reads["hands"])
                 hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
-                                 mushroom=mushroom, reads=seen, bomb=posted)
+                                 mushroom=pool_rule, reads=seen, bomb=posted)
                 total += hand.value
                 adjusted += hand.adjusted
                 taken += hand.small_blind
@@ -203,8 +208,8 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                          {part: (chips / scale, hands)
                           for part, (chips, hands) in kind.items()})
         rows.append((seed, row))
-    counts = {name: dict(bots[name].counts) for name in strategies
-              if getattr(bots[name], "counts", None)}
+    counts = {name: dict(heroes[name].counts) for name in strategies
+              if getattr(heroes[name], "counts", None)}
     return rows, counts
 
 
@@ -306,8 +311,8 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     chunk = chunk or max(2, deals // (max(1, workers) * 32))
     chunks = [seeds[i:i + chunk] for i in range(0, len(seeds), chunk)]
     started = time.perf_counter()
-    pool_rule = None if mushroom is None else {"post": mushroom.post,
-                                               "take": mushroom.take}
+    pool_rule = None if mushroom is None else {
+        "post": mushroom.post, "take": mushroom.take, "takes": dict(mushroom.takes)}
     seen = None if not reads else {
         "hands": reads,
         "shares": opponent_reads.measure(rules, pool, base_seed=base_seed)}
@@ -342,8 +347,10 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     summary, versus = summarize(rows, strategies, reference, seats)
     if mushroom is not None:
         for name in strategies:
-            taken = sum(row[name][4] for _, row in rows)
-            summary[name]["mushroom_take"] = round(taken / (len(rows) * seats), 4)
+            mean, half = _interval([row[name][4] / seats for _, row in rows])
+            summary[name]["mushroom_take"] = round(mean, 4)
+            summary[name]["mushroom_take_ci95"] = None if half is None else [
+                round(mean - half, 4), round(mean + half, 4)]
     splits = [("by_flop", 2, FLOP), ("by_end", 3, END)]
     if bomb is not None:
         splits.append(("by_kind", 5, KINDS))
@@ -381,6 +388,36 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     }
 
 
-__all__ = ["DEFAULT_POOL", "END", "FLOP", "POOLS", "Hand", "ended", "flop_split",
+CALIBRATION_DEALS = 400
+CALIBRATION_PASSES = 2
+CALIBRATION_SEED = 500          # added to the run's seed: other deals than scored
+MIN_TAKE = 0.01
+
+
+def calibrate_takes(rules, strategies, pool, post, *, deals=CALIBRATION_DEALS,
+                    passes=CALIBRATION_PASSES, base_seed=1, workers=1,
+                    progress=None, **options):
+    """Each strategy's share of hands whose small blind takes the mushroom
+    pool, on ``pool``'s table: {name: share}.
+
+    Measured on other deals than a scored run with the same seed. The carry
+    depends on the share and the share a little on the carry (a larger pool
+    widens the small blind), so it is measured ``passes`` times, each run
+    with the shares of the one before. ``options`` go to ``run_scoreboard``
+    (``reads``, ``bomb``).
+    """
+    takes = {name: TAKE for name in strategies}
+    for _ in range(passes):
+        report = run_scoreboard(
+            rules, strategies, deals=deals, pool=pool, workers=workers,
+            base_seed=base_seed + CALIBRATION_SEED, progress=progress,
+            mushroom=Mushroom(post, TAKE, takes), **options)
+        takes = {name: max(MIN_TAKE, report["strategies"][name]["mushroom_take"])
+                 for name in strategies}
+    return takes
+
+
+__all__ = ["CALIBRATION_DEALS", "DEFAULT_POOL", "END", "FLOP", "POOLS", "Hand",
+           "calibrate_takes", "ended", "flop_split",
            "lineup", "pairwise", "play_hand", "run_scoreboard", "score_deals",
            "summarize"]
