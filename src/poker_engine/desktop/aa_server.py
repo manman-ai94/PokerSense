@@ -105,6 +105,23 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         return response
 
     @app.get("/")
+    def signal_window():
+        return FileResponse(ui_root() / "signal.html")
+
+    @app.get("/signal.js")
+    def signal_script():
+        return FileResponse(ui_root() / "signal.js", media_type="text/javascript")
+
+    @app.get("/signal_view.js")
+    def signal_view_script():
+        return FileResponse(ui_root() / "signal_view.js",
+                            media_type="text/javascript")
+
+    @app.get("/signal.css")
+    def signal_style():
+        return FileResponse(ui_root() / "signal.css", media_type="text/css")
+
+    @app.get("/classic")
     def index():
         return FileResponse(ui_root() / "index.html")
 

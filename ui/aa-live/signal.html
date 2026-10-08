@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PokerSense</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&amp;family=Big+Shoulders+Display:wght@700;800;900&amp;family=Noto+Sans+SC:wght@500;700;900&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/signal.css">
+  <script src="/signal_view.js" defer></script>
+  <script src="/signal.js" defer></script>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="6" fill="#45D483"></rect><path d="M7 12h10M12 7v10" stroke="#05140B" stroke-width="2.6" stroke-linecap="round"></path></svg><strong>PokerSense</strong></div>
+  <span id="health" class="pill neutral" role="status"><i class="dot" aria-hidden="true"></i><span id="health-text">正在连接</span></span>
+  <form id="source-form" class="source">
+    <label class="sr" for="mode">画面来源</label>
+    <select id="mode">
+      <option value="capture-card">采集卡</option>
+      <option value="video-replay">录像回放</option>
+      <option value="development-replay">开发回放</option>
+    </select>
+    <button id="start" type="submit" disabled>开始</button>
+    <button id="stop" type="button" class="ghost" disabled>停止</button>
+  </form>
+  <span class="grow"></span>
+  <a class="pill link" href="/classic">本桌设置和详细数据</a>
+</header>
+<p id="error" class="error" role="alert" hidden></p>
+<main class="layout">
+  <section id="signal" class="signal tone-wait" aria-label="现在该怎么打">
+    <div class="tags"><span id="tags" class="tag-list"></span><span class="grow"></span><span id="price" class="price"></span></div>
+    <div class="cards-row">
+      <div class="cards-block"><span class="cap">你的牌</span><div id="hero-cards" class="cards big"></div></div>
+      <div class="cards-block"><span id="board-cap" class="cap">公共牌</span><div id="board-cards" class="cards"></div></div>
+    </div>
+    <div class="verdict" aria-live="polite">
+      <div class="verdict-line"><span id="word" class="word">正在连接</span><span id="size" class="size"></span></div>
+      <p id="note" class="note"></p>
+    </div>
+    <div id="mix" class="mix" role="img" hidden></div>
+    <div id="options" class="options" hidden></div>
+    <div id="numbers" class="numbers"></div>
+  </section>
+  <aside class="side" aria-label="牌桌和这一手">
+    <div class="side-head"><span class="label">牌桌 · 识别结果</span><span id="speed" class="muted"></span></div>
+    <div id="table" class="table"></div>
+    <div class="log-block"><span class="label">这一手</span><div id="log" class="log"></div></div>
+    <div id="basis" class="basis"></div>
+  </aside>
+</main>
+</body>
+</html>
