@@ -22,10 +22,11 @@
       <option value="development-replay">开发回放</option>
     </select>
     <label class="sr" for="device">采集卡设备</label>
-    <select id="device" title="Mac 上采集卡有时是 0 号，有时是 1 号：看不到牌桌就换一个">
+    <select id="device" title="点开始时会自己找显示手机画面的设备，先试这个编号；都找不到才用它">
       <option value="0">设备 0</option>
       <option value="1">设备 1</option>
       <option value="2">设备 2</option>
+      <option value="3">设备 3</option>
     </select>
     <button id="start" type="submit" disabled>开始</button>
     <button id="stop" type="button" class="ghost" disabled>停止</button>
@@ -54,6 +55,7 @@
       <div class="verdict-line"><span id="word" class="word">正在连接</span><span id="size" class="size"></span></div>
       <p id="note" class="note"></p>
     </div>
+    <img id="thumb" class="thumb" alt="现在收到的画面" title="现在收到的画面（手机中间那一条）" hidden>
     <div id="mix" class="mix" role="img" hidden></div>
     <div id="options" class="options" hidden></div>
     <div id="compare" class="compare" hidden></div>

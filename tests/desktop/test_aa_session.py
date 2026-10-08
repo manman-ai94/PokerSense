@@ -410,3 +410,22 @@ def test_the_session_knows_when_it_last_saw_the_table():
         session.stop()
         wait_until(lambda: session.snapshot()["status"] == "STOPPED")
     assert session.table_seen() is None         # a new source starts over
+
+
+def test_the_status_says_which_device_the_source_found():
+    source = Source()
+    read = source.read
+    source.read = lambda: {**read(), "source_kind": "capture-card"}
+    source.device = {"device_index": 2, "api": "AVFOUNDATION",
+                     "device_check": "phone_between_black_bars"}
+    session = AARecognitionSession(lambda _: source, Reader, interval_seconds=.01)
+    session.start({"mode": "capture-card", "device_index": 0, "find_phone": True})
+    try:
+        wait_until(lambda: session.snapshot()["payload"] is not None)
+        options = session.snapshot()["source_options"]
+        assert options == {"mode": "capture-card", "device_index": 2,
+                           "find_phone": True, "api": "AVFOUNDATION",
+                           "device_check": "phone_between_black_bars"}
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())

@@ -11,7 +11,8 @@
   let memory = {}, generation = null, instance = null, sequence = null, progressAt = 0;
   let status = {}, pending = false, modeTouched = false, recordPending = false;
   // The capture card's device number on this Mac (it can swap with the
-  // built-in camera), remembered in this browser.
+  // built-in camera), remembered in this browser. The service looks for the
+  // device that shows the phone, this one first, and says which it used.
   const DEVICE_KEY = "pokersense.signal.device";
   try { const saved = localStorage.getItem(DEVICE_KEY); if (saved !== null) el("device").value = saved; }
   catch (ignored) { /* storage can be unavailable */ }
@@ -158,7 +159,12 @@
       el("mode").value = Object.keys(available).find(mode => available[mode]) || "capture-card";
     el("mode").disabled = view.header.active || pending;
     const device = status.source_options?.device_index;
-    if (view.header.active && Number.isInteger(device) && device >= 0 && device <= 2) el("device").value = String(device);
+    if (view.header.active && Number.isInteger(device) && device >= 0 && device <= 3) {
+      el("device").value = String(device);
+      if (status.source_options?.device_check === "phone_between_black_bars") {
+        try { localStorage.setItem(DEVICE_KEY, String(device)); } catch (ignored) { /* not kept */ }
+      }
+    }
     el("device").hidden = el("mode").value !== "capture-card";
     el("device").disabled = view.header.active || pending;
     el("start").disabled = view.header.active || pending || !available[el("mode").value] ||
@@ -185,6 +191,24 @@
   function draw(state) {
     const view = SignalView.signalView(state, now(), memory, {afterAct});
     renderHeader(view); renderSignal(view); renderSide(view);
+    thumbnail(Boolean(view.thumbnail));
+  }
+
+  // While no table is seen, a small picture of what the source shows (the
+  // phone's middle strip): the Mac camera, a black card or the home screen.
+  let thumbUrl = null, thumbBusy = false, thumbAt = 0;
+  async function thumbnail(wanted) {
+    el("thumb").hidden = !wanted || !thumbUrl;
+    if (!wanted || thumbBusy || now() - thumbAt < 1000) return;
+    thumbBusy = true; thumbAt = now();
+    try {
+      const response = await fetch("/api/preview.jpg", {headers, cache: "no-store"});
+      if (!response.ok) return;
+      const url = URL.createObjectURL(await response.blob());
+      if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+      thumbUrl = url; el("thumb").src = url; el("thumb").hidden = false;
+    } catch (ignored) { /* no picture: the note says why */ }
+    finally { thumbBusy = false; }
   }
 
   // The page's own messages (a failed click) stay a while; the service's error replaces them.
@@ -222,8 +246,10 @@
     pending = true; error(""); draw({...status, payload: null});
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 15000);
     try {
-      const body = action === "start" ? {mode: el("mode").value, device_index: Number(el("device").value),
-        api: status.capture_api_default || "AVFOUNDATION", fps: 30} : {};
+      const mode = el("mode").value;
+      const body = action === "start" ? {mode, device_index: Number(el("device").value),
+        api: status.capture_api_default || "AVFOUNDATION", fps: 30,
+        ...(mode === "capture-card" ? {find_phone: true} : {})} : {};
       const response = await fetch(`/api/${action}`, {method: "POST",
         headers: {...headers, "Content-Type": "application/json"}, body: JSON.stringify(body), signal: abort.signal});
       const result = await response.json();

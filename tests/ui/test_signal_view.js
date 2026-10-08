@@ -53,8 +53,39 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "看不到牌桌");
 view = signalView(running({...base(), scene_supported: false}), 9000, blind);
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面看不清");
 assert.match(view.note, /^已经 9 秒看不到牌桌/);
-// From the capture card it may be the wrong device (the Mac camera).
+// From the capture card it may be the wrong device (the Mac camera); the pill
+// no longer says the reading is fine, and a small picture shows what comes in.
 assert.match(view.note, /换一个设备编号/);
+assert.equal(view.thumbnail, true);
+assert.deepEqual(view.header.health, {tone: "warn", text: "采集卡 · 看不到牌桌"});
+// A device the service picked because it shows the phone: no number to try.
+const found = (check, seen) => ({...running({...base(), scene_supported: false}),
+  source_options: {mode: "capture-card", device_index: 1, device_check: check, device_seen: seen}});
+view = signalView(found("phone_between_black_bars", {"0": "other", "1": "phone"}), 9000, {});
+assert.equal(view.title, "看不到牌桌");
+view = signalView(found("phone_between_black_bars", {"1": "phone"}), 9000, blind);
+assert.equal(view.title, "画面看不清"); assert.doesNotMatch(view.note, /设备编号/);
+// No device showed the phone: said at once, in words that say what came in.
+for (const [seen, pill, words] of [
+  [{"0": "other", "1": null}, "只认到摄像头", /^Mac 只认到电脑自带的摄像头/],
+  [{"0": "other", "1": "dark"}, "没有画面", /^采集卡接上了，但收不到手机画面/],
+  [{"0": null, "1": null}, "没认到采集卡", /^Mac 没认到采集卡/]]) {
+  view = signalView(found("no_phone_found", seen), 0, {});
+  assert.equal(view.tone, "warn"); assert.equal(view.title, "没找到手机画面");
+  assert.match(view.note, words); assert.equal(view.thumbnail, true);
+  assert.deepEqual(view.header.health, {tone: "warn", text: `采集卡 · ${pill}`});
+}
+// The cameras macOS lists, when the service knows them.
+view = signalView({...found("no_phone_found", {"0": "other"}), capture_available: true,
+  capture_devices: ["FaceTime HD Camera"]}, 0, {});
+assert.match(view.note, /（Mac 现在认到的摄像头：FaceTime HD Camera）$/);
+view = signalView({status: "STOPPED", capture_available: true, capture_devices: ["FaceTime HD Camera", "USB Video"]}, 0, {});
+assert.equal(view.note, "选好来源，点“开始”。Mac 现在认到的摄像头：FaceTime HD Camera、USB Video");
+assert.equal(signalView({status: "STOPPED", capture_available: true, capture_devices: null}, 0, {}).note,
+  "选好来源，点“开始”");
+// While the table is read, the pill says so as before.
+view = signalView({...found("no_phone_found", {"0": "other"}), payload: base()}, 0, {});
+assert.match(view.header.health.text, /^采集卡 · 识别正常/); assert.equal(view.thumbnail, undefined);
 
 // Heads-up river: the solver mix, in words and numbers.
 const memory = {};

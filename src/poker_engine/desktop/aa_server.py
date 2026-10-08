@@ -21,7 +21,7 @@ from .aa_grading import AAGrades
 from .aa_solver_advice import AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
 from .aa_math import AATableMath
-from .aa_sources import source_factory
+from .aa_sources import CameraList, source_factory
 from .aa_video_source import parse_windows
 from .aa_table_config import AATableConfigStore
 from .aa_issues import save_issue
@@ -91,8 +91,11 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                records_dir=None, bundle_sha256=None, idle_stop_seconds=None,
                recordings_dir=None,
                analysis_service=None, review_service=None, study_service=None,
-               hand_input_service=None, analysis_records_service=None):
+               hand_input_service=None, analysis_records_service=None,
+               camera_list=None):
     profile_path = Path(profile_path)
+    # The cameras macOS lists, for the window to say whether the card is there.
+    cameras = (camera_list or CameraList()) if allow_capture else None
     advice = AASolverAdvice()
     service = session or AARecognitionSession(
         source_factory(profile_path, replay_pool=replay_pool,
@@ -432,6 +435,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                       capture_available=allow_capture,
                       video_available=replay_video is not None,
                       capture_api_default=default_capture_api(),
+                      capture_devices=None if cameras is None else cameras.names(),
                       issue_recording_available=records_dir is not None,
                       table_rules=table_rules,
                       analysis=analysis_status,
@@ -477,8 +481,10 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         except ValueError:
             raise HTTPException(400, "无法读取 JSON") from None
         if not isinstance(options, dict) or set(options) - {
-                "mode", "device_index", "api", "fps"}:
+                "mode", "device_index", "api", "fps", "find_phone"}:
             raise HTTPException(400, "来源设置字段不受支持")
+        if type(options.get("find_phone", False)) is not bool:
+            raise HTTPException(400, "find_phone 必须为 true 或 false")
         if options.get("mode") not in {"capture-card", "development-replay",
                                        "video-replay"}:
             raise HTTPException(400, "请选择来源")
