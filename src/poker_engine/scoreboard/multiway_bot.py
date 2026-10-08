@@ -48,15 +48,29 @@ class RangeMultiwayBot(_Policy):
             self.counts["no_equity"] += 1
             return self.base.decide(observation, rng)
         self.counts["decided"] += 1
-        to_call = float(observation["to_call"] or 0)
-        if to_call == 0:
-            if share >= self.params["bet"]:
-                return raise_toward(observation, 0.66) or "check_call"
-            return "check_call"
-        if share >= self.params["raise"]:
-            return raise_toward(observation, 1.0) or "check_call"
-        price = to_call / (float(observation["pot"]) + to_call)
-        return "check_call" if share >= price + self.params["margin"] else "fold"
+        return choose(observation, share, self.params)
+
+
+def cuts(observation, params=DEFAULTS):
+    """The shares of the pot where the action changes: with nothing to call,
+    ``bet``; facing a bet, ``call`` (the price plus the margin) and ``raise``."""
+    to_call = float(observation["to_call"] or 0)
+    if to_call == 0:
+        return {"bet": params["bet"]}
+    price = to_call / (float(observation["pot"]) + to_call)
+    return {"call": price + params["margin"], "raise": params["raise"]}
+
+
+def choose(observation, share, params=DEFAULTS):
+    """The action id for your share of the pot against the field."""
+    line = cuts(observation, params)
+    if "bet" in line:
+        if share >= line["bet"]:
+            return raise_toward(observation, 0.66) or "check_call"
+        return "check_call"
+    if share >= line["raise"]:
+        return raise_toward(observation, 1.0) or "check_call"
+    return "check_call" if share >= line["call"] else "fold"
 
 
 def from_name(name, make_policy):
@@ -72,4 +86,4 @@ def from_name(name, make_policy):
     return bot
 
 
-__all__ = ["DEFAULTS", "RangeMultiwayBot", "from_name"]
+__all__ = ["DEFAULTS", "RangeMultiwayBot", "choose", "cuts", "from_name"]

@@ -158,7 +158,7 @@ const states = [
   [{status: "computing", street: "turn", hand_id: 7, decision: 3}, "busy", "正在算"],
   [{status: "idle", reason: "waiting_for_last_action"}, "info", "稍等"],
   [{status: "idle", reason: "street_not_covered", street: "flop"}, "info", "翻牌不给打法"],
-  [{status: "idle", reason: "more_than_one_opponent"}, "info", "多人底池不给打法"],
+  [{status: "idle", reason: "more_than_one_opponent"}, "info", "多人底池只给数字"],
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
@@ -261,7 +261,7 @@ view = signalView(running(base({solver_advice_v1: {status: "idle", reason: "more
   range_equity: {value: 0.42, opponents: 2, hands: null, hands_each: {"2": 315, "6": 103}}}})), 0, {});
 assert.deepEqual([view.numbers[1].label, view.numbers[1].value, view.numbers[1].note],
   ["你对他们的牌能赢", "42%", "按 AA 真人打法推算 2 个对手可能拿的牌"]);
-assert.match(view.note, /按 AA 真人打法推算每个对手可能拿的牌/);
+assert.match(view.note, /^你的筹码没读到/);
 view = signalView(running(base({street_v1: {street: "flop"}, solver_advice_v1: {status: "idle",
   reason: "street_not_covered", street: "flop", range_equity: {value: 0.6, opponents: 1, hands: 240}}})), 0, {});
 assert.equal(view.title, "翻牌不给打法");
@@ -269,6 +269,46 @@ assert.deepEqual([view.numbers[1].label, view.numbers[1].note], ["你对他的�
 // Equity against random hands overstates it against the hands still in: an upper bound.
 view = signalView(running(base({solver_advice_v1: {status: "idle", reason: "more_than_one_opponent"}})), 0, {});
 assert.match(view.note, /只当上限参考/);
+// With several opponents the range rule's action, its reason and its basis.
+const multiway = (row, extra = {}) => base({solver_advice_v1: {status: "ready", kind: "multiway",
+  advice: [row], cuts: {call: 0.248, raise: 0.6}, to_call: "28", pot: "85", seconds: 0.4, stacks_assumed: [],
+  range_equity: {value: 0.31, opponents: 2, hands: null, hands_each: {"2": 300, "6": 120}}, ...extra}});
+view = signalView(running(multiway({action: "call", frequency: 1.0})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.size, view.verdict.kind], ["call", "跟注", "28", "multiway"]);
+assert.equal(view.verdict.note, "你能赢 31%，跟注只要 25% 就够");
+assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "没有多人求解器，对手范围按 AA 真人打法推算",
+  "只显示建议，不替你点"]);
+assert.equal(view.numbers[1].label, "你对他们的牌能赢");
+view = signalView(running(multiway({action: "fold", frequency: 1.0},
+  {range_equity: {value: 0.18, opponents: 3}})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "你能赢 18%，跟注要 25% 才够，不跟"]);
+view = signalView(running(multiway({action: "raise", frequency: 1.0, chips: "90", to: "90"},
+  {range_equity: {value: 0.71, opponents: 2}})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.size, view.verdict.note], ["加注到", "90", "你能赢 71%，超过 60% 就加注"]);
+view = signalView(running(multiway({action: "bet", frequency: 1.0, chips: "56", to: "56"},
+  {cuts: {bet: 0.4}, to_call: "0", range_equity: {value: 0.47, opponents: 2}})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.size, view.verdict.note],
+  ["raise", "下注", "56", "你能赢 47%，超过 40% 就下注"]);
+view = signalView(running(multiway({action: "bet", frequency: 1.0, chips: "160", to: "160"},
+  {cuts: {bet: 0.4}, to_call: "0", range_equity: {value: 0.8, opponents: 2}})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word], ["allin", "全下"]);
+view = signalView(running(multiway({action: "check", frequency: 1.0},
+  {cuts: {bet: 0.4}, to_call: "0", range_equity: {value: 0.33, opponents: 2}})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.note], ["过牌", "你能赢 33%，不到 40% 就过牌"]);
+// After you acted: graded by how far your share was from where your action starts.
+const multiwayGrade = {kind: "multiway", street: "turn", hero: ["4d", "4s"], board: ["6h", "8s", "Kd", "8h"],
+  stack: "160", to_call: "28", pot: "85", dealer: 3, dealt: [2, 4, 6], at: 1000,
+  action: {kind: "fold", amount: null}, advice: [{action: "call", frequency: 1.0}],
+  cuts: {call: 0.248, raise: 0.6}, chosen: "fold", share: 0.31, gap: 0.062, grade: "slip"};
+graded = gradeView(multiwayGrade);
+assert.deepEqual([graded.word, graded.size, graded.note], ["小失误", "", "你能赢 31%，跟注只要 25% 就够"]);
+assert.equal(graded.detail, "你弃牌 · 建议跟注 28 · 能赢 31%");
+assert.deepEqual(graded.compare.map(row => [row.label, row.text]), [["你做了", "弃牌"], ["按胜率该", "跟注 28"]]);
+graded = gradeView({...multiwayGrade, action: {kind: "call", amount: "28"}, chosen: "call", gap: 0, grade: "best"});
+assert.deepEqual([graded.word, graded.size, graded.note, graded.compare.length], ["最佳", "", "你能赢 31%，和建议一样", 1]);
+view = signalView(running(base({hero_controls_v1: {visible: false}, current_actor: 2,
+  grade_v1: {hands: 1, graded: 1, best: 0, preflop_lost_big_blinds: 0, last: multiwayGrade, rows: [multiwayGrade]}})), 0, {});
+assert.equal(view.tone, "grade"); assert.match(view.rule, /几个人的底池/);
 // Nothing graded yet: an empty list that says when it fills.
 const empty = sessionView({hands: 3, graded: 0, best: 0, preflop_lost_big_blinds: 0, last: null, rows: []});
 assert.deepEqual([empty.pill, empty.rows, empty.empty],

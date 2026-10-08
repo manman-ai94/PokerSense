@@ -1,4 +1,4 @@
-"""Advice for your preflop and heads-up turn and river decisions.
+"""Advice for your preflop, heads-up turn and river, and multiway decisions.
 
 When it is your turn (your action button is on screen) and both your cards
 are read, the hand so far is replayed on the AA table (``aa_solver_input``).
@@ -14,12 +14,17 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   opponent's range there (``range_equity``, exact over the river cards). The
   solve runs on a background thread, so recognition never waits for it.
 
-The flop is not covered: a flop solve takes about a minute. On the flop, and
-with more than one opponent, there is no advice, but your share of the pot
-against every opponent's range (read from their actions with the same
-population model, ``scoreboard.ranges``) is worked out in the background
-and added to the report when it is ready. Every frame reports where the
-current decision stands:
+- After the flop with more than one opponent there is no solver. Your share
+  of the pot against every opponent's range (read from their actions with
+  the same population model, ``scoreboard.ranges``) is worked out in the
+  background, and the scoreboard's ``range_multiway`` rule turns it into an
+  action against the price (``multiway_bot.choose``): bet, raise, call,
+  check or fold, with the shares where the action changes (``cuts``).
+
+The heads-up flop is not covered: a flop solve takes about a minute. There is
+no advice, but your share of the pot against the opponent's range is worked
+out the same way and added to the report when it is ready. Every frame
+reports where the current decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -38,6 +43,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 import time
 
+from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
+from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
@@ -60,6 +67,9 @@ BASIS = ("heads-up TexasSolver strategy; ranges from a population model of "
 PREFLOP_BASIS = ("expected chips of each option against AA players' preflop "
                  "frequencies (read from recordings) and a heads-up equity table; "
                  "for study only")
+MULTIWAY_BASIS = ("equity against every opponent's range (a population model fitted to "
+                  "AA players' preflop play) against the price, the scoreboard's "
+                  "range_multiway rule; there is no multiway solver; for study only")
 
 
 def _decimal(value):
@@ -81,6 +91,19 @@ def advice_rows(strategy, observation):
             row.update(chips=str(chips), to=str(mine + chips))
         rows.append(row)
     return rows
+
+
+def multiway_row(action, observation):
+    """A ``range_multiway`` action id as an advice row, like the solver's."""
+    to_call = Decimal(observation["to_call"] or 0)
+    if action == "fold":
+        return {"action": "fold", "frequency": 1.0}
+    if action == "check_call":
+        return {"action": "call" if to_call > 0 else "check", "frequency": 1.0}
+    mine = Decimal(observation["bets"][str(observation["observing_seat"])])
+    to = Decimal(action.partition(":")[2]).quantize(Decimal(1))
+    return {"action": "raise" if to_call > 0 else "bet", "frequency": 1.0,
+            "chips": str(to - mine), "to": str(to)}
 
 
 def range_report(observation, weights):
@@ -162,9 +185,10 @@ class AASolverAdvice:
             return self._preflop_advice(observation, fields)
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
-        if flop or len(live) != 2:
-            reason = "street_not_covered" if flop else "more_than_one_opponent"
-            return {"status": "idle", "reason": reason,
+        if len(live) > 2:
+            return self._submit(self._multiway, observation, fields, time.monotonic())
+        if flop:
+            return {"status": "idle", "reason": "street_not_covered",
                     "range_job": self._submit(self._ranges, observation)}
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
@@ -194,6 +218,32 @@ class AASolverAdvice:
         return {"value": round(value, 3), "opponents": len(counts),
                 "hands": sum(counts.values()) if len(counts) == 1 else None,
                 "hands_each": {str(seat): count for seat, count in counts.items()}}
+
+    def _multiway(self, observation, fields, started):
+        """The ``range_multiway`` action for your share of the pot against the
+        opponents' ranges; the share alone when your stack is not read."""
+        edge = self._ranges(observation)
+        if edge is None:
+            return {"status": "idle", "reason": "more_than_one_opponent"}
+        if HERO in observation["stacks_unknown"]:
+            return {"status": "idle", "reason": "more_than_one_opponent",
+                    "range_equity": edge}
+        pot = _decimal(fields.get("pot"))
+        offset = None
+        if pot is not None and pot > Decimal(observation["pot"]):
+            offset = pot - Decimal(observation["pot"])
+            observation = {**observation, "pot": str(pot)}
+        action = multiway_choice(observation, edge["value"])
+        return {"status": "ready", "kind": "multiway",
+                "advice": [multiway_row(action, observation)],
+                "cuts": {name: round(value, 3)
+                         for name, value in multiway_cuts(observation).items()},
+                "range_equity": edge, "pot": observation["pot"],
+                "to_call": observation["to_call"],
+                "pot_offset": None if offset is None else str(offset),
+                "stacks_assumed": observation["stacks_unknown"],
+                "basis": MULTIWAY_BASIS,
+                "seconds": round(time.monotonic() - started, 2)}
 
     def _preflop_policy(self):
         if self._preflop is None:
@@ -287,8 +337,9 @@ class AASolverAdvice:
             return self._report("computing", None, street=street, decision=key[0])
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
-                                "advice", "options", "pot", "to_call", "pot_offset",
-                                "stacks_assumed", "range_equity", "seconds", "basis")
+                                "kind", "advice", "options", "cuts", "pot", "to_call",
+                                "pot_offset", "stacks_assumed", "range_equity",
+                                "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):
@@ -297,4 +348,4 @@ class AASolverAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "advice_rows", "range_report"]
+__all__ = ["AASolverAdvice", "advice_rows", "multiway_row", "range_report"]

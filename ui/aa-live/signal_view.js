@@ -61,6 +61,8 @@
   const GRADES = {best: "最佳", fine: "可以", slip: "小失误", mistake: "错误"};
   const RULE = "怎么打分：翻前看比最好的选择少赢几个大盲；转牌、河牌看求解器多常这样打：" +
     "最常用或一半以上是“最佳”，两成以上“可以”，更少是“小失误”，几乎从不这样打是“错误”。";
+  const MULTIWAY_RULE = "怎么打分：几个人的底池按你对他们的牌能赢几成来定该怎么打。和建议一样是“最佳”；" +
+    "不一样时看你能赢的离你那样打的线差多远：5 个点以内“可以”，15 个点以内“小失误”，更远是“错误”。";
   const one = value => (Math.round(value * 10) / 10).toFixed(1);
   // "+1.6", "−0.3", and "0.0" for anything that rounds to zero.
   const signed = value => {
@@ -209,7 +211,31 @@
   const spaced = label => `${short(label)}${label.size ? " " : ""}`;
   const verb = row => row.label.word.replace("到", "");
 
+  // Several opponents: why the share of the pot calls for this action.
+  function multiwayReason(action, value, cut = {}) {
+    const share = isNumber(value) ? pct(Number(value)) : "—";
+    const line = name => (isNumber(cut[name]) ? pct(Number(cut[name])) : "—");
+    return {
+      bet: `你能赢 ${share}，超过 ${line("bet")} 就下注`,
+      check: `你能赢 ${share}，不到 ${line("bet")} 就过牌`,
+      raise: `你能赢 ${share}，超过 ${line("raise")} 就加注`,
+      call: `你能赢 ${share}，跟注只要 ${line("call")} 就够`,
+      fold: `你能赢 ${share}，跟注要 ${line("call")} 才够，不跟`,
+    }[action] || `你能赢 ${share}`;
+  }
+
+  // One action from your share of the pot against the price, with the share
+  // and the line it crossed as the reason.
+  function multiwayVerdict(advice, controls, stack) {
+    const row = (advice.advice || [])[0];
+    if (!row) return null;
+    const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
+    return {...label, kind: "multiway",
+      note: multiwayReason(row.action, advice.range_equity?.value, advice.cuts)};
+  }
+
   function readyVerdict(advice, controls, stack) {
+    if (advice.kind === "multiway") return multiwayVerdict(advice, controls, stack);
     if (Array.isArray(advice.options) && advice.options.length) {
       const options = advice.options.map(item => ({...item, label: preflopLabel(item, stack)}));
       const best = options[0], top = Math.max(...options.map(item => item.big_blinds), 0);
@@ -269,6 +295,17 @@
   function gradeView(item) {
     const stack = num(item.stack);
     const did = didText(item);
+    if (item.kind === "multiway") {
+      const top = (item.advice || []).map(row => ({...row, label: solverLabel(row, item.to_call, stack)}))[0];
+      const same = !top || group(top.label.action) === item.chosen;
+      const share = isNumber(item.share) ? pct(Number(item.share)) : "—";
+      const compare = [{label: same ? "你做了 · 就是建议的打法" : "你做了", text: did, value: "", best: same}];
+      if (!same) compare.push({label: "按胜率该", text: short(top.label), value: "", best: true});
+      return {word: GRADES[item.grade] || "", grade: item.grade, size: "",
+        note: same ? `你能赢 ${share}，和建议一样` : multiwayReason(top.action, item.share, item.cuts),
+        detail: same ? `你${did} · 和建议一样` : `你${did} · 建议${short(top.label)} · 能赢 ${share}`,
+        compare, mix: []};
+    }
     if (Array.isArray(item.options) && item.options.length) {
       const options = item.options.map(option => ({...option, label: preflopLabel(option, stack)}));
       const best = options[0], chosen = options.find(option => option.action === item.chosen);
@@ -322,7 +359,8 @@
   function gradeScreen(item, grades) {
     const graded = gradeView(item);
     const lost = num(grades?.preflop_lost_big_blinds);
-    return {tone: "grade", graded, title: graded.word, note: graded.note, rule: RULE,
+    return {tone: "grade", graded, title: graded.word, note: graded.note,
+      rule: item.kind === "multiway" ? MULTIWAY_RULE : RULE,
       tags: [STREETS[item.street], "你已行动 · 打分"].filter(Boolean),
       price: `${clockText(item.at)} 这一步 · 下次轮到你之前一直显示`.trim(),
       cards: {hero: cardList(item.hero, 2, 2), board: cardList(item.board, 5, BOARD[item.street] ?? 0)},
@@ -521,7 +559,8 @@
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
         const basis = verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
-          : ["单挑求解器", "对手范围按 AA 真人打法推算"];
+          : verdict.kind === "multiway" ? ["按胜率和价格定", "没有多人求解器，对手范围按 AA 真人打法推算"]
+            : ["单挑求解器", "对手范围按 AA 真人打法推算"];
         if (isNumber(advice.seconds))
           basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
         if (isNumber(advice.pot_offset) && Number(advice.pot_offset) > 0)
@@ -554,10 +593,10 @@
         note: flop ? "翻牌算一次要 40 秒左右，来不及。下面的数是实时的：" : "这条街现在不给建议。下面的数是实时的："};
     }
     if (reason === "more_than_one_opponent") {
-      return {...view, tone: "info", title: "多人底池不给打法",
+      return {...view, tone: "info", title: "多人底池只给数字",
         note: isNumber(advice.range_equity?.value)
-          ? "几个人的底池没有求解器。胜率按 AA 真人打法推算每个对手可能拿的牌，只当参考。"
-          : "胜率是对随机牌算的。还在局里的真人牌通常更强，你实际能赢的多半更少，只当上限参考。"};
+          ? "你的筹码没读到，定不了下多少。胜率按 AA 真人打法推算每个对手可能拿的牌，只当参考。"
+          : "对手可能拿的牌推算不出来。胜率是对随机牌算的，真人的牌通常更强，你实际能赢的多半更少，只当上限参考。"};
     }
     if (reason === "your_cards_not_read") {
       return {...view, tone: "warn", title: "识别不全", note: "还没读到你的两张牌，这一步不给建议。"};

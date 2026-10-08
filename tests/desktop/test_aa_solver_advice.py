@@ -6,7 +6,8 @@ from concurrent.futures import Future
 import pytest
 
 from poker_engine.desktop.aa_session import frame_summary
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice
+from poker_engine.desktop.aa_solver_advice import AASolverAdvice, multiway_row
+from poker_engine.scoreboard.multiway_bot import DEFAULTS
 from poker_engine.scoreboard.solver_bot import Fallback
 
 # Six players, dealer 5 (blinds 0 and 1, straddle 2). You (seat 4) limp, seat 2
@@ -152,19 +153,65 @@ def three_handed(frame, **options):
     return row
 
 
-def test_more_than_one_opponent_gets_equity_against_their_ranges():
+def test_more_than_one_opponent_gets_the_range_rules_action():
     bot = Bot({"CALL": 1.0})
     advice = AASolverAdvice(bot, Inline())
     report = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
-    assert (report["status"], report["reason"]) == ("idle", "more_than_one_opponent")
+    assert (report["status"], report["kind"]) == ("ready", "multiway")
     edge = report["range_equity"]
     assert edge["opponents"] == 2 and edge["hands"] is None
     assert set(edge["hands_each"]) == {"1", "2"} and 0 < edge["value"] < 1
-    assert bot.seen == [] and report["advice_emitted"] is False
+    # Seat 2 bets 10 into a pot of 37 on screen (2 more than the rules post).
+    assert report["pot"] == "37" and report["pot_offset"] == "2"
+    assert report["cuts"] == {"call": round(10 / 47, 3), "raise": DEFAULTS["raise"]}
+    share, [row] = edge["value"], report["advice"]
+    expected = ("raise" if share >= DEFAULTS["raise"] else
+                "call" if share >= 10 / 47 else "fold")
+    assert row["action"] == expected and row["frequency"] == 1.0
+    assert bot.seen == [] and report["advice_emitted"] is True
+    assert "no multiway solver" in report["basis"]
     # The ranges are worked out in the background: the report does not wait.
     waiting = AASolverAdvice(bot, Inline(finish=False))
     report = [waiting.observe(three_handed(frame), frame) for frame in range(50)][-1]
-    assert report["reason"] == "more_than_one_opponent" and "range_equity" not in report
+    assert report["status"] == "computing"
+
+
+def test_checked_to_in_a_multiway_pot_bets_or_checks_by_the_share():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    rows = [three_handed(frame, shown=31, turn=99) for frame in range(32)]
+    report = [advice.observe(row, frame) for frame, row in enumerate(rows)][-1]
+    assert report["cuts"] == {"bet": DEFAULTS["bet"]}
+    [row] = report["advice"]
+    if report["range_equity"]["value"] >= DEFAULTS["bet"]:
+        assert row["action"] == "bet" and int(row["to"]) == int(row["chips"]) > 0
+    else:
+        assert row == {"action": "check", "frequency": 1.0}
+
+
+def test_multiway_without_ranges_or_your_stack_gives_the_share_or_nothing(monkeypatch):
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    monkeypatch.setattr(advice, "_ranges", lambda observation: None)
+    report = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
+    assert (report["status"], report["reason"]) == ("idle", "more_than_one_opponent")
+    assert "range_equity" not in report
+    unread = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    rows = [three_handed(frame) for frame in range(50)]
+    for row in rows:
+        row["stacks"]["4"] = {"value": None}
+    report = [unread.observe(row, frame) for frame, row in enumerate(rows)][-1]
+    assert (report["status"], report["reason"]) == ("idle", "more_than_one_opponent")
+    assert 0 < report["range_equity"]["value"] < 1
+
+
+def test_a_range_rule_action_as_an_advice_row():
+    facing = {"to_call": "10", "bets": {"4": "0", "2": "10"}, "observing_seat": 4}
+    assert multiway_row("fold", facing) == {"action": "fold", "frequency": 1.0}
+    assert multiway_row("check_call", facing) == {"action": "call", "frequency": 1.0}
+    assert multiway_row("raise_to:45", facing) == {
+        "action": "raise", "frequency": 1.0, "chips": "45", "to": "45"}
+    free = {**facing, "to_call": "0", "bets": {"4": "0"}}
+    assert multiway_row("check_call", free)["action"] == "check"
+    assert multiway_row("raise_to:24", free)["action"] == "bet"
 
 
 def test_the_flop_gets_equity_against_the_opponents_range():

@@ -3,9 +3,11 @@
 from concurrent.futures import Future
 from decimal import Decimal
 
-from poker_engine.desktop.aa_grading import AAGrades, preflop_grade, solver_grade
+from poker_engine.desktop.aa_grading import (AAGrades, multiway_grade, preflop_grade,
+                                             solver_grade)
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice
-from tests.desktop.test_aa_solver_advice import Bot, Inline, payload, preflop_turn
+from tests.desktop.test_aa_solver_advice import (Bot, Inline, payload, preflop_turn,
+                                                 three_handed)
 
 MIX = {"CALL": 0.7, "RAISE 30.000000": 0.2, "FOLD": 0.1}
 
@@ -197,3 +199,45 @@ def test_solver_sizes_count_together_and_the_top_action_is_best():
     rare = [{"action": "call", "frequency": 0.9}, {"action": "fold", "frequency": 0.1}]
     assert solver_grade("raise", rare + [{"action": "raise", "frequency": 0.01}],
                         Decimal(10), Decimal(90))["grade"] == "mistake"
+
+
+def test_a_multiway_action_is_graded_against_the_range_rule():
+    advice = AASolverAdvice(Bot(MIX), Inline())
+    grades = AAGrades(advice, clock=lambda: 1000.0)
+    rows = [(frame, three_handed(frame)) for frame in range(50)]
+    after = three_handed(50)
+    after["hero_controls_v1"] = {"visible": False}
+    after["action_history_v1"]["actions"].append(
+        {"frame": 46, "street": "turn", "slot": 4, "kind": "call", "amount": "10",
+         "amount_source": "pot_rise"})
+    last = feed(advice, grades, rows + [(50, after)])["last"]
+    share = last["share"]
+    assert last["kind"] == "multiway" and last["cuts"]["call"] == round(10 / 47, 3)
+    assert last["advice"][0]["action"] in ("fold", "call", "raise")
+    if last["advice"][0]["action"] == "call":
+        assert last["grade"] == "best"
+    else:
+        assert last["grade"] != "best" and last["gap"] > 0 and 0 < share < 1
+
+
+def test_multiway_grades_by_how_far_the_share_is_from_your_action():
+    def outcome(action, share, **cuts):
+        return {"kind": "multiway", "advice": [{"action": action, "frequency": 1.0}],
+                "cuts": cuts or {"call": 0.25, "raise": 0.6},
+                "range_equity": {"value": share}}
+    raise_ = outcome("raise", 0.63)
+    assert multiway_grade("raise", raise_, D(10), D(90))["grade"] == "best"
+    assert multiway_grade("call", raise_, D(10), D(90)) == {
+        "chosen": "call", "share": 0.63, "gap": 0.03, "grade": "fine"}
+    assert multiway_grade("fold", raise_, D(10), D(90))["grade"] == "mistake"
+    fold = outcome("fold", 0.15)
+    assert multiway_grade("call", fold, D(10), D(90))["grade"] == "slip"
+    assert multiway_grade("all_in", fold, D(10), D(90))["grade"] == "mistake"
+    assert multiway_grade("check", fold, D(10), D(90)) is None
+    bet = outcome("bet", 0.42, bet=0.4)
+    assert multiway_grade("raise", bet, D(0), D(90))["grade"] == "best"
+    assert multiway_grade("call", bet, D(0), D(90))["chosen"] == "check"
+    assert multiway_grade("check", bet, D(0), D(90))["grade"] == "fine"
+    assert multiway_grade("fold", bet, D(0), D(90)) is None
+    unread = {**raise_, "range_equity": None}
+    assert multiway_grade("call", unread, D(10), D(90)) is None

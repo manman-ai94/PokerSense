@@ -10,7 +10,12 @@ the time, until your action for it appears in the hand's history
   slip, else a mistake;
 - turn and river, by how often the solver takes that action, every bet or
   raise size counted together: its most frequent action or at least half the
-  time best, at least 20% fine, at least 2% a slip, else a mistake.
+  time best, at least 20% fine, at least 2% a slip, else a mistake;
+- after the flop with more than one opponent, against the action your share
+  of the pot against their ranges called for (``range_multiway``): that
+  action best, otherwise by how far the share is from where your action
+  would have been the one: under 5 points fine, under 15 a slip, else a
+  mistake.
 
 An action that cannot be matched to an option (a check facing a bet, a raise
 the policy did not offer) is left ungraded rather than guessed. Every grade
@@ -32,6 +37,7 @@ DEALT = frozenset({"active", "folded", "all_in"})
 AGGRESSIVE = frozenset({"bet", "raise", "allin"})
 PREFLOP = ((0.05, "best"), (0.5, "fine"), (2.0, "slip"))       # big blinds lost
 SOLVER = ((0.5, "best"), (0.2, "fine"), (0.02, "slip"))        # solver frequency
+MULTIWAY = ((0.05, "fine"), (0.15, "slip"))     # share off your action's span
 
 
 def _decimal(value):
@@ -82,8 +88,8 @@ def solver_group(action):
     return "raise" if action in AGGRESSIVE else action
 
 
-def solver_grade(kind, rows, to_call, stack):
-    """Your action against the solver's mix, or None when it was not possible."""
+def _kind(kind, to_call, stack):
+    """Your action as fold, check, call or raise; None when not possible."""
     if kind == "all_in":
         kind = ("call" if None not in (to_call, stack) and stack <= to_call
                 else "raise")
@@ -91,7 +97,13 @@ def solver_grade(kind, rows, to_call, stack):
         kind = "check"
     if kind == "check" and to_call is not None and to_call > 0:
         return None
-    if kind not in ("fold", "check", "call", "raise"):
+    return kind if kind in ("fold", "check", "call", "raise") else None
+
+
+def solver_grade(kind, rows, to_call, stack):
+    """Your action against the solver's mix, or None when it was not possible."""
+    kind = _kind(kind, to_call, stack)
+    if kind is None:
         return None
     shares = {}
     for row in rows:
@@ -101,6 +113,28 @@ def solver_grade(kind, rows, to_call, stack):
     top = max(shares.values(), default=0.0)
     grade = "best" if share > 0 and share >= top else _band(share, SOLVER, above=True)
     return {"chosen": kind, "frequency": round(share, 3), "grade": grade}
+
+
+def multiway_grade(kind, outcome, to_call, stack):
+    """Your action against the ``range_multiway`` advice, or None when it was
+    not possible: how far your share of the pot was from your action's span."""
+    kind = _kind(kind, to_call, stack)
+    share = (outcome.get("range_equity") or {}).get("value")
+    line, rows = outcome.get("cuts") or {}, outcome.get("advice") or []
+    if kind is None or share is None or not rows:
+        return None
+    if "bet" in line:
+        spans = {"check": (0.0, line["bet"]), "raise": (line["bet"], 1.0)}
+    else:
+        spans = {"fold": (0.0, line["call"]), "call": (line["call"], line["raise"]),
+                 "raise": (line["raise"], 1.0)}
+    if kind not in spans:
+        return None
+    low, high = spans[kind]
+    gap = max(0.0, low - share, share - high)
+    best = kind == solver_group(rows[0]["action"])
+    return {"chosen": kind, "share": share, "gap": round(gap, 3),
+            "grade": "best" if best else _band(gap, MULTIWAY, above=False)}
 
 
 def _facing(actions, street):
@@ -205,6 +239,10 @@ class AAGrades:
         if outcome.get("options"):
             graded = preflop_grade(kind, outcome["options"], to_call, stack)
             shown = {"options": outcome["options"]}
+        elif outcome.get("kind") == "multiway":
+            graded = multiway_grade(kind, outcome, to_call, stack)
+            shown = {"kind": "multiway", "advice": outcome.get("advice") or [],
+                     "cuts": outcome.get("cuts") or {}}
         else:
             graded = solver_grade(kind, outcome.get("advice") or [], to_call, stack)
             shown = {"advice": outcome.get("advice") or []}
@@ -215,4 +253,4 @@ class AAGrades:
                 "action": {"kind": kind, "amount": amount}, **shown, **graded}
 
 
-__all__ = ["AAGrades", "preflop_grade", "solver_grade"]
+__all__ = ["AAGrades", "multiway_grade", "preflop_grade", "solver_grade"]
