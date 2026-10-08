@@ -111,8 +111,12 @@
     return list;
   }
 
+  // A seat's play this session (aa_reads), once its hands say it clearly.
+  const READ_TAGS = {raises: "常加注", loose: "很松", tight: "很紧"};
+
   function seatList(row, names, history) {
     const seats = row.seat_states_v1?.seats || {};
+    const reads = row.solver_advice_v1?.seat_reads || {};
     const street = row.street_v1?.street;
     const bets = {};
     for (const action of history?.actions || []) {
@@ -126,7 +130,7 @@
       list.push({seat, name: seatName(seat, names), state, hero: seat === HERO,
         acting: row.current_actor === seat, dealer: row.dealer_seat === seat,
         stack: chips(row.stacks?.[seat]?.value), bet: bets[seat] ? chips(bets[seat]) : null,
-        out: !IN_HAND.has(state)});
+        read: READ_TAGS[reads[seat]?.tag] || null, out: !IN_HAND.has(state)});
     }
     return list;
   }

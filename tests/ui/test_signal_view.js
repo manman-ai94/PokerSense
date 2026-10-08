@@ -130,6 +130,11 @@ assert.ok(view.basis.includes("算上蘑菇池 48：你是小盲，赢下底池�
 assert.ok(!view.basis.some(line => line.includes("本场看到")));
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1, reads_hands: 37}}), 0, {});
 assert.ok(view.basis.includes("各对手爱不爱入池、加注，按本场看到的 37 手调整"));
+assert.ok(view.seats.every(seat => seat.read === null));
+view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1,
+  seat_reads: {"3": {hands: 20, vpip: 0.7, pfr: 0.1, tag: "loose"}, "5": {hands: 20, vpip: 0.3, pfr: 0.1, tag: null}}}}), 0, {});
+assert.equal(view.seats[3].read, "很松");
+assert.equal(view.seats[5].read, null);
 // From the big blind with nothing to call, calling is a check.
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1,
   options: [{action: "call", chips: 0.5, big_blinds: 0.25, chips_in: "0"}, {action: "raise", chips: -1, big_blinds: -0.5, to: "12", chips_in: "10"}]}}), 0, {});

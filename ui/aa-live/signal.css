@@ -113,6 +113,7 @@ a { color: #9CC2FF; }
 .seat b { font-size: 13px; color: var(--text); }
 .seat .num { font-size: 15px; }
 .seat.out { opacity: .4; }
+.seat small.read { display: inline-block; white-space: nowrap; margin-left: 4px; padding: 0 4px; border-radius: 4px; background: var(--edge); color: var(--text); font-size: 11px; }
 .seat.acting { border: 2px solid var(--text); }
 .seat.hero { border: 2px solid var(--call); background: #14251C; }
 .seat.bet { border: 2px solid var(--raise); }

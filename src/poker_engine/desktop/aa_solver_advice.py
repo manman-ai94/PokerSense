@@ -41,7 +41,8 @@ policy counts it as extra pot when you are the small blind (the report's
 ``mushroom_pool`` is then the amount counted). Each opponent's entry and
 raise rates over the hands seen so far (``aa_reads``) go to the preflop
 policy too, which widens or narrows that seat's expected range by them (the
-report's ``reads_hands`` is how many hands they come from). The advice comes
+report's ``reads_hands`` is how many hands they come from; every report's
+``seat_reads`` has each seat's numbers and word for the window). The advice comes
 from a model of how people play and is for study only; nothing here acts on
 the client.
 """
@@ -361,6 +362,7 @@ class AASolverAdvice:
     def _report(self, status, reason, **extra):
         return {"schema_version": 1, "status": status, "reason": reason,
                 "hand_id": self._hand_id, "basis": BASIS, **extra,
+                "seat_reads": self.reads.labels(),
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 

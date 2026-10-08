@@ -103,7 +103,9 @@
       if (seat.hero) classes.push("hero"); else if (seat.bet) classes.push("bet");
       if (seat.acting && !seat.hero) classes.push("acting");
       const box = node("div", classes.join(" "));
-      box.append(node("span", null, `${seat.name}${seat.dealer ? " · 庄" : ""}`));
+      const title = node("span", null, `${seat.name}${seat.dealer ? " · 庄" : ""}`);
+      if (seat.read && seat.state !== "empty") title.append(node("small", "read", seat.read));
+      box.append(title);
       if (seat.state === "empty") box.append(node("span", null, "空位"));
       else if (seat.state === "folded") box.append(node("span", null, "弃牌"));
       else {

@@ -1,6 +1,6 @@
 """Each opponent's entry and raise rates over the live session's hands."""
 
-from poker_engine.desktop.aa_reads import AAReads
+from poker_engine.desktop.aa_reads import AAReads, tag
 
 # Six players, dealer 5: small blind 0, big blind 1, straddle 2; seat 3 acts
 # first. Seat 3 raises, you (seat 4) fold, seat 5 calls, the blinds fold and
@@ -57,3 +57,24 @@ def test_a_seat_read_empty_starts_over():
     assert "3" not in reads.snapshot()              # left during the hand
     reads.reset()
     assert reads.snapshot() == {}
+
+
+def test_a_word_shows_once_the_hands_are_clear_and_stays_while_it_fits():
+    assert tag(9, 9, 9) is None                     # too few hands
+    assert tag(10, 3, 3) is None                    # 30% raises: not clear yet
+    assert tag(15, 7, 7) == "raises"
+    assert tag(15, 11, 2) == "loose"
+    assert tag(30, 3, 1) == "tight"
+    assert tag(15, 6, 2) is None                    # an ordinary AA player
+    assert tag(12, 7, 1) is None and tag(12, 7, 1, "loose") == "loose"
+    assert tag(12, 5, 1, "loose") is None           # fell back behind the line
+
+
+def test_the_window_gets_each_seats_numbers_and_word():
+    reads = AAReads()
+    for index in range(10):
+        reads.add_hand(hand(RAISED, f"hand_{index}"))
+    labels = reads.labels()
+    assert labels["3"] == {"hands": 10, "vpip": 1.0, "pfr": 1.0, "tag": "raises"}
+    assert labels["5"]["tag"] == "loose" and labels["0"]["tag"] == "tight"
+    assert "4" not in labels

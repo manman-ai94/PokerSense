@@ -327,6 +327,8 @@ def test_the_opponents_reads_from_finished_hands_go_to_the_preflop_policy():
     reads = policy.seen[-1]["reads"]
     assert reads["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0} and "4" not in reads
     assert result["reads_hands"] == 1
+    assert result["seat_reads"]["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0,
+                                         "tag": None}
     assert frame_summary({"solver_advice_v1": result})["solver_advice"][
         "reads_hands"] == 1
     advice.reset()                                   # a new observation
