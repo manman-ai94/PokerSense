@@ -311,6 +311,9 @@ view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: 
 assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算",
   "有 1 个动作没读到，按牌桌补上", "只显示建议，不替你点"]);
 assert.equal(view.numbers[1].label, "你对他的范围能赢");
+// A bomb pot says so in the basis.
+view = signalView(running(multiway({action: "call", frequency: 1.0}, {bomb_pot: "14"})), 0, {});
+assert.ok(view.basis.includes("暴击局：每人先投 14，直接发翻牌"));
 view = signalView(running(multiway({action: "fold", frequency: 1.0},
   {range_equity: {value: 0.18, opponents: 3}})), 0, {});
 assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "你能赢 18%，跟注要 25% 才够，不跟"]);

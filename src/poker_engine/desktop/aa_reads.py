@@ -15,7 +15,8 @@ seen since the observation started:
 - a seat put chips in when it called something or raised, and raised when
   it raised; posting a blind or the straddle and checking are neither;
 - your own seat is not counted, and a seat read empty during a hand starts
-  over after it: someone else may sit there next.
+  over after it: someone else may sit there next; a bomb pot (暴击) has no
+  preflop decisions and is not counted.
 
 The scoreboard checked these reads against tables of the same kind of
 players; at a real table people change gears, so they are a guide, pulled
@@ -122,6 +123,8 @@ class AAReads:
         replay = replay_hand(facts)
         if replay["arena"] is None or replay["dealer_source"] != "reader":
             return False
+        if replay["arena"].observe(replay["arena"].occupied_seats[0])["bomb_pot"]:
+            return False                # no preflop decisions in a bomb pot
         entries = preflop_entries(replay["arena"])
         if entries is None:
             return False

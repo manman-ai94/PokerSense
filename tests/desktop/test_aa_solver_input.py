@@ -155,7 +155,7 @@ def test_the_first_action_of_a_street_may_be_read_before_its_board():
 
 
 def test_a_hand_without_preflop_betting_is_not_replayed():
-    # A bomb pot: everyone puts in and the flop comes at once.
+    # Its first pot (19) is the blinds, not a bomb pot's: the preflop was missed.
     flop_only = [(a[0], "flop", *a[2:]) for a in ACTIONS[6:]]
     result = replay_hand(facts(flop_only))
     assert (result["status"], result["reason"]) == ("stopped", "starts_after_preflop")
@@ -264,3 +264,35 @@ def test_only_chips_in_before_acting_beyond_the_blinds_are_a_post():
                                   "kind": "call", "amount": "4"}]}
     assert own_post(acted, observation, 3) == 0
     assert own_post(hand, {**observation, "street": "flop"}, 3) == 0
+
+
+# A bomb pot of six players, dealer 5: everyone put in 14; the flop is checked
+# to seat 5, who bets 20.
+BOMB_ACTIONS = [(30 + seat, "flop", seat, "check", "0") for seat in range(5)] + [
+    (36, "flop", 5, "raise", "20")]
+
+
+def bomb_hand(pot=Decimal(84), actions=BOMB_ACTIONS):
+    return {**facts(actions=actions), "opening_pot": pot, "wagers": {}, "price": None}
+
+
+def test_a_bomb_pot_is_replayed_from_the_flop():
+    from poker_engine.desktop.aa_solver_input import bomb_post, solver_observation
+    assert bomb_post(bomb_hand()) == 14
+    result = replay_hand(bomb_hand())
+    assert (result["status"], result["replayed"]) == ("ok", len(BOMB_ACTIONS))
+    observation, reason = solver_observation(bomb_hand(), 0, ["Qs", "Qh"])
+    assert reason is None
+    assert (observation["street"], observation["bomb_pot"], observation["to_call"],
+            observation["pot"]) == ("flop", "14", "20", "104")
+    assert observation["straddler_seat"] is None
+
+
+def test_only_a_flop_start_with_every_seat_posting_seven_big_blinds_is_a_bomb_pot():
+    from poker_engine.desktop.aa_solver_input import bomb_post
+    assert bomb_post(bomb_hand(pot=Decimal(85))) is None
+    preflop = [(20, "preflop", 3, "fold", "0")] + BOMB_ACTIONS
+    assert bomb_post(bomb_hand(actions=preflop)) is None
+    assert bomb_post(bomb_hand(pot=None)) is None
+    stopped = replay_hand(bomb_hand(pot=Decimal(85)))
+    assert (stopped["status"], stopped["reason"]) == ("stopped", "starts_after_preflop")

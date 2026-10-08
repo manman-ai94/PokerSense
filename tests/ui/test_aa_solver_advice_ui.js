@@ -40,7 +40,7 @@ assert.equal(element("advice-detail").textContent, "底池 35（比 AA 规则算
 assert.deepEqual(texts("advice-history"), ["翻前 · 座位 4 · 跟注 4", "转牌 · 座位 2 · 加注 10"]);
 
 render({status: "abstain", reason: "starts_after_preflop", street: "river"}, history);
-assert.equal(element("advice-status").textContent, "这手牌不给建议：没有翻牌前下注（多半是暴击局），规则模型不支持");
+assert.equal(element("advice-status").textContent, "这手牌不给建议：没有读到翻牌前下注，底池也不像暴击局");
 assert.deepEqual(texts("advice-rows"), []);
 assert.equal(element("advice-detail").textContent, "");
 
