@@ -24,8 +24,11 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   action changes (``cuts``). The report's ``heads_up`` says which.
 
 An action the history missed but the table shows (``aa_solver_input``) is
-filled in; the report's ``inferred_actions`` counts them. Every frame
-reports where the current decision stands:
+filled in; the report's ``inferred_actions`` counts them. A decision is the
+actions read so far, the street and what your button shows
+(``decision_key``): when your action and a re-raise are both missed, the
+new price is still a new decision. Every frame reports where the current
+decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -95,6 +98,13 @@ def _decimal(value):
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def decision_key(fields, history):
+    """(actions read, street, your button): one of your decisions."""
+    controls = fields.get("hero_controls") or {}
+    return (len(history["actions"]), fields.get("street"),
+            f"{controls.get('button')}:{controls.get('call_amount')}")
 
 
 def advice_rows(strategy, observation):
@@ -179,7 +189,7 @@ class AASolverAdvice:
         cards = [card for card in fields.get("hero") or () if card]
         if len(cards) != 2:
             return self._report("idle", "your_cards_not_read", street=street)
-        key = (len(history["actions"]), street)
+        key = decision_key(fields, history)
         job = self._jobs.get(key)
         retry = isinstance(job, dict) and frame >= job.get("retry_at", frame + 1)
         if job is None or retry:
@@ -366,4 +376,5 @@ class AASolverAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "advice_rows", "multiway_row", "range_report"]
+__all__ = ["AASolverAdvice", "advice_rows", "decision_key", "multiway_row",
+           "range_report"]

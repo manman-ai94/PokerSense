@@ -19,7 +19,9 @@ the time, until your action for it appears in the hand's history
   mistake.
 
 An action that cannot be matched to an option (a check facing a bet, a raise
-the policy did not offer) is left ungraded rather than guessed. Every grade
+the policy did not offer) is left ungraded rather than guessed, and so is an
+action whose decision had no advice of its own: the advice for your action
+before it on that street is not this one's. Every grade
 of this observation is kept, newest first in the report, with the hands you
 were dealt, how many grades were best, and the big blinds given up preflop.
 
@@ -36,6 +38,7 @@ import json
 import time
 
 from .aa_session import frame_summary
+from .aa_solver_advice import decision_key
 from .aa_solver_input import RULES_PATH
 
 HERO = 4
@@ -276,31 +279,41 @@ class AAGrades:
                 fields.get("participants") or {}).items()
                 if state in DEALT and _slot(seat) is not None),
             "facing": _facing(actions, street)}
-        spot = self._spots.setdefault((len(actions), street), seen)
+        spot = self._spots.setdefault(decision_key(fields, history), seen)
         for name, value in seen.items():     # a read that came in late
             if spot[name] is None or (isinstance(value, list) and None in spot[name]
                                       and None not in value):
                 spot[name] = value
 
     def _grade(self, history, outcomes):
+        before = -1                 # where your action before this one is
         for index, action in enumerate(history["actions"]):
             frame, street, slot, kind, amount, source = action[:6]
-            if _slot(slot) != HERO or frame in self._done or source == "pending":
+            if _slot(slot) != HERO:
                 continue
-            keys = [key for key in outcomes if key[1] == street and key[0] <= index]
+            mine, before = before, index
+            if frame in self._done or source == "pending":
+                continue
+            # Advice asked after your action before this one: an earlier
+            # decision's advice does not grade this one.
+            keys = [key for key in outcomes
+                    if key[1] == street and mine < key[0] <= index]
             if not keys:
                 self._done.add(frame)            # no advice for this decision
                 self._decisions += 1
                 continue
-            key = max(keys)
+            latest = max(key[0] for key in keys)
+            key = [key for key in keys if key[0] == latest][-1]
             outcome = outcomes[key]
             if outcome is None:                  # the solve is still running
                 continue
             self._done.add(frame)
             self._decisions += 1
             self._advised += outcome.get("status") == "ready"
-            if outcome.get("status") == "ready" and key in self._spots:
-                row = self._row(self._spots[key], outcome, kind, amount)
+            spot = self._spots.get(key) or next(
+                (seen for at, seen in self._spots.items() if at[:2] == key[:2]), None)
+            if outcome.get("status") == "ready" and spot is not None:
+                row = self._row(spot, outcome, kind, amount)
                 if row is not None:
                     self._rows.append(row)
 

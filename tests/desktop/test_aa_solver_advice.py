@@ -207,6 +207,8 @@ def test_more_than_one_opponent_gets_the_range_rules_action():
 def test_checked_to_in_a_multiway_pot_bets_or_checks_by_the_share():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     rows = [three_handed(frame, shown=31, turn=99) for frame in range(32)]
+    for row in rows:                   # nothing to call: your button is a check
+        row["hero_controls_v1"].update(button="check", call_amount="0")
     report = [advice.observe(row, frame) for frame, row in enumerate(rows)][-1]
     assert report["cuts"] == {"bet": DEFAULTS["bet"]}
     [row] = report["advice"]
@@ -383,10 +385,10 @@ def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     run(advice, range(50))
-    assert advice.settled() == ("hand_1", {(9, "turn"): None})    # still computing
+    assert advice.settled() == ("hand_1", {(9, "turn", "call:10"): None})  # computing
     done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     run(done, range(50))
     hand, outcomes = done.settled()
-    assert hand == "hand_1" and outcomes[(9, "turn")]["status"] == "ready"
+    assert hand == "hand_1" and outcomes[(9, "turn", "call:10")]["status"] == "ready"
     done.reset()
     assert done.settled() == (None, {})

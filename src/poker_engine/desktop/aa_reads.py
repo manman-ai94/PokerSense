@@ -7,8 +7,11 @@ is not the AA statistics' average player. This counts both over the hands
 seen since the observation started:
 
 - a hand counts once it is over, and only when its preflop betting replays
-  on the AA table to the end (``aa_solver_input``): the replay knows who was
-  dealt in and tells calls from checks and raises from calls;
+  on the AA table to the end with the dealer that was read
+  (``aa_solver_input``): the replay knows who was dealt in and tells calls
+  from checks and raises from calls. A hand whose dealer only the betting
+  order gave is left out: when the first action was missed, the dealer moves
+  by one seat and the seat that acted first reads as a blind that folded;
 - a seat put chips in when it called something or raised, and raised when
   it raised; posting a blind or the straddle and checking are neither;
 - your own seat is not counted, and a seat read empty during a hand starts
@@ -117,7 +120,7 @@ class AAReads:
         if not facts["complete"] or not facts["actions"]:
             return False
         replay = replay_hand(facts)
-        if replay["arena"] is None:
+        if replay["arena"] is None or replay["dealer_source"] != "reader":
             return False
         entries = preflop_entries(replay["arena"])
         if entries is None:

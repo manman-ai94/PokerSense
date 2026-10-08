@@ -94,6 +94,10 @@ const next = base({action_history_v1: {...river.action_history_v1, actions: [
   ...river.action_history_v1.actions, {street: "river", slot: 4, kind: "call", amount: "28"}]}});
 view = signalView(running(next), 5000, memory);
 assert.equal(view.tags[2], "已等 0 秒");
+// A new price is a new decision too, even when your action before it was not read.
+view = signalView(running(base({hero_controls_v1: {visible: true, button: "call", call_amount: "28"}})), 6000, memory);
+view = signalView(running(base({hero_controls_v1: {visible: true, button: "call", call_amount: "80"}})), 9000, memory);
+assert.equal(view.tags[2], "已等 0 秒");
 
 // A big bet that covers the stack reads as all in; a narrow top choice says so.
 view = signalView(running(base({solver_advice_v1: {status: "ready", street: "turn", to_call: "0",

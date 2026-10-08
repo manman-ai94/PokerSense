@@ -453,13 +453,15 @@
     return list;
   }
 
-  // One decision: this hand, this street, and how often you already acted on it
-  // (an opponent's action read late does not restart the count).
+  // One decision: this hand, this street, how often you already acted on it (an opponent's action
+  // read late does not restart the count) and the price on your button (a new price is a new
+  // decision even when your action before it was not read).
   function decisionKey(row, history) {
     const street = row.street_v1?.street ?? "?";
     const mine = (history?.actions || []).filter(action =>
       action.street === street && action.slot === HERO).length;
-    return `${history?.hand_id ?? "?"}|${street}|${mine}`;
+    const controls = row.hero_controls_v1 || {};
+    return `${history?.hand_id ?? "?"}|${street}|${mine}|${controls.button}:${controls.call_amount}`;
   }
 
   // memory keeps when the current decision and the current solve were first
