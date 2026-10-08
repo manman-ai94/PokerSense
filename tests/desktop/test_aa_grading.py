@@ -3,8 +3,8 @@
 from concurrent.futures import Future
 from decimal import Decimal
 
-from poker_engine.desktop.aa_grading import (AAGrades, multiway_grade, preflop_grade,
-                                             solver_grade)
+from poker_engine.desktop.aa_grading import (AAGrades, HeroChips, multiway_grade,
+                                             preflop_grade, solver_grade)
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice
 from tests.desktop.test_aa_solver_advice import (Bot, Inline, payload, preflop_turn,
                                                  three_handed)
@@ -141,9 +141,10 @@ def test_a_new_hand_keeps_the_grades_and_counts_hands_you_were_dealt():
     assert (report["hands"], report["graded"]) == (2, 1)
     grades.reset()
     assert grades.report() == {
-        "schema_version": 1, "hands": 0, "graded": 0, "best": 0,
-        "preflop_lost_big_blinds": 0.0, "last": None, "rows": [],
-        "acts_on_client": False}
+        "schema_version": 1, "hands": 0, "decisions": 0, "advised": 0, "graded": 0,
+        "best": 0, "grades": {"best": 0, "fine": 0, "slip": 0, "mistake": 0},
+        "preflop_lost_big_blinds": 0.0, "net_chips": None, "net_big_blinds": None,
+        "rebuys": 0, "last": None, "rows": [], "acts_on_client": False}
 
 
 def test_the_report_lists_the_newest_twenty_first():
@@ -241,3 +242,81 @@ def test_multiway_grades_by_how_far_the_share_is_from_your_action():
     assert multiway_grade("fold", bet, D(0), D(90)) is None
     unread = {**raise_, "range_equity": None}
     assert multiway_grade("call", unread, D(10), D(90)) is None
+
+
+def test_the_session_counts_your_actions_the_advice_and_each_grade():
+    # Your preflop call and flop check had no advice here; the turn call did.
+    report = turn_decision("call", "10")[2]
+    assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 1)
+    assert report["grades"] == {"best": 1, "fine": 0, "slip": 0, "mistake": 0}
+    report = turn_decision("call", "10", bot=Bot(error="own_hand_not_in_range"))[2]
+    assert (report["decisions"], report["advised"], report["graded"]) == (3, 0, 0)
+    # Advice that cannot be matched to what you did: advised, not graded.
+    report = turn_decision("check", "0")[2]
+    assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 0)
+
+
+def seen(stack, state="active", front=None, hand="h1", times=2):
+    """A reading of your seat, ``times`` frames in a row."""
+    return [({"stacks": {"4": stack}, "street_wagers": {"4": front},
+              "participants": {"4": state}}, hand)] * times
+
+
+def chips_after(*readings, dealt=True):
+    chips = HeroChips()
+    for fields, hand in [item for group in readings for item in group]:
+        chips.observe(fields, hand, dealt)
+    return chips
+
+
+def test_your_chips_count_from_when_you_are_dealt_with_rebuys_left_out():
+    chips = chips_after(seen("198", front="2"))       # a blind is still yours
+    assert (chips.start, chips.net()) == (Decimal(200), 0)
+    # All in and lost: the result moves once you are out of the hand.
+    lost = [seen("0", "all_in", front="198"), seen("0", "all_in")]
+    chips = chips_after(seen("198", front="2"), *lost)
+    assert chips.net() == 0                           # the pot is still played
+    chips = chips_after(seen("198", front="2"), *lost, seen("0", "waiting"))
+    assert chips.net() == -200
+    # A rebuy is not a result; the hand after it is.
+    after = [seen("200", "waiting"), seen("198", front="2", hand="h2"),
+             seen("260", hand="h2")]
+    chips = chips_after(seen("198", front="2"), *lost, seen("0", "waiting"), *after)
+    assert (chips.net(), chips.rebuys, chips.added) == (-200, 1, Decimal(200))
+    chips = chips_after(seen("198", front="2"), *lost, seen("0", "waiting"), *after,
+                        seen("259", front="1", hand="h3"))
+    assert chips.net() == -140
+    # One frame is not a reading.
+    chips = chips_after(seen("198", front="2"), *lost, seen("0", "waiting"), *after,
+                        seen("500", hand="h3", times=1))
+    assert chips.net() == -140
+
+
+def test_a_pot_won_all_in_is_a_result_and_a_new_buy_in_is_not():
+    won = chips_after(seen("150"), seen("0", "all_in", front="150"),
+                      seen("0", "all_in"), seen("300"),
+                      seen("298", front="2", hand="h2"))
+    assert (won.net(), won.rebuys) == (150, 0)
+    # The seat was read empty: sitting down again with other chips is a buy-in.
+    back = chips_after(seen("150"), seen("120", "folded", hand="h2"),
+                       seen(None, "empty", hand="h3"),
+                       seen("300", "waiting", hand="h3"),
+                       seen("300", hand="h4"))
+    assert (back.net(), back.rebuys, back.added) == (-30, 1, Decimal(180))
+    # After you fold only the stack is yours: what is in front is lost.
+    folded = chips_after(seen("150"), seen("140", "folded", front="10"))
+    assert folded.net() == -10
+    # Not dealt in yet (watching): no result.
+    assert chips_after(seen("150"), dealt=False).net() is None
+
+
+def test_the_report_gives_your_result_in_big_blinds():
+    advice, grades, _ = turn_decision("call", "10")
+    for frame, stack in ((60, "200"), (61, "200"), (62, "175"), (63, "175"),
+                         (64, "175")):
+        row = payload(frame)
+        row["action_history_v1"]["hand_id"] = "hand_2" if frame < 64 else "hand_3"
+        row["stacks"]["4"]["value"] = stack
+        report = grades(row, frame)
+    assert (report["net_chips"], report["net_big_blinds"], report["rebuys"]) == (
+        "-25", -12.5, 0)

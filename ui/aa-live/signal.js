@@ -134,6 +134,7 @@
       box.append(node("span", "label", item.label), value);
       return box;
     }));
+    el("session-spread").textContent = session.spread;
     const rows = session.rows.map(item => {
       const line = node("div", "srow");
       const text = node("div");

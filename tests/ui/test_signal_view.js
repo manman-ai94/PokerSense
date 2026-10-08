@@ -222,8 +222,17 @@ assert.equal(view.potCap, "13"); assert.match(view.rule, /^怎么打分/);
 assert.deepEqual(view.numbers.map(item => [item.label, item.value]), [["本场照着打", "0/2"], ["翻前少赢", "1.2"]]);
 // The live table on the side and the session list stay current.
 assert.equal(view.pot, "85"); assert.equal(view.header.session, "本场 87 手 · 照建议 0/2");
-assert.deepEqual(view.session.stats.map(item => [item.label, item.value]),
-  [["有建议的", "2"], ["照着打", "0"], ["翻前少赢", "1.2"]]);
+// A report from before the session counts (no actions or chips yet): what there is.
+assert.deepEqual(view.session.stats.map(item => [item.label, item.value, item.unit]),
+  [["有建议", "2", undefined], ["照着打", "0/2", undefined], ["输赢 · 大盲", "—", undefined]]);
+assert.equal(view.session.spread, "最佳 0 · 可以 0 · 小失误 0 · 错误 0 · 翻前少赢 1.2 大盲");
+const counted = sessionView({...grades, decisions: 5, advised: 4, grades: {best: 0, fine: 1, slip: 1, mistake: 0},
+  net_big_blinds: -12.5, rebuys: 1});
+assert.deepEqual(counted.stats.map(item => [item.label, item.value, item.unit]),
+  [["有建议", "4/5", undefined], ["照着打", "0/2", undefined], ["输赢 · 大盲", "−12.5", undefined]]);
+assert.equal(counted.spread, "最佳 0 · 可以 1 · 小失误 1 · 错误 0 · 翻前少赢 1.2 大盲 · 补码 1 次不算输赢");
+assert.equal(sessionView({...grades, net_big_blinds: 3}).stats[2].value, "+3.0");
+assert.equal(sessionView({...grades, net_big_blinds: -234.5}).stats[2].value, "−235");
 assert.deepEqual(view.session.rows.map(item => [item.title, item.detail, item.grade, item.tone]), [
   ["河牌 · 4♦︎ 4♠︎", "你弃牌 · 求解器 43% 这样打", "可以", "fine"],
   ["翻前 · K♣︎ 10♣︎", "你跟注 4 · 最好加注到 14 · 少赢 1.2", "小失误", "slip"]]);

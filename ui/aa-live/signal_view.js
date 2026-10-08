@@ -402,12 +402,22 @@
         : ["只显示建议，不替你点"]};
   }
 
+  // This session so far: how many of your actions had advice, how many you played as advised, your
+  // chips won or lost (rebuys left out), and how the grades spread.
   function sessionView(grades) {
     if (!grades || !isNumber(grades.graded)) return null;
+    const net = num(grades.net_big_blinds);
+    const counts = grades.grades || {};
+    const spread = Object.keys(GRADES).map(grade => `${GRADES[grade]} ${counts[grade] ?? 0}`);
+    spread.push(`翻前少赢 ${one(num(grades.preflop_lost_big_blinds) ?? 0)} 大盲`);
+    if (grades.rebuys > 0) spread.push(`补码 ${grades.rebuys} 次不算输赢`);
     return {pill: `本场 ${grades.hands} 手 · 照建议 ${grades.best}/${grades.graded}`,
-      stats: [{label: "有建议的", value: String(grades.graded)},
-        {label: "照着打", value: String(grades.best)},
-        {label: "翻前少赢", value: one(num(grades.preflop_lost_big_blinds) ?? 0), unit: "大盲"}],
+      stats: [{label: "有建议", value: isNumber(grades.decisions)
+          ? `${grades.advised}/${grades.decisions}` : String(grades.graded)},
+        {label: "照着打", value: `${grades.best}/${grades.graded}`},
+        {label: "输赢 · 大盲", value: net === null ? "—" : `${net > 0 ? "+" : net < 0 ? "−" : ""}${
+          Math.abs(net) >= 100 ? Math.round(Math.abs(net)) : one(Math.abs(net))}`}],
+      spread: spread.join(" · "),
       rows: (grades.rows || []).slice(0, 6).map(item => ({time: clockText(item.at),
         title: `${STREETS[item.street] || ""} · ${handText(item.hero)}`, detail: gradeView(item).detail,
         grade: GRADES[item.grade] || "", tone: item.grade})),
