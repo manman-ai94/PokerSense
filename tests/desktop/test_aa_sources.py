@@ -346,6 +346,26 @@ def test_a_chosen_card_without_a_picture_is_kept_and_the_camera_left_alone(monke
         source.close()
 
 
+def test_a_black_card_that_starts_showing_the_phone_says_so(monkeypatch):
+    shows = {0: "camera", 1: "black"}
+    backend, _ = devices(shows)
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    source = AACaptureSource({"device_index": 1, "find_phone": True},
+                             backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_check"] == "no_phone_found"
+        shows[1] = "phone"                  # the phone is unlocked and mirrors
+        deadline = time.monotonic() + 2
+        while (source.device["device_check"] == "no_phone_found"
+               and time.monotonic() < deadline):
+            source.read()
+        assert source.device["device_check"] == "phone_between_black_bars"
+        assert source.device["device_seen"] == {"1": "phone"}
+    finally:
+        source.close()
+
+
 def test_without_the_phone_a_black_card_is_used_rather_than_the_camera(monkeypatch):
     backend, opened = devices({0: "camera", 1: "black"})
     monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)

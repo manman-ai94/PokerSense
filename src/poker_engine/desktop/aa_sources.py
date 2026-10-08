@@ -10,9 +10,11 @@ picture from the phone yet (a camera always shows something): a chosen
 device that stays black is kept without opening the others, so the Mac's
 camera does not light up while the phone is locked or not mirroring yet.
 When no device shows the phone, the first black one is used, else the
-chosen one. ``device`` says which one was used, whether it showed the phone
-(``device_check``) and what each device looked at showed (``device_seen``);
-the session reports it and a recording keeps it.
+chosen one; a black card that lights up later (the phone unlocked or started
+mirroring) is then reported as showing the phone. ``device`` says which one
+was used, whether it showed the phone (``device_check``) and what each
+device looked at showed (``device_seen``); the session reports it and a
+recording keeps it.
 
 ``CameraList`` names the cameras macOS lists, so the window can say whether
 the card is there at all (a card plugged into a hub instead of the Mac is
@@ -35,7 +37,7 @@ from poker_engine.perceptual.capture.capture_card_backend import (
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
 from .aa_device_lock import AACaptureDeviceLock
-from .aa_recorder import AARecorder, picture
+from .aa_recorder import STRIP_LIT, AARecorder, picture
 
 FIND_DEVICES = range(4)         # device numbers looked at for the phone
 LOOK_SECONDS = 5                # black this long (mirroring may start late): no phone
@@ -195,10 +197,14 @@ class AACaptureSource:
         try:
             if self.find_phone:
                 self.find()
+            waiting = self._black_card()
             while not self.cancel.is_set():
                 host_started = time.monotonic()
                 frame = self.backend.capture(self.target)
                 host_received = time.monotonic()
+                if waiting and float(frame.image.mean()) > STRIP_LIT:
+                    waiting = False
+                    self._lit()
                 recorder = self.recorder
                 if recorder is not None:
                     recorder.offer(frame.image)
@@ -230,6 +236,18 @@ class AACaptureSource:
                     self.condition.notify_all()
             else:
                 self.device_lock.release()
+
+    def _black_card(self):
+        """The device in use is a card that was black when looked at."""
+        index = str(self.device["device_index"])
+        return (self.find_phone and self.device.get("device_check") == NO_PHONE
+                and self.device["device_seen"].get(index) == "dark")
+
+    def _lit(self):
+        """The black card shows the phone now."""
+        index = str(self.device["device_index"])
+        self.device = {**self.device, "device_check": PHONE_FOUND,
+                       "device_seen": {**self.device["device_seen"], index: "phone"}}
 
     def _frame_extras(self):
         """Extra per-frame fields, read on the pump thread right after capture."""
