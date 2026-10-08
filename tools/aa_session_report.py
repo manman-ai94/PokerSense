@@ -12,6 +12,10 @@ causes over the session, most frequent first.
     PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py \\
         --frames <measurement>/frames.jsonl [--frames ...] [--out report.json]
 
+The window's own log of a recording (``frames.jsonl`` in the recording's
+folder, what it read and advised during play) reads the same way; each hand
+then says where it starts in the video (``video_seconds``).
+
 A log measured without ``--advice`` has no solver advice for your heads-up
 turn and river; ``--replay-advice`` then works the advice out again from the
 log with the current code, taking any heads-up solve as done (no TexasSolver).
@@ -131,6 +135,7 @@ def hand_report(rows, advice, gaps=()):
     replay = check_hand(rows) if facts["complete"] else None
     return {
         "hand_id": facts["hand_id"], "start_pts": round(rows[0]["pts_seconds"], 1),
+        "video_seconds": rows[0].get("video_seconds"),
         "end_pts": round(rows[-1]["pts_seconds"], 1), "players": len(facts["seats"]),
         "complete": facts["complete"], "dealer_read": facts["dealer"] is not None,
         "you_in": len(in_hand) >= 5, "your_cards": cards.most_common(1)[0][0]

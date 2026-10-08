@@ -1,5 +1,6 @@
 """AA worker ownership and stale/late-result isolation, without real capture."""
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -443,6 +444,37 @@ def test_the_running_source_can_be_recorded_and_its_outcome_stays_after_stop():
             plain.record(True, Path("x"))             # a source with no recorder
     finally:
         plain.stop()
+
+
+def test_while_recording_the_window_logs_each_frame_next_to_the_video(tmp_path):
+    class Recorder:
+        def __init__(self, out):
+            out.mkdir()
+            self.out, self.begin, self.stopping = out, time.monotonic(), False
+
+    class Recording(TimedSource):
+        recorder = None
+
+    source = Recording()
+    session = AARecognitionSession(lambda _: source, Reader, interval_seconds=.005)
+    session.start({})
+    try:
+        wait_until(lambda: (session.snapshot()["sequence"] or 0) >= 2)
+        source.recorder = Recorder(tmp_path / "20261008-live")
+        log = source.recorder.out / "frames.jsonl"
+        wait_until(lambda: log.is_file() and len(log.read_text().splitlines()) >= 3)
+        source.recorder.stopping = True
+        time.sleep(.05)
+        count = len(log.read_text().splitlines())
+        time.sleep(.05)
+        assert len(log.read_text().splitlines()) == count   # stopped with it
+    finally:
+        session.stop()
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert rows[0]["processed"] >= 2 and "fields" in rows[0]
+    assert all(0 <= row["video_seconds"] < 2 for row in rows)
+    assert [row["video_seconds"] for row in rows] == sorted(
+        row["video_seconds"] for row in rows)
 
 
 def test_the_session_knows_when_it_last_saw_the_table():

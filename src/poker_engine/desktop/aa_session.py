@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import math
+from pathlib import Path
 import threading
 import time
 import uuid
@@ -30,6 +31,12 @@ class AARecognitionSession:
     working out a big multiway pot or a hiccup of the card, does not end
     the observation. A result that comes back late is cleared the moment it
     is published.
+
+    While the source records (``aa_recorder``), every processed frame is
+    also logged to ``frames.jsonl`` in the recording's folder, as
+    ``frame_log`` would log it, with ``video_seconds`` (where the frame is
+    in the recording): what the window read and advised during play, hand
+    by hand (``tools/aa_session_report.py`` reads it).
     """
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
@@ -307,9 +314,16 @@ class AARecognitionSession:
                     timing = dict(self._timing)
                     # A result that comes back late is cleared at once.
                     self._expire()
-                if self._frame_log is not None:
-                    _append_frame_log(self._frame_log, processed, record, timing,
-                                      payload)
+                log, video = self._frame_log, None
+                if log is None:
+                    # While the source records, the window keeps its own log
+                    # of what it read and advised next to the video.
+                    log, begin = _recording_log(source)
+                    if begin is not None and host_received is not None:
+                        video = round(host_received - begin, 3)
+                if log is not None:
+                    _append_frame_log(log, processed, record, timing, payload,
+                                      video_seconds=video)
                 processed += 1
                 cancel.wait(self._interval)
         except Exception as exc:
@@ -403,8 +417,19 @@ def _advice(advice):
             if key in advice}
 
 
-def _append_frame_log(path, processed, record, timing, payload):
-    """One JSON line per processed frame: source, timing and key fields."""
+def _recording_log(source):
+    """(frames.jsonl in the folder the source is recording into, the
+    recording's start on the monotonic clock), or (None, None)."""
+    recorder = getattr(source, "recorder", None)
+    out, begin = getattr(recorder, "out", None), getattr(recorder, "begin", None)
+    if out is None or getattr(recorder, "stopping", True):
+        return None, None
+    return Path(out) / "frames.jsonl", begin
+
+
+def _append_frame_log(path, processed, record, timing, payload, video_seconds=None):
+    """One JSON line per processed frame: source, timing and key fields; in
+    a recording's own log, ``video_seconds`` is where the frame is in it."""
     row = {"processed": processed,
            "source_frame": record.get("source_frame"),
            "source_kind": record.get("source_kind"),
@@ -412,6 +437,8 @@ def _append_frame_log(path, processed, record, timing, payload):
            "source_video_pts": record.get("source_video_pts"),
            "timing": timing,
            "fields": frame_summary(payload)}
+    if video_seconds is not None:
+        row["video_seconds"] = video_seconds
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 
