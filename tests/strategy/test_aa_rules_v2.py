@@ -39,7 +39,7 @@ def profile(**changes):
     return AARuleProfileV2.from_dict(values)
 
 
-@pytest.mark.parametrize("count", (6, 7, 8))
+@pytest.mark.parametrize("count", (5, 6, 7, 8))
 def test_mandatory_utg_straddle_and_positions_are_parameterized(count):
     rules = profile(table_size=count)
     occupied = tuple(range(count))
@@ -56,6 +56,7 @@ def test_mandatory_utg_straddle_and_positions_are_parameterized(count):
     assert plan.contributions[2] == 4
     assert plan.contributions[3] == 6
     assert plan.expected_total == Decimal(2 * count + 7)
+    assert plan.positions[count - 1] is Position.CO
 
 
 def test_real_development_opening_difference_stays_unallocated():
@@ -137,7 +138,7 @@ def test_no_flop_no_drop_requires_explicit_policy_and_evidence():
 
 
 @pytest.mark.parametrize("change", (
-    {"table_size": 5}, {"small_blind": "2"}, {"big_blind": "1"},
+    {"table_size": 4}, {"table_size": 9}, {"small_blind": "2"}, {"big_blind": "1"},
     {"straddle_amount": "2"}, {"rake_percent": "1.1"},
     {"minimum_chip": "0"}, {"small_blind": 1},
     {"minimum_chip": "0.6"},

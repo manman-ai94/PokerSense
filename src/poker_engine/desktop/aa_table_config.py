@@ -61,8 +61,8 @@ def validate_config(document):
     if not isinstance(label, str) or len(label) > 100:
         raise ValueError("牌桌备注不能超过 100 字")
     count = document["dealt_players"]
-    if count is not None and (type(count) is not int or count not in (6, 7, 8)):
-        raise ValueError("发牌人数必须为 6、7、8 或未知")
+    if count is not None and (type(count) is not int or count not in (5, 6, 7, 8)):
+        raise ValueError("发牌人数必须为 5、6、7、8 或未知")
     amounts = {}
     pending = ["dealt_players"] if count is None else []
     for key in AMOUNTS + STACK_RANGE:

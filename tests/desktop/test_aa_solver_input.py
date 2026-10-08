@@ -50,9 +50,20 @@ def test_two_actions_read_in_the_same_frame_may_be_swapped():
     assert replay_hand(facts(swapped))["status"] == "ok"
 
 
-def test_five_players_are_not_covered_by_the_aa_rules():
-    result = replay_hand(facts(seats=range(5)))
-    assert (result["status"], result["reason"]) == ("stopped", "players_5")
+def test_five_players_replay_with_the_straddle_on_the_seat_after_the_big_blind():
+    # Five players, dealer 4: small blind 0, big blind 1, straddle 2; seat 3 acts first.
+    five = [(10, "preflop", 3, "call", "4"), (12, "preflop", 4, "fold", "0"),
+            (14, "preflop", 0, "fold", "0"), (16, "preflop", 1, "fold", "0"),
+            (18, "preflop", 2, "check", "0"), (30, "flop", 2, "check", "0"),
+            (32, "flop", 3, "raise", "10"), (34, "flop", 2, "call", "10")]
+    result = replay_hand(facts(five, dealer=4, seats=range(5)))
+    assert (result["status"], result["dealer"], result["replayed"]) == (
+        "ok", 4, len(five))
+
+
+def test_four_players_are_not_covered_by_the_aa_rules():
+    result = replay_hand(facts(seats=range(4)))
+    assert (result["status"], result["reason"]) == ("stopped", "players_4")
 
 
 def test_starting_stacks_add_back_what_each_seat_put_in():
