@@ -50,8 +50,10 @@ from .mushroom import Mushroom, main_pot_shares, pool_result, small_blind
 # flop as AA players; "styles" is the first version's mix. The tougher ones
 # (opponents.py): "reg", "maniac" and "nit" alone, "tough" all three next to
 # AA players; "mirror" is the AI itself; "solver" regulars that play heads-up
-# turns and rivers with TexasSolver (installed solver only, slow).
+# turns and rivers with TexasSolver (installed solver only, slow). "aa_real"
+# (aa_real.py) plays the shares and bet sizes measured on AA recordings.
 POOLS = {"population": ("population",), "aa": ("aa_population",),
+         "aa_real": ("aa_real",),
          "styles": ("tag", "lag", "rock", "station"),
          "reg": ("reg",), "maniac": ("maniac",), "nit": ("nit",),
          "tough": ("reg", "maniac", "nit", "aa_population"),

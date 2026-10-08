@@ -2,14 +2,15 @@
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
-        [--pool population|aa|styles|reg|maniac|nit|tough|mirror|solver|tag,lag] \\
+        [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
         [--mushroom 3 [--mushroom-take 0.135]] [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
 pool is a name from ``runner.POOLS`` or a comma-separated list of policies;
-the default, "population", plays like real players; "reg", "maniac", "nit"
-and "tough" are the tougher opponents of ``scoreboard/opponents.py``.
+the default, "population", plays like real players; "aa_real" like the AA
+players measured on recordings (``scoreboard/aa_real.py``); "reg", "maniac",
+"nit" and "tough" are the tougher opponents of ``scoreboard/opponents.py``.
 ``--mushroom 3`` plays the AA mushroom pool with the dealer putting in 3 big
 blinds (see ``scoreboard/mushroom.py``).
 """
