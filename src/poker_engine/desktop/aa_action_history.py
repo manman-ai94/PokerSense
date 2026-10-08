@@ -259,7 +259,9 @@ class AAActionHistory:
     def observe(self, payload, frame):
         pot = _amount((payload.get("pot") or {}).get("value"))
         street = (payload.get("street_v1") or {}).get("street")
-        if street_evidence(payload) == HAND_OVER:
+        if street_evidence(payload) == HAND_OVER and street is None:
+            # The street layer clears the street once the hand is really over,
+            # not when the board is just unread for a moment after the flop.
             self._hand_over = True
         dropped = False
         if pot is not None:

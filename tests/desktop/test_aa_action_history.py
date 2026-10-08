@@ -210,3 +210,14 @@ def test_a_call_after_an_all_in_owes_the_all_in():
     assert [(a["slot"], a["kind"], a["amount"], a["amount_source"])
             for a in hand["actions"]] == [(1, "all_in", "448", "stack"),
                                           (3, "call", "448", "pot_rise")]
+
+
+def test_a_moment_with_nobody_read_after_the_flop_does_not_end_the_hand():
+    history = AAActionHistory()
+    feed(history, [payload("23")] * 3 + [payload("40", "flop")] * 3)
+    # Board and seats unread for a frame while the street layer holds the flop.
+    blink = {**payload("40", "flop", in_hand=False), "street_v1": {"street": "flop"}}
+    blink["cards"] = {"board_slots": [None] * 5, "hero": []}
+    first = history.observe(blink, 6)
+    later = history.observe(payload("40", "flop"), 7)
+    assert later["hand_id"] == first["hand_id"] == "hand_0"

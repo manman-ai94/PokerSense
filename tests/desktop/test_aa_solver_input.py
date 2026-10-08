@@ -206,3 +206,18 @@ def test_the_seats_before_yours_are_filled_in_from_your_price():
     checked = fill_to_seat(arena, 5, {**hand, "price": Decimal(0)})
     assert [(a["slot"], a["kind"]) for a in checked] == [(2, "call")]
     assert fill_to_seat(arena, 5, {**hand, "price": None}) is None
+
+
+def test_the_losers_fold_badge_at_the_showdown_does_not_stop_the_replay():
+    checked_down = ACTIONS + [
+        (40, "turn", 2, "check", "0"), (42, "turn", 5, "check", "0"),
+        (50, "river", 2, "check", "0"), (52, "river", 5, "fold", "0")]
+    result = replay_hand(facts(checked_down))
+    assert (result["status"], result["replayed"]) == ("ok", len(checked_down))
+    assert result["arena"].terminal                  # the fold counted as a check
+    all_in = ACTIONS[:7] + [
+        (32, "flop", 5, "all_in", "96"), (34, "flop", 2, "all_in", "96"),
+        (60, "river", 5, "fold", "0"), (60, "river", 2, "fold", "0")]
+    assert replay_hand(facts(all_in))["status"] == "ok"
+    folded = ACTIONS[:8] + [(34, "flop", 2, "fold", "0"), (40, "flop", 5, "fold", "0")]
+    assert replay_hand(facts(folded))["status"] == "ok"

@@ -9,9 +9,9 @@ that replay, and checks the hand on the way:
 - **seats**: the seats in the hand when its first action happened, plus any
   seat that acts. The AA rules cover 6 to 8 players;
 - **dealer**: the dealer reading, unless the betting order says otherwise.
-  Spectating, the button in front of the bottom seat is not read and the
-  last reading stays; when the reading does not fit the actions and exactly
-  one other dealer replays the whole hand, that one is used;
+  The button can still show the last hand's dealer when the hand starts;
+  when the reading does not fit the actions and exactly one other dealer
+  replays the whole hand, that one is used;
 - **actions**: every action must come from the seat whose turn it is, never
   on a later street than the table is on, and be legal at the table, with
   raises to what the seat had in plus its chips. (Without the street check,
@@ -19,7 +19,9 @@ that replay, and checks the hand on the way:
   taken for preflop calls. An earlier street is fine: the first action on a
   new street is often read before its board cards.) Two actions read in the
   same frame may be in either order; a fold read again for a seat that already
-  folded is skipped.
+  folded is skipped. At the showdown the loser's cards are thrown away under
+  the fold badge: a fold after the betting is over or from a seat that went
+  all in is skipped, and a fold on the river with nothing to call is a check.
 
 An action the reader missed can be filled in from the table, at most
 ``MAX_INFERRED`` per hand and only with the dealer that was read, when only
@@ -336,10 +338,12 @@ def _steps(seats, dealer, actions, board, stacks):
         _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
         starting_stacks={seat: (stacks or {}).get(seat, DEEP) for seat in seats})
     arena.reset(0, deck=replay_deck(board_history(board), len(seats)))
-    folded = set()
+    folded, all_in = set(), set()
     for index, action in enumerate(actions):
         if action["kind"] == "fold" and action["slot"] in folded:
             continue                  # the same fold read again (badge flicker)
+        if action["kind"] == "fold" and (arena.terminal or action["slot"] in all_in):
+            continue                  # cards thrown away at the showdown
         if arena.terminal:
             return "stopped", "action_after_hand_end", index, arena
         if arena.actor != action["slot"]:
@@ -350,13 +354,24 @@ def _steps(seats, dealer, actions, board, stacks):
         step = _arena_action(arena, action)
         if step is None:
             return "stopped", "raise_without_amount", index, arena
+        if step == "fold" and arena.street == "river" and not _to_call(arena):
+            step = "check_call"       # the loser throwing the cards away
         try:
             arena.step(step)
         except ValueError:
             return "stopped", "illegal_at_the_table", index, arena
-        if step == "fold":
+        if action["kind"] == "fold":
             folded.add(action["slot"])
+        elif action["kind"] == "all_in":
+            all_in.add(action["slot"])
     return "ok", None, len(actions), arena
+
+
+def _to_call(arena):
+    """What the seat to act must put in to call."""
+    bets = {int(seat): Decimal(value)
+            for seat, value in arena.observe(arena.actor)["bets"].items()}
+    return max(bets.values()) - bets[arena.actor]
 
 
 def _arena_action(arena, action):
