@@ -75,6 +75,9 @@ PYTHONPATH=src:. .venv/bin/python tools/tune_aa_preflop.py --pool aa --deals 200
     --grid realize_ip=0.9,1.0,1.1 --grid realize_oop=0.7,0.8,0.9
 # 从测量日志统计 AA 真人的翻前频率（新录像测量后重跑，更新 aa_preflop_stats_v1.json）
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_preflop_stats.py <测量目录>/frames.jsonl [...]
+# AA 真人翻前翻后打法统计（按位置、人数；给对手模型用）：先逐个日志抽牌局，再统计
+PYTHONPATH=src:. .venv/bin/python tools/aa_population_stats.py reduce <测量目录>/frames.jsonl --name <名字> >> hands.jsonl
+PYTHONPATH=src:. .venv/bin/python tools/aa_population_stats.py build hands.jsonl --hero-logs <坐着打的日志名,...> --minutes <名字>=<分钟> ... --out <文件>
 # 求解器策略（solver_turn：单挑转牌、河牌用 TexasSolver；solver_flop：再加翻牌）。先安装求解器。
 # 很慢也很占内存：solver_flop 600 局 4 个进程约 1.5 小时；每个翻牌求解要约 1GB 内存，进程不要开多
 tools/setup_texassolver.sh
