@@ -13,6 +13,14 @@ default ``take`` is how often the small blind wins the main pot on the
 simulated AA table (13.5% over 3000 hands of the AA pool), which makes the
 pool worth about 7 posts (22 big blinds) to the small blind on average.
 
+The strategy in a seat changes how often the small blind wins, so each
+strategy is scored with its own share (``takes``, measured by
+``runner.calibrate_takes``): one share for all of them made a strategy that
+wins the small blind more often look about 3-7 bb/100 better than it is. The
+carry is drawn from one random number per deal through each share's
+distribution, so strategies with nearly the same share still get nearly the
+same pools (the comparison stays paired).
+
 A hand's result then changes by the pool alone: the dealer pays the post,
 and the small blind gets the pool (carry plus post) times its share of the
 main pot (the pot every player still in can win; its expected share when the
@@ -25,7 +33,8 @@ counts it as extra pot when it is the small blind, the other bots ignore it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import math
 import random
 
 from .bots import _Policy
@@ -39,22 +48,36 @@ MAX_CARRY = 200             # posts; the chance of more is far below a millionth
 class Mushroom:
     post: float = 3.0       # big blinds the dealer puts in
     take: float = TAKE      # chance a hand's small blind takes the pool
+    takes: dict = field(default_factory=dict)   # per strategy, where measured
 
     def __post_init__(self):
-        if self.post <= 0 or not 0 < self.take <= 1:
+        if self.post <= 0 or not all(
+                0 < take <= 1 for take in (self.take, *self.takes.values())):
             raise ValueError("mushroom needs a positive post and 0 < take <= 1")
 
+    def for_strategy(self, name):
+        """The same pool with ``name``'s own take, when it has one."""
+        return Mushroom(self.post, self.takes.get(name, self.take))
+
     def pool(self, seed, big_blind):
-        """(the dealer's post, the pool carried in) in chips for one deal."""
-        rng = random.Random(seed * 7_919 + 3)
+        """(the dealer's post, the pool carried in) in chips for one deal.
+
+        The carry is ``k`` posts with chance ``take * (1 - take) ** k``,
+        drawn by inverting that distribution at one number per deal.
+        """
+        draw = random.Random(seed * 7_919 + 3).random()
         carry = 0
-        while carry < MAX_CARRY and rng.random() >= self.take:
-            carry += 1
+        if self.take < 1:
+            carry = min(MAX_CARRY, math.floor(math.log1p(-draw)
+                                              / math.log1p(-self.take)))
         post = self.post * big_blind
         return post, carry * post
 
     def to_dict(self):
-        return {"post_big_blinds": self.post, "take": self.take}
+        result = {"post_big_blinds": self.post, "take": self.take}
+        if self.takes:
+            result["takes"] = dict(self.takes)
+        return result
 
 
 def small_blind(arena):

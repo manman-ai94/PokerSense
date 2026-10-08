@@ -3,8 +3,9 @@
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
         [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
-        [--mushroom 3 [--mushroom-take 0.135]] [--bomb 7 [--bomb-share 0.07]] \\
-        [--reads 100] [--workers 10] [--out result.json]
+        [--mushroom 3 [--mushroom-take 0.135 | --calibration-deals 400]] \\
+        [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--workers 10] \\
+        [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
@@ -13,7 +14,9 @@ the default, "population", plays like real players; "aa_real" like the AA
 players measured on recordings (``scoreboard/aa_real.py``); "reg", "maniac",
 "nit" and "tough" are the tougher opponents of ``scoreboard/opponents.py``.
 ``--mushroom 3`` plays the AA mushroom pool with the dealer putting in 3 big
-blinds (see ``scoreboard/mushroom.py``). ``--bomb 7`` makes 7% of the deals
+blinds (see ``scoreboard/mushroom.py``); how often the small blind takes it
+is first measured for each strategy on other deals (``--calibration-deals``)
+unless ``--mushroom-take`` gives one share. ``--bomb 7`` makes 7% of the deals
 bomb pots where every player puts in 7 big blinds and the hand starts on the
 flop (``--bomb-share 1`` for bomb pots only; see ``scoreboard/bomb.py``).
 """
@@ -29,7 +32,8 @@ import sys
 from poker_engine.scoreboard.bots import POLICY_NAMES
 from poker_engine.scoreboard.bomb import SHARE, Bomb
 from poker_engine.scoreboard.mushroom import TAKE, Mushroom
-from poker_engine.scoreboard.runner import POOLS, run_scoreboard
+from poker_engine.scoreboard.runner import (CALIBRATION_DEALS, POOLS, calibrate_takes,
+                                            run_scoreboard)
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
@@ -67,9 +71,12 @@ def table(report):
         lines.append(f"bomb pots: {report['bomb']['share']:.0%} of deals, every "
                      f"player puts in {report['bomb']['post_big_blinds']:g} big blinds")
     if report.get("mushroom"):
+        takes = report["mushroom"].get("takes") or {}
+        took = (", ".join(f"{name} {take:.1%}" for name, take in takes.items())
+                or f"{report['mushroom']['take']:.1%}")
         lines.append("mushroom pool: the dealer puts in "
-                     f"{report['mushroom']['post_big_blinds']:g} big blinds, the small "
-                     f"blind takes it {report['mushroom']['take']:.1%} of hands")
+                     f"{report['mushroom']['post_big_blinds']:g} big blinds; the "
+                     f"small blind is drawn as taking it in: {took} of hands")
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
@@ -116,8 +123,11 @@ def main(argv=None):
     parser.add_argument("--no-all-in-ev", action="store_true")
     parser.add_argument("--mushroom", type=float, metavar="BIG_BLINDS",
                         help="play the AA mushroom pool: the dealer's post")
-    parser.add_argument("--mushroom-take", type=float, default=TAKE,
-                        help="chance a hand's small blind takes the pool")
+    parser.add_argument("--mushroom-take", type=float,
+                        help="chance a hand's small blind takes the pool, for every "
+                        "strategy (default: measured per strategy; the AA "
+                        f"players' is {TAKE})")
+    parser.add_argument("--calibration-deals", type=int, default=CALIBRATION_DEALS)
     parser.add_argument("--bomb", type=float, metavar="BIG_BLINDS",
                         help="make some deals bomb pots: what every player puts in")
     parser.add_argument("--bomb-share", type=float, default=SHARE,
@@ -129,16 +139,25 @@ def main(argv=None):
     args = parser.parse_args(argv)
     rules = AARuleProfileV2.from_dict(
         json.loads(args.rules.read_text(encoding="utf-8")))
-    report = run_scoreboard(rules, args.strategies.split(","), deals=args.deals,
-                            pool=POOLS.get(args.pool) or tuple(args.pool.split(",")),
+    strategies = args.strategies.split(",")
+    pool = POOLS.get(args.pool) or tuple(args.pool.split(","))
+    bomb = None if args.bomb is None else Bomb(args.bomb, args.bomb_share)
+    mushroom = None
+    if args.mushroom is not None:
+        if args.mushroom_take is not None:
+            mushroom = Mushroom(args.mushroom, args.mushroom_take)
+        else:
+            sys.stderr.write("measuring how often the small blind takes the pool\n")
+            mushroom = Mushroom(args.mushroom, TAKE, calibrate_takes(
+                rules, strategies, pool, args.mushroom,
+                deals=min(args.deals, args.calibration_deals), base_seed=args.seed,
+                workers=args.workers, progress=show_progress, reads=args.reads,
+                bomb=bomb))
+    report = run_scoreboard(rules, strategies, deals=args.deals, pool=pool,
                             workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
-                            mushroom=None if args.mushroom is None else Mushroom(
-                                args.mushroom, args.mushroom_take),
-                            reads=args.reads,
-                            bomb=None if args.bomb is None else Bomb(
-                                args.bomb, args.bomb_share))
+                            mushroom=mushroom, reads=args.reads, bomb=bomb)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))

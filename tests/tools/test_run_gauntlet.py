@@ -52,9 +52,9 @@ def test_mushroom_take_is_measured_per_table(tmp_path):
           "--strategies", "aa_preflop", "--pools", "nit", "--mushroom", "3",
           "--out", str(tmp_path)])
     summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
-    take = summary["mushroom"]["take"]["nit"]
+    take = summary["mushroom"]["take"]["nit"]["aa_preflop"]
     report = json.loads((tmp_path / "nit.json").read_text(encoding="utf-8"))
-    assert report["mushroom"]["take"] == take
+    assert report["mushroom"]["takes"] == {"aa_preflop": take}
     assert 0 < take <= 1
 
 
