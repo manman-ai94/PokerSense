@@ -74,7 +74,7 @@ assert.equal(view.title, "画面看不清"); assert.doesNotMatch(view.note, /设
 // No device showed the phone: said at once, in words that say what came in.
 for (const [seen, pill, words] of [
   [{"0": "other", "1": null}, "只认到摄像头", /^Mac 只认到电脑自带的摄像头/],
-  [{"0": "other", "1": "dark"}, "没有画面", /^采集卡接上了，但收不到手机画面/],
+  [{"0": "other", "1": "dark"}, "没有画面", /^采集卡接上了，但收不到手机画面.*画面一来就自己接上$/],
   [{"0": null, "1": null}, "没认到采集卡", /^Mac 没认到采集卡/]]) {
   view = signalView(found("no_phone_found", seen), 0, {});
   assert.equal(view.tone, "warn"); assert.equal(view.title, "没找到手机画面");

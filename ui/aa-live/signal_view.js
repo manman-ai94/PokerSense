@@ -507,7 +507,7 @@
   function noPhone(seen) {
     const kinds = Object.values(seen || {});
     if (kinds.includes("dark")) {
-      return {pill: "没有画面", note: "采集卡接上了，但收不到手机画面：手机要亮屏并切到“屏幕镜像”，再点停止、开始"};
+      return {pill: "没有画面", note: "采集卡接上了，但收不到手机画面：把手机解锁、切到“屏幕镜像”，画面一来就自己接上"};
     }
     if (kinds.includes("other")) {
       return {pill: "只认到摄像头", note: `Mac 只认到电脑自带的摄像头，没认到采集卡：${PLUG}`};
