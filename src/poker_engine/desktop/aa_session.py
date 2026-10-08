@@ -92,11 +92,20 @@ class AARecognitionSession:
                 "payload": copy.deepcopy(self._payload), "error": self._error,
                 "processing_ms": self._processing_ms,
                 "source_kind": self._source_kind, "pts_seconds": self._pts_seconds,
-                "source_options": copy.deepcopy(self._source_options),
+                "source_options": self._options(),
                 "timing": copy.deepcopy(self._timing),
                 "recording": self._recording()}
         result["realtime"] = observation_runtime_status(result, now=time.monotonic())
         return result
+
+    def _options(self):
+        """The start options, with the device the source actually uses (a
+        capture source may find another one, see ``aa_sources``)."""
+        options = copy.deepcopy(self._source_options)
+        device = getattr(self._source, "device", None)
+        if isinstance(device, dict):
+            options.update(copy.deepcopy(device))
+        return options
 
     def _recording(self):
         status = getattr(self._source, "recording_status", None)

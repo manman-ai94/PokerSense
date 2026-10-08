@@ -20,6 +20,7 @@
   // Between hands the phone shows animations the reader does not take as a
   // table; only a longer gap is worth a warning.
   const BLIND_SECONDS = 8;
+  const SOURCES = {"capture-card": "采集卡", "video-replay": "录像回放", "development-replay": "开发回放"};
   const DEALT = new Set(["active", "folded", "all_in"]);
   const IN_HAND = new Set(["active", "all_in"]);
   // Reasons the advice is held back because something on screen was not read.
@@ -494,12 +495,31 @@
     return {can, active: false, text: "录像", note, folder: rec?.folder || ""};
   }
 
+  // What the devices looked at showed when none showed the phone
+  // (source_options.device_seen: "phone", "other", "dark" or null).
+  const PLUG = "请把采集卡自己的 USB 直接插到 Mac（扩展坞插在手机上，不要插 Mac），再点停止、开始";
+  // The cameras macOS lists (status.capture_devices; null when not known).
+  function cameras(state, before, after = "") {
+    const names = state?.capture_available ? state?.capture_devices : null;
+    if (!Array.isArray(names)) return "";
+    return `${before}Mac 现在认到的摄像头：${names.length ? names.join("、") : "一个也没有"}${after}`;
+  }
+  function noPhone(seen) {
+    const kinds = Object.values(seen || {});
+    if (kinds.includes("dark")) {
+      return {pill: "没有画面", note: "采集卡接上了，但收不到手机画面：手机要亮屏并切到“屏幕镜像”，再点停止、开始"};
+    }
+    if (kinds.includes("other")) {
+      return {pill: "只认到摄像头", note: `Mac 只认到电脑自带的摄像头，没认到采集卡：${PLUG}`};
+    }
+    return {pill: "没认到采集卡", note: `Mac 没认到采集卡：${PLUG}`};
+  }
+
   function header(state) {
     const status = String(state?.status || "STOPPED").toUpperCase();
     const ms = num(state?.processing_ms);
     const running = status === "RUNNING" && state?.payload;
-    const source = {"capture-card": "采集卡", "video-replay": "录像回放",
-      "development-replay": "开发回放"}[state?.source_kind] || "";
+    const source = SOURCES[state?.source_kind] || "";
     const health = running ? {tone: "good", text: `${source || "画面"} · 识别正常${ms !== null ? ` · ${Math.round(ms)} 毫秒` : ""}`}
       : status === "STALE" ? {tone: "bad", text: "画面断了"}
         : status === "ERROR" ? {tone: "bad", text: "出错了"}
@@ -525,15 +545,28 @@
       return {...base, tone: stale ? "warn" : "wait",
         title: stale ? "画面断了" : top.active ? "等画面" : "还没开始",
         note: stale ? "超过 3 秒没有新画面，旧的牌面已经清掉" : top.active ? "第一帧马上就到"
-          : "选好来源，点“开始”"};
+          : `选好来源，点“开始”${cameras(state, "。")}`};
     }
     if (row.scene_supported !== true) {
       since(memory, "turn", null, now); since(memory, "solve", null, now);
       const blind = since(memory, "blind", "scene", now);
-      return blind < BLIND_SECONDS
-        ? {...base, tone: "wait", title: "看不到牌桌", note: "多半是两手牌之间的动画，牌桌回来就接着读"}
-        : {...base, tone: "warn", title: "画面看不清", note: `已经 ${Math.floor(blind)} 秒看不到牌桌：手机画面被挡住，或现在不是牌桌${
-          state?.source_kind === "capture-card" ? "。一直这样的话，停止后换一个设备编号再开始" : ""}`};
+      const device = state?.source_kind === "capture-card" ? state?.source_options || {} : {};
+      const source = SOURCES[state?.source_kind] || "画面";
+      if (device.device_check === "no_phone_found") {
+        const seen = noPhone(device.device_seen);
+        return {...base, header: {...top, health: {tone: "warn", text: `采集卡 · ${seen.pill}`}},
+          tone: "warn", title: "没找到手机画面", note: `${seen.note}${cameras(state, "（", "）")}`,
+          thumbnail: true};
+      }
+      if (blind < BLIND_SECONDS) {
+        return {...base, tone: "wait", title: "看不到牌桌", note: "多半是两手牌之间的动画，牌桌回来就接着读"};
+      }
+      // A device picked by its picture shows the phone: no other number to try.
+      const hint = state?.source_kind !== "capture-card" || device.device_check ? ""
+        : "。一直这样的话，停止后换一个设备编号再开始";
+      return {...base, header: {...top, health: {tone: "warn", text: `${source} · 看不到牌桌`}},
+        tone: "warn", title: "画面看不清", thumbnail: true,
+        note: `已经 ${Math.floor(blind)} 秒看不到牌桌：手机画面被挡住，或现在不是牌桌${hint}`};
     }
     since(memory, "blind", null, now);
     const history = row.action_history_v1;

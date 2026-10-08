@@ -22,7 +22,7 @@ a { color: #9CC2FF; }
 .pill { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border-radius: 15px; background: var(--raised); border: 1px solid var(--edge); font-size: 13px; color: var(--soft); white-space: nowrap; text-decoration: none; }
 .pill.link:hover { color: var(--text); }
 .dot { width: 8px; height: 8px; border-radius: 4px; background: var(--muted); }
-.pill.good .dot { background: var(--call); } .pill.bad .dot { background: #FF5A4E; }
+.pill.good .dot { background: var(--call); } .pill.bad .dot { background: #FF5A4E; } .pill.warn .dot { background: var(--warn); }
 .source { display: inline-flex; gap: 6px; align-items: center; }
 .source select, .source button { height: 34px; border-radius: 10px; border: 1px solid var(--edge); background: var(--raised); color: var(--text); font: inherit; font-size: 13px; padding: 0 12px; }
 .source button { background: var(--text); color: var(--ground); font-weight: 700; border-color: var(--text); }
@@ -68,6 +68,8 @@ a { color: #9CC2FF; }
 .word.status { font-size: clamp(40px, min(6vw, 10vh), 92px); letter-spacing: -.01em; }
 .size { font-size: clamp(96px, min(15vw, 24vh), 224px); font-weight: 900; }
 .note { margin: 0; font-size: 21px; font-weight: 700; line-height: 1.4; }
+/* What the source shows while no table is seen (the phone's middle strip). */
+.thumb { align-self: flex-start; height: min(240px, 28vh); width: auto; border-radius: 10px; border: 2px solid currentColor; background: #000; }
 
 .mix { display: flex; height: 58px; padding: 5px; gap: 5px; border-radius: 14px; background: currentColor; }
 .seg { min-width: 6px; border-radius: 10px; display: flex; align-items: center; gap: 8px; padding: 0 14px; overflow: hidden; white-space: nowrap; font-size: 19px; font-weight: 800; color: #0A0C0D; }

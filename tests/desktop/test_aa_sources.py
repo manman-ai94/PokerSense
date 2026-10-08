@@ -243,3 +243,153 @@ def test_playlist_passes_continuous_processed_sequence_and_identity_to_reader(pl
     assert [frame for frame, _ in calls] == [0, 1, 2, 3]
     assert len({sample["source_id"] for _, sample in calls}) == 1
     assert [sample["source_frame"] for _, sample in calls] == [8, 9, 10, 11]
+
+
+def full_frame(kind):
+    """A 1920x1080 frame: the phone between black bars, a computer camera's
+    picture (bright everywhere), or black."""
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    if kind == "phone":
+        frame[:, 711:1209] = 120
+    elif kind == "camera":
+        frame[:] = 160
+    return frame
+
+
+def devices(shows):
+    """A backend factory over devices {index: "phone" | "camera" | "black"};
+    a device not listed cannot be opened. ``opened`` lists (index, normalized)."""
+    opened = []
+
+    class Backend:
+        def __init__(self, device_index, normalization=None, **kwargs):
+            if device_index not in shows:
+                raise RuntimeError(f"could not open capture-card device index "
+                                   f"{device_index} (api=AVFOUNDATION)")
+            opened.append((device_index, normalization is not None))
+            self.index, self.normalization, self.seq = device_index, normalization, 0
+
+        def capture(self, target):
+            assert target.window_id == f"uvc-{self.index}"
+            time.sleep(0.005)
+            self.seq += 1
+            frame = full_frame(shows[self.index])
+            if self.normalization is not None:
+                frame = frame[:, 711:1209]
+            return SimpleNamespace(image=frame, frame_seq=self.seq)
+
+        def release(self):
+            pass
+
+    return Backend, opened
+
+
+def test_the_capture_source_finds_the_device_that_shows_the_phone(monkeypatch):
+    # The Mac's camera is device 0 and the card device 2; the box said 0.
+    backend, opened = devices({0: "camera", 1: "black", 2: "phone"})
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    source = AACaptureSource({"device_index": 0, "api": "AVFOUNDATION",
+                              "find_phone": True}, backend_factory=backend)
+    try:
+        record = source.read()
+        assert record["image"].shape == (1080, 498, 3)
+        assert source.device == {
+            "device_index": 2, "api": "AVFOUNDATION",
+            "device_check": "phone_between_black_bars",
+            "device_seen": {"0": "other", "1": "dark", "2": "phone"}}
+        # Looked at 0, 1 and 2 whole, then reads 2 as the phone strip.
+        assert opened[1:] == [(0, False), (1, False), (2, False), (2, True)]
+    finally:
+        source.close()
+
+
+def test_the_chosen_device_is_looked_at_first():
+    backend, opened = devices({0: "camera", 1: "phone"})
+    source = AACaptureSource({"device_index": 1, "find_phone": True},
+                             backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_index"] == 1
+        assert source.device["device_seen"] == {"1": "phone"}
+        assert opened == [(1, True), (1, False)]
+    finally:
+        source.close()
+
+
+def test_without_the_phone_the_chosen_device_is_used_and_said_so():
+    backend, _ = devices({0: "camera"})
+    source = AACaptureSource({"device_index": 0, "find_phone": True},
+                             backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_index"] == 0
+        assert source.device["device_check"] == "no_phone_found"
+        assert source.device["device_seen"] == {"0": "other", "1": None, "2": None,
+                                                "3": None}
+    finally:
+        source.close()
+
+
+def test_without_find_phone_no_other_device_is_opened():
+    backend, opened = devices({0: "camera", 1: "phone"})
+    source = AACaptureSource({"device_index": 0}, backend_factory=backend)
+    try:
+        source.read()
+        assert opened == [(0, True)] and "device_check" not in source.device
+    finally:
+        source.close()
+    with pytest.raises(ValueError):
+        AACaptureSource({"find_phone": "yes"}, backend_factory=backend)
+
+
+def test_a_device_the_mac_does_not_have_is_said_in_plain_words():
+    class Missing:
+        def __init__(self, **kwargs):
+            pass
+
+        def capture(self, target):
+            raise RuntimeError("could not open capture-card device index 1 "
+                               "(api=AVFOUNDATION); is the card connected and not "
+                               "in use by another program?")
+
+        def release(self):
+            pass
+
+    source = AACaptureSource({"device_index": 1}, backend_factory=Missing)
+    with pytest.raises(RuntimeError, match="^Mac 没认到采集卡"):
+        source.read()
+    source.close()
+
+
+def test_the_camera_list_names_what_macos_lists():
+    from poker_engine.desktop.aa_sources import CameraList
+
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return SimpleNamespace(stdout=json.dumps({"SPCameraDataType": [
+            {"_name": "FaceTime HD Camera"}, {"_name": "USB Video"}]}))
+
+    def settles(predicate):
+        deadline = time.monotonic() + 2
+        while not predicate():
+            assert time.monotonic() < deadline
+            time.sleep(0.005)
+
+    now = [0.0]
+    cameras = CameraList(run=run, platform="darwin", clock=lambda: now[0])
+    assert cameras.names() is None                  # read on a thread
+    settles(lambda: cameras.names() == ["FaceTime HD Camera", "USB Video"])
+    assert calls == [["system_profiler", "-json", "SPCameraDataType"]]
+    now[0] = 11                                     # read again after 10 s
+    cameras.names()
+    settles(lambda: len(calls) == 2)
+    assert CameraList(run=run, platform="linux").names() is None
+
+    def broken(args, **kwargs):
+        raise OSError("no system_profiler")
+
+    failing = CameraList(run=broken, platform="darwin")
+    failing.refresh()
+    assert failing.names() is None

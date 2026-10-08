@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from poker_engine.desktop import aa_recorder, aa_server
@@ -60,8 +62,25 @@ def test_controls_are_same_origin_and_explicit(tmp_path, monkeypatch):
                            headers=HEADERS).status_code == 403
         assert client.post("/api/start", json={**body, "path": "other"},
                            headers=HEADERS).status_code == 400
+        assert client.post("/api/start", json={**body, "find_phone": "yes"},
+                           headers=HEADERS).status_code == 400
+        assert client.post("/api/start", json={**body, "find_phone": True},
+                           headers=HEADERS).status_code == 200
         assert client.post("/api/stop", json={}, headers=HEADERS).status_code == 200
         assert session.stops == 1
+
+
+def test_the_status_lists_the_cameras_only_with_the_capture_card(tmp_path):
+    cameras = SimpleNamespace(names=lambda: ["FaceTime HD Camera"])
+    app = aa_server.create_app(tmp_path / "missing.json", session=Session(),
+                               allow_capture=True, camera_list=cameras)
+    with TestClient(app) as client:
+        assert client.get("/api/status").json()["capture_devices"] == [
+            "FaceTime HD Camera"]
+    app = aa_server.create_app(tmp_path / "missing.json", session=Session(),
+                               camera_list=cameras)
+    with TestClient(app) as client:
+        assert client.get("/api/status").json()["capture_devices"] is None
 
 
 def test_missing_models_prevents_any_start(tmp_path):

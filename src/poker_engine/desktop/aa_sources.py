@@ -1,10 +1,27 @@
-"""Explicit AA image sources; constructing the application never opens hardware."""
+"""Explicit AA image sources; constructing the application never opens hardware.
+
+With ``find_phone`` the capture source looks for the device that shows the
+phone before it reads (``AACaptureSource.find``): the device number chosen
+first, then devices 0-3, each until it shows the phone between black bars
+(``aa_recorder.picture``), something else, or ``LOOK_SECONDS`` of black. On a
+Mac the computer's own camera also gives 1920x1080 and can be device 0, and
+the card's number changes with the cable or hub. When no device shows the
+phone the chosen one is used. ``device`` says which one was used, whether
+it showed the phone (``device_check``) and what each device looked at showed
+(``device_seen``); the session reports it and a recording keeps it.
+
+``CameraList`` names the cameras macOS lists, so the window can say whether
+the card is there at all (a card plugged into a hub instead of the Mac is
+not).
+"""
 
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import math
 from pathlib import Path
+import subprocess
+import sys
 import threading
 import time
 
@@ -14,7 +31,78 @@ from poker_engine.perceptual.capture.capture_card_backend import (
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
 from .aa_device_lock import AACaptureDeviceLock
-from .aa_recorder import AARecorder
+from .aa_recorder import AARecorder, picture
+
+FIND_DEVICES = range(4)         # device numbers looked at for the phone
+LOOK_SECONDS = 5                # black this long (mirroring may start late): no phone
+FIND_WAIT_SECONDS = 30          # the first frame may wait this long while looking
+PHONE_FOUND, NO_PHONE = "phone_between_black_bars", "no_phone_found"
+
+
+CAMERA_LIST_SECONDS = 10        # a camera list is read again after this long
+
+
+class CameraList:
+    """The names of the cameras macOS lists (``system_profiler
+    SPCameraDataType``; their order is not the device numbers'), read on a
+    thread at most every ``CAMERA_LIST_SECONDS``. ``names()`` is the last
+    list read: None off macOS, before the first read or when it failed."""
+
+    def __init__(self, *, run=subprocess.run, platform=sys.platform,
+                 clock=time.monotonic):
+        self.run, self.platform, self.clock = run, platform, clock
+        self.lock = threading.Lock()
+        self.listed = None
+        self.read_at = None
+
+    def names(self):
+        if self.platform != "darwin":
+            return None
+        with self.lock:
+            due = self.read_at is None or self.clock() - self.read_at >= (
+                CAMERA_LIST_SECONDS)
+            if due:
+                self.read_at = self.clock()
+            listed = self.listed
+        if due:
+            threading.Thread(target=self.refresh, daemon=True,
+                             name="aa-camera-list").start()
+        return listed
+
+    def refresh(self):
+        try:
+            out = self.run(["system_profiler", "-json", "SPCameraDataType"],
+                           capture_output=True, text=True, timeout=10,
+                           check=True).stdout
+            listed = [item["_name"] for item in json.loads(out).get(
+                "SPCameraDataType", []) if item.get("_name")]
+        except (OSError, subprocess.SubprocessError, ValueError, TypeError,
+                AttributeError):
+            listed = None
+        with self.lock:
+            self.listed = listed
+
+
+# The capture backend's English errors, as the window says them.
+PLAIN_ERRORS = (
+    ("could not open capture-card device",
+     "Mac 没认到采集卡：请把采集卡自己的 USB 直接插到 Mac（扩展坞插在手机上，不要插 Mac），"
+     "再点开始"),
+    ("stopped producing frames", "采集卡没有画面了：线松了或拔掉了，接好后再点开始"),
+    ("reported signal loss",
+     "采集卡收不到手机画面：手机要亮屏并切到“屏幕镜像”，再点开始"),
+)
+
+
+def plain_error(exc):
+    """``exc``, or a RuntimeError in plain Chinese for a capture error the
+    window shows (the original stays as its cause)."""
+    for start, text in PLAIN_ERRORS:
+        if start in str(exc):
+            error = RuntimeError(text)
+            error.__cause__ = exc
+            return error
+    return exc
 
 
 class AACaptureSource:
@@ -26,14 +114,15 @@ class AACaptureSource:
             raise ValueError("设备编号必须为 0–20 的整数")
         if api not in {"MSMF", "DSHOW", "AVFOUNDATION"}:
             raise ValueError("采集接口必须为 MSMF、DSHOW 或 AVFOUNDATION")
+        if type(options.get("find_phone", False)) is not bool:
+            raise ValueError("find_phone 必须为 true 或 false")
         self.normalization = NormalizationConfig(
             rotate_degrees=0, source_size=(1920, 1080),
             crop_after_rotation=(711, 0, 1209, 1080),
             output_size=(498, 1080), version="aa8-capture-canvas-v1")
-        self.backend = backend_factory(
-            device_index=index, api=api, width=1920, height=1080, fps=30,
-            normalization=self.normalization,
-        )
+        self.backend_factory, self.api = backend_factory, api
+        self.backend = self._backend(index, normalization=self.normalization)
+        self.find_phone = options.get("find_phone", False)
         self.device = {"device_index": index, "api": api}
         self.target = CaptureTarget(f"uvc-{index}")
         self.source_kind = source_kind
@@ -49,8 +138,57 @@ class AACaptureSource:
         self.recorder = None
         self.recorder_factory = AARecorder
 
+    def _backend(self, index, **options):
+        return self.backend_factory(device_index=index, api=self.api, width=1920,
+                                    height=1080, fps=30, **options)
+
+    def find(self):
+        """Bind to the device that shows the phone (see the module notes)."""
+        chosen = self.device["device_index"]
+        seen = {}
+        for index in [chosen, *(i for i in FIND_DEVICES if i != chosen)]:
+            if self.cancel.is_set():
+                break
+            seen[str(index)] = self._look(index)
+            if seen[str(index)] == "phone":
+                break
+        found = next((int(i) for i, kind in seen.items() if kind == "phone"), None)
+        if found is not None and found != chosen:
+            self.backend.release()
+            self.backend = self._backend(found, normalization=self.normalization)
+            self.target = CaptureTarget(f"uvc-{found}")
+        self.device = {**self.device,
+                       "device_index": chosen if found is None else found,
+                       "device_check": NO_PHONE if found is None else PHONE_FOUND,
+                       "device_seen": seen}
+
+    def _look(self, index):
+        """What device ``index`` shows (``aa_recorder.picture``: "phone",
+        "other" or "dark" after ``LOOK_SECONDS`` of black), or None when it
+        gives no picture."""
+        try:
+            probe = self._backend(index, normalization=None, detect_signal_loss=False)
+        except Exception:
+            return None
+        target, until = CaptureTarget(f"uvc-{index}"), time.monotonic() + LOOK_SECONDS
+        try:
+            while not self.cancel.is_set():
+                seen = picture(probe.capture(target).image)
+                if seen != "dark" or time.monotonic() >= until:
+                    return seen
+            return None
+        except Exception:                   # no such device, or it stopped
+            return None
+        finally:
+            try:
+                probe.release()
+            except Exception:
+                pass
+
     def _pump(self):
         try:
+            if self.find_phone:
+                self.find()
             while not self.cancel.is_set():
                 host_started = time.monotonic()
                 frame = self.backend.capture(self.target)
@@ -71,7 +209,7 @@ class AACaptureSource:
                     self.condition.notify_all()
         except Exception as exc:
             with self.condition:
-                self.error = exc
+                self.error = plain_error(exc)
                 self.latest = None
                 self.condition.notify_all()
         finally:
@@ -105,10 +243,11 @@ class AACaptureSource:
                     self.thread = None
                     self.device_lock.release()
                     raise
+            first = self.find_phone and self.delivered is None
             ready = self.condition.wait_for(
                 lambda: self.error is not None or self.cancel.is_set()
                 or self.latest is not None and self.latest["source_frame"] != (
-                    self.delivered), timeout=2.0)
+                    self.delivered), timeout=FIND_WAIT_SECONDS if first else 2.0)
             if self.error is not None:
                 raise self.error
             if self.cancel.is_set():
