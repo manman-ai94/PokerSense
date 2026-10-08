@@ -19,6 +19,17 @@ DEALER_RECTS = {
     6: (76, 517, 38, 40),
     7: (76, 360, 38, 40),
 }
+# The bottom seat shows its badge in another place when someone else sits
+# there (spectating): right of the stack instead of above-left of the avatar.
+# Only one of the two places shows a badge at a time.
+OTHER_DEALER_RECTS = {
+    4: (284, 908, 28, 30),
+}
+
+
+def dealer_rects(seat):
+    return (DEALER_RECTS[seat],) + ((OTHER_DEALER_RECTS[seat],)
+                                    if seat in OTHER_DEALER_RECTS else ())
 
 
 class AA8DealerReader:
@@ -33,8 +44,9 @@ class AA8DealerReader:
         if not canvas_ok(image):
             return result
         positive = []
-        for seat, (x, y, width, height) in DEALER_RECTS.items():
-            if _find_dealer(image[y:y + height, x:x + width]):
+        for seat in DEALER_RECTS:
+            if any(_find_dealer(image[y:y + height, x:x + width])
+                   for x, y, width, height in dealer_rects(seat)):
                 positive.append(seat)
         reason = (
             "unique_white_disc_black_d_candidate" if len(positive) == 1
@@ -48,6 +60,8 @@ class AA8DealerReader:
             "reason": reason,
             "algorithm": "existing_white_disc_black_d_v1",
             "rois": {str(key): list(value) for key, value in DEALER_RECTS.items()},
+            "other_rois": {str(key): list(value)
+                           for key, value in OTHER_DEALER_RECTS.items()},
         }
 
 
@@ -117,4 +131,5 @@ class StableDealerEvidence:
         }
 
 
-__all__ = ["AA8DealerReader", "DEALER_RECTS", "StableDealerEvidence"]
+__all__ = ["AA8DealerReader", "DEALER_RECTS", "OTHER_DEALER_RECTS",
+           "StableDealerEvidence", "dealer_rects"]

@@ -5,14 +5,15 @@ import pytest
 from tools.aa8_dealer_v2 import (
     AA8DealerReader,
     DEALER_RECTS,
+    OTHER_DEALER_RECTS,
     StableDealerEvidence,
 )
 
 
-def canvas(*seats):
+def canvas(*seats, rects=DEALER_RECTS):
     image = np.full((1080, 498, 3), (20, 120, 30), np.uint8)
     for seat in seats:
-        x, y, width, height = DEALER_RECTS[seat]
+        x, y, width, height = rects[seat]
         center = (x + width // 2, y + height // 2)
         cv2.circle(image, center, 9, (245, 245, 245), -1)
         cv2.putText(
@@ -28,6 +29,13 @@ def test_unique_badge_maps_to_physical_seat(seat):
     assert result["dealer_seat"] == seat
     assert result["positive_slots"] == [seat]
     assert not result["canonical_verified"]
+
+
+def test_bottom_seat_badge_right_of_the_stack_when_spectating():
+    # Someone else in the bottom seat: the badge sits right of the stack.
+    result = AA8DealerReader().read(canvas(4, rects=OTHER_DEALER_RECTS))
+    assert result["dealer_seat"] == 4
+    assert result["positive_slots"] == [4]
 
 
 def test_none_multiple_and_invalid_canvas_abstain():

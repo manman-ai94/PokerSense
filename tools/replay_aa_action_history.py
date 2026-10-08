@@ -11,6 +11,11 @@ recordings in seconds:
         --out <new>/frames.jsonl
     python tools/check_aa_action_history.py --frames <new>/frames.jsonl ...
 
+With ``--streets`` the board-card street is rebuilt too (``AAStreet`` on the
+logged board, cards, seat states and pot), for checking a change there; the
+log has no insurance or other overlay flags, so frames the live run skipped
+for those count as readable here.
+
 The rebuilt history replaces ``actions_v1`` in each row; everything else is
 copied. It matches the live run except when one frame added more than three
 reader actions (the log keeps the latest three) or a reader error reset the
@@ -28,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from poker_engine.desktop.aa_action_history import AAActionHistory  # noqa: E402
 from poker_engine.desktop.aa_session import _actions_v1  # noqa: E402
+from poker_engine.desktop.aa_street import AAStreet  # noqa: E402
 
 GAP_SECONDS = 1.0           # the reader starts over after a longer gap
 
@@ -47,9 +53,11 @@ def payload(fields, actions):
             "action_history_candidate": actions}
 
 
-def replay(rows):
-    """The log rows with ``actions_v1`` rebuilt by the current history layer."""
+def replay(rows, *, streets=False):
+    """The log rows with ``actions_v1`` rebuilt by the current history layer
+    (and the street by the current street rule, with ``streets``)."""
     history, actions, seen, last = AAActionHistory(), [], set(), None
+    street = AAStreet()
     result = []
     for row in rows:
         fields = row.get("fields") or {}
@@ -57,6 +65,7 @@ def replay(rows):
         if last is not None and (processed != last[0] + 1
                                  or pts - last[1] > GAP_SECONDS):
             history.reset()
+            street.reset()
             actions, seen = [], set()
         last = (processed, pts)
         for action in fields.get("actions_tail") or ():
@@ -65,8 +74,12 @@ def replay(rows):
             if key not in seen:
                 seen.add(key)
                 actions.append(action)
-        rebuilt = history.observe(payload(fields, actions[-256:]), processed)
-        result.append({**row, "fields": {**fields, "actions_v1": _actions_v1(rebuilt)}})
+        rebuilt = payload(fields, actions[-256:])
+        if streets:
+            rebuilt["street_v1"] = street.observe(rebuilt, pts)
+            fields = {**fields, "street": rebuilt["street_v1"]["street"]}
+        history_v1 = _actions_v1(history.observe(rebuilt, processed))
+        result.append({**row, "fields": {**fields, "actions_v1": history_v1}})
     return result
 
 
@@ -74,12 +87,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--frames", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--streets", action="store_true",
+                        help="rebuild the board-card street too")
     args = parser.parse_args(argv)
     with args.frames.open(encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle if line.strip()]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as handle:
-        for row in replay(rows):
+        for row in replay(rows, streets=args.streets):
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
     print(json.dumps({"frames": len(rows), "out": str(args.out)}))
 

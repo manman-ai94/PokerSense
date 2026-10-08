@@ -31,3 +31,15 @@ def test_a_time_gap_starts_the_history_over():
     assert rows[19]["fields"]["actions_v1"]["hand_id"] == "hand_0"
     after = rows[-1]["fields"]["actions_v1"]
     assert after["hand_id"] == "hand_20" and after["complete"] is False
+
+
+def test_streets_can_be_rebuilt_with_the_current_street_rule():
+    rows = log_rows()
+    for row in rows[10:13]:                       # flop dealt, then unread a moment
+        row["fields"].update(board=["Ah", "Kd", "7c", None, None], street="flop")
+    rows[13]["fields"]["street"] = "preflop"       # what the old rule said
+    kept = replay(rows)
+    rebuilt = replay(rows, streets=True)
+    assert kept[13]["fields"]["street"] == "preflop"
+    assert rebuilt[13]["fields"]["street"] == "flop"
+    assert rebuilt[13]["fields"]["actions_v1"]["hand_id"] == "hand_0"

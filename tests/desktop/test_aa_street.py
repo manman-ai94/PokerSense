@@ -52,6 +52,47 @@ def test_dealing_and_overlays_keep_the_street_for_readable_seconds_only():
     assert street.observe(frame(2), 21.5)["street"] is None        # 2.5 s readable
     assert street.observe(frame(0, hero=True), 22.0)["street"] == "preflop"
     assert street.observe(frame(4), 22.5)["street"] == "turn"
-    assert street.observe(frame(0), 22.6)["street"] is None        # hand over
+    assert street.observe(frame(0), 22.6)["street"] == "turn"      # may be a blink
+    assert street.observe(frame(0), 24.1)["street"] is None        # hand over
     street.reset()
     assert street.observe(frame(1), 23.0)["street"] is None
+
+
+def showdown(board=0, pot="294", **kwargs):
+    item = frame(board, **kwargs)
+    item["pot"] = {"value": pot}
+    return item
+
+
+def test_board_unread_for_a_moment_at_the_showdown_keeps_the_street():
+    street = AAStreet()
+    assert street.observe(showdown(5), 10.0)["street"] == "river"
+    for second in (10.1, 10.5, 11.0):           # board not read, same pot
+        assert street.observe(showdown(0, active_seat=True), second)[
+            "street"] == "river"
+    assert street.observe(showdown(0), 11.1)["street"] == "river"   # seats too
+    assert street.observe(showdown(5), 11.2)["street"] == "river"
+
+
+def test_an_empty_board_after_the_flop_counts_once_it_lasts():
+    street = AAStreet()
+    street.observe(showdown(5), 10.0)
+    assert street.observe(showdown(0, hero=True), 10.1)["street"] == "river"
+    assert street.observe(showdown(0, hero=True), 11.5)["street"] == "river"
+    assert street.observe(showdown(0, hero=True), 11.7)["street"] == "preflop"
+    street = AAStreet()
+    street.observe(showdown(5), 10.0)
+    assert street.observe(showdown(0), 10.1)["street"] == "river"
+    assert street.observe(showdown(0), 11.7)["street"] is None      # hand over
+
+
+def test_a_smaller_pot_on_two_frames_is_the_next_hand_at_once():
+    street = AAStreet()
+    street.observe(showdown(4, pot="140"), 10.0)
+    assert street.observe(showdown(0, pot="7", hero=True), 10.1)["street"] == "turn"
+    assert street.observe(showdown(0, pot="7", hero=True), 10.2)["street"] == "preflop"
+    street = AAStreet()
+    street.observe(showdown(4, pot="140"), 10.0)
+    street.observe(showdown(0, pot="7", hero=True), 10.1)       # one misread
+    assert street.observe(showdown(0, pot="140", hero=True), 10.2)[
+        "street"] == "turn"
