@@ -18,12 +18,17 @@ const element = id => {
   if (!nodes.has(id)) nodes.set(id, new Element());
   return nodes.get(id);
 };
+const beats = [];
 const document = {hidden: true, getElementById: element,
   createElement: () => new Element(), addEventListener: (name, fn) => listeners.set(name, fn)};
 const context = vm.createContext({document, console, AbortController,
   performance: {now: () => now}, setTimeout() {}, clearTimeout() {},
   setInterval(fn, duration) { intervals.push({fn, duration}); },
-  fetch() { throw Error("hidden page must not poll"); },
+  fetch(url) {
+    // Hidden, the page only says it is still open (the service stops an unwatched source).
+    if (url !== "/api/heartbeat") throw Error("hidden page must not poll");
+    beats.push(url); return Promise.resolve({});
+  },
   URL: {revokeObjectURL() {}}});
 const run = code => vm.runInContext(code, context);
 run(fs.readFileSync(path.resolve(__dirname, "../../ui/aa-live/app.js"), "utf8"));
@@ -36,10 +41,12 @@ const render = (value = state, started = now) => run(`renderRealtime(${JSON.stri
 render();
 assert.match(element("realtime-status").textContent, /可信的回合/);
 assert.match(element("realtime-timing").textContent, /85 ms/);
-assert.equal(intervals.length, 1);
-assert.equal(intervals[0].duration, 50);
+assert.deepEqual(intervals.map(item => item.duration).sort((a, b) => a - b), [50, 20000]);
+intervals.find(item => item.duration === 20000).fn();
+assert.deepEqual(beats, ["/api/heartbeat"]);
+const watchdog = intervals.find(item => item.duration === 50);
 now = 1500;
-intervals[0].fn();
+watchdog.fn();
 assert.match(element("realtime-status").textContent, /已过期/);
 
 // Slow response cannot mint a new validity window on arrival.

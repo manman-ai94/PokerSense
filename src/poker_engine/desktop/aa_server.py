@@ -33,6 +33,45 @@ from poker_engine.perceptual.capture.capture_card_backend import default_capture
 from poker_engine.strategy.river_bounds_v1 import river_payoff_bounds
 
 
+# Statuses in which the source (capture card, recording) is open.
+SOURCE_OPEN = ("STARTING", "RUNNING", "STALE")
+
+
+class IdleStop:
+    """Stops the source when no page has been in touch for ``seconds``.
+
+    The pages poll the status while shown and send a heartbeat while hidden,
+    so a closed or forgotten window does not keep the capture card (or a
+    recording's decoding) running in the background.
+    """
+
+    def __init__(self, service, seconds, lock, clock=time.monotonic):
+        self.service, self.seconds, self.lock = service, seconds, lock
+        self.clock = clock
+        self.seen = clock()
+        self.stops = 0
+
+    def touch(self):
+        self.seen = self.clock()
+
+    def check(self):
+        """Stop the source if it is open and nobody is watching; True if stopped."""
+        if self.clock() - self.seen < self.seconds:
+            return False
+        with self.lock:
+            if self.service.snapshot()["status"] not in SOURCE_OPEN:
+                return False
+            self.service.stop()
+        self.stops += 1
+        print(f"[AA] no page open for {self.seconds:.0f} s: source stopped",
+              flush=True)
+        return True
+
+    def watch(self, stopped, every=2.0):
+        while not stopped.wait(every):
+            self.check()
+
+
 def ui_root():
     frozen = getattr(sys, "_MEIPASS", None)
     root = Path(frozen) if frozen else Path(__file__).resolve().parents[3]
@@ -43,7 +82,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                replay_last=None, replay_playlist=None, allow_capture=False,
                replay_video=None, replay_video_start=0.0, replay_video_exclude=(),
                replay_video_speed=1.0, frame_log=None, session=None, rules_path=None,
-               records_dir=None, bundle_sha256=None,
+               records_dir=None, bundle_sha256=None, idle_stop_seconds=None,
                analysis_service=None, review_service=None, study_service=None,
                hand_input_service=None, analysis_records_service=None):
     profile_path = Path(profile_path)
@@ -72,9 +111,17 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     profile_status = (preflight_profile(profile_path, bundle_sha256=bundle_sha256)
                       if bundle_sha256 else preflight_profile(profile_path))
 
+    idle = None if not idle_stop_seconds else IdleStop(
+        service, idle_stop_seconds, controls_lock)
+    stopped = threading.Event()
+
     @asynccontextmanager
     async def lifespan(app):
+        if idle is not None:
+            threading.Thread(target=idle.watch, args=(stopped,), daemon=True,
+                             name="pokersense-idle-stop").start()
         yield
+        stopped.set()
         service.stop()
         analysis.cancel()
         review.close()
@@ -83,6 +130,11 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.aa_session = service
+    app.state.idle_stop = idle
+
+    def touched():
+        if idle is not None:
+            idle.touch()
     app.add_middleware(TrustedHostMiddleware,
                        allowed_hosts=["127.0.0.1", "localhost", "testserver"])
 
@@ -347,8 +399,15 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         body = await review_body(request, ("consent",))
         return review_call(review.start, issue_id, body["consent"])
 
+    @app.get("/api/heartbeat")
+    def heartbeat():
+        """A hidden page saying it is still open (see ``IdleStop``)."""
+        touched()
+        return {"ok": True}
+
     @app.get("/api/status")
     def status():
+        touched()
         with controls_lock:
             result = service.snapshot()
             table_rules = rules.get()
@@ -432,6 +491,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                                       "errors": profile["errors"]})
         with controls_lock:
             analysis.cancel()
+            touched()
             service.start(options)
             return service.snapshot()
 

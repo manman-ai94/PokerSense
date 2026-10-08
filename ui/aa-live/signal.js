@@ -180,6 +180,11 @@
     try { localStorage.setItem(DEVICE_KEY, el("device").value); } catch (ignored) { /* not kept */ }
   });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  // Hidden (another tab, minimised) the page stops polling but says it is
+  // still open, so the service keeps the source running for it.
+  setInterval(() => {
+    if (document.hidden) fetch("/api/heartbeat", {headers, cache: "no-store"}).catch(() => {});
+  }, 20000);
   draw({status: "STOPPED"});
   (async function tick() { await poll(); setTimeout(tick, 250); })();
 })();

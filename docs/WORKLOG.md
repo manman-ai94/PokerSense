@@ -14,9 +14,16 @@
 | `fix/readiness-kill-race` | f90bbe3 | #82 | 修 Mac 上偶发失败的进程组测试（还没开自动合并） |
 | `docs/worklog` | 本条提交 | 还没有 | 加本文件和记录规则 |
 | `feat/signal-window` | 056d6a0（已并进本机 main） | 还没有 | 新界面“信号灯”窗口第 1 步：首页换成大色块窗口，旧观察页移到 /classic |
-| `fix/signal-capture-device` | 本条提交 | 还没有 | 新窗口可以选采集卡设备编号 |
+| `fix/signal-capture-device` | ca5f1ca（已并进本机 main） | 还没有 | 新窗口可以选采集卡设备编号 |
+| `fix/release-capture-when-idle` | 本条提交 | 还没有 | 没有页面开着 3 分钟就关掉采集卡或录像回放 |
 
 ## 记录
+
+**2026-10-08 · `fix/release-capture-when-idle`（本机）**
+- 做了什么：主人发现关了页面后采集卡还开着、电脑变慢。现在桌面版服务 3 分钟没有页面联系就自动停掉画面来源（采集卡或录像回放）；页面在后台时每 20 秒报一次“还开着”。点“停止”和关黑窗口本来就会马上释放。
+- 怎么做的：`aa_server.IdleStop`（`create_app(idle_stop_seconds=…)`，默认不开），`/api/heartbeat`；`aa_live_entry --idle-stop`，默认 180 秒，0 关闭；新旧两个页面都加了后台心跳。
+- 怎么验证的：新测试覆盖到时停止、轮询和心跳续命、没开着时不动；desktop/ui/tools/js 测试和 flake8 通过（云端 Linux）。
+- 还剩什么：那次变慢的直接原因是误开的 20 分钟录像脚本，要主人手动停。
 
 **2026-10-08 · `fix/signal-capture-device`（本机）**
 - 做了什么：新窗口原来固定打开 0 号采集设备，但 Mac 上采集卡和自带摄像头的编号会对调；现在可以选设备 0/1/2，浏览器记住上次的选择；采集卡一直看不到牌桌时提示换设备编号。

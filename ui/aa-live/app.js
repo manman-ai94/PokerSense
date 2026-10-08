@@ -361,5 +361,7 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) poll();
 });
 async function tick() { await poll(); setTimeout(tick, 250); }
+// Hidden, the page stops polling but tells the service it is still open.
+setInterval(() => { if (document.hidden) fetch("/api/heartbeat", {headers, cache:"no-store"}).catch(() => {}); }, 20000);
 setInterval(realtimeWatchdog, 50);
 clearCurrent("尚未开始观察；没有显示历史牌面。"); tick();

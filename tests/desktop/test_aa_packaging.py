@@ -97,3 +97,11 @@ def test_versions_and_canonical_windows_installer_agree():
     assert 'Source: "..\\dist\\PokerSense-AA\\*"' in installer
     windows = (ROOT / "packaging/windows-version.txt").read_text("utf-8")
     assert "'ProductVersion', '" + __version__ + "'" in windows
+
+
+def test_the_desktop_entry_stops_an_unwatched_source_after_three_minutes(tmp_path):
+    # A closed browser window releases the capture card (aa_server.IdleStop).
+    assert entry.parser().parse_args(["--state", str(tmp_path)]).idle_stop == 180
+    assert entry.parser().parse_args(["--idle-stop", "0"]).idle_stop == 0
+    app = entry.create_app(entry.parser().parse_args(["--state", str(tmp_path)]))
+    assert app.state.idle_stop.seconds == 180

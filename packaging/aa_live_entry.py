@@ -39,6 +39,12 @@ REQUIRED_RESOURCES = (
 )
 
 
+# A closed browser window releases the capture card after this long. Pages
+# hidden in the background send a heartbeat; Chrome may slow a hidden page's
+# timers to once a minute, hence the margin.
+IDLE_STOP_SECONDS = 180
+
+
 def default_state():
     base = os.environ.get("LOCALAPPDATA")
     return (Path(base) if base else Path.home() / ".local" / "share") / (
@@ -73,6 +79,9 @@ def parser():
                         help="Append one JSON line per processed frame")
     result.add_argument("--allow-capture", action="store_true",
                         help="Explicitly enable UI capture controls; no auto-start")
+    result.add_argument("--idle-stop", type=float, default=IDLE_STOP_SECONDS,
+                        metavar="SECONDS",
+                        help="Stop the source when no page is open this long; 0 never")
     result.add_argument("--port", type=int, default=8771)
     result.add_argument("--no-browser", action="store_true")
     result.add_argument("--open-browser", action="store_true",
@@ -110,7 +119,7 @@ def create_app(args):
         profile, replay_pool=args.replay_pool, replay_first=args.replay_first,
         replay_last=args.replay_last, replay_playlist=args.replay_playlist,
         **video_options(args), allow_capture=args.allow_capture,
-        bundle_sha256=args.bundle_sha256,
+        bundle_sha256=args.bundle_sha256, idle_stop_seconds=args.idle_stop or None,
         rules_path=args.rules_path or state / "table-rules.json",
         records_dir=args.records_dir or state / "records")
 
