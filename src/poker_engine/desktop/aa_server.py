@@ -130,12 +130,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                              name="pokersense-idle-stop").start()
         yield
         stopped.set()
-        if (service.snapshot().get("recording") or {}).get("active"):
-            try:        # finish the recording before the process ends
-                service.record(False)
-            except RuntimeError:
-                pass
-        service.stop()
+        service.stop()      # also finishes a recording before the process ends
         analysis.cancel()
         review.close()
         study.close()
