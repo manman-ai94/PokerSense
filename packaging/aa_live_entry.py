@@ -6,10 +6,27 @@ import multiprocessing
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import threading
 import time
 import webbrowser
+
+
+CHROME = Path("/Applications/Google Chrome.app")
+
+
+def open_page(url, *, platform=sys.platform, chrome=CHROME, run=subprocess.run,
+              fallback=webbrowser.open):
+    """Chrome on a Mac that has it: the always-on-top small window of the
+    signal page (Document Picture-in-Picture) exists in Chrome, not Safari."""
+    if platform == "darwin" and chrome.exists():
+        try:
+            run(["open", "-a", str(chrome), url], check=True, timeout=15)
+            return
+        except (OSError, subprocess.SubprocessError):
+            pass
+    fallback(url)
 
 
 def resource_root():
@@ -171,7 +188,7 @@ def serve(args):
               "Private recognition models and live strategy are not included.",
               flush=True)
         if not args.no_browser:
-            webbrowser.open(base)
+            open_page(base)
         try:
             while thread.is_alive():
                 thread.join(timeout=0.5)

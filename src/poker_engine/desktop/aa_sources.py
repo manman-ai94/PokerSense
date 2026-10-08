@@ -14,6 +14,7 @@ from poker_engine.perceptual.capture.capture_card_backend import (
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
 from .aa_device_lock import AACaptureDeviceLock
+from .aa_recorder import AARecorder
 
 
 class AACaptureSource:
@@ -25,13 +26,15 @@ class AACaptureSource:
             raise ValueError("设备编号必须为 0–20 的整数")
         if api not in {"MSMF", "DSHOW", "AVFOUNDATION"}:
             raise ValueError("采集接口必须为 MSMF、DSHOW 或 AVFOUNDATION")
+        self.normalization = NormalizationConfig(
+            rotate_degrees=0, source_size=(1920, 1080),
+            crop_after_rotation=(711, 0, 1209, 1080),
+            output_size=(498, 1080), version="aa8-capture-canvas-v1")
         self.backend = backend_factory(
             device_index=index, api=api, width=1920, height=1080, fps=30,
-            normalization=NormalizationConfig(
-                rotate_degrees=0, source_size=(1920, 1080),
-                crop_after_rotation=(711, 0, 1209, 1080),
-                output_size=(498, 1080), version="aa8-capture-canvas-v1"),
+            normalization=self.normalization,
         )
+        self.device = {"device_index": index, "api": api}
         self.target = CaptureTarget(f"uvc-{index}")
         self.source_kind = source_kind
         self.started = time.monotonic()
@@ -43,6 +46,8 @@ class AACaptureSource:
         self.release_error = None
         self.delivered = None
         self.device_lock = (device_lock_factory or AACaptureDeviceLock)()
+        self.recorder = None
+        self.recorder_factory = AARecorder
 
     def _pump(self):
         try:
@@ -50,6 +55,9 @@ class AACaptureSource:
                 host_started = time.monotonic()
                 frame = self.backend.capture(self.target)
                 host_received = time.monotonic()
+                recorder = self.recorder
+                if recorder is not None:
+                    recorder.offer(frame.image)
                 with self.condition:
                     self.latest = {
                         "image": frame.image, "source_frame": frame.frame_seq,
@@ -111,8 +119,29 @@ class AACaptureSource:
             self.delivered = result["source_frame"]
             return result
 
+    # -- recording what the card shows (see aa_recorder) ------------------------
+
+    def start_recording(self, out):
+        """Start writing the frames to ``out``; the current recording if one runs."""
+        with self.condition:
+            if self.cancel.is_set():
+                raise RuntimeError("采集卡正在关闭")
+            if self.recorder is None or not self.recorder.status()["active"]:
+                self.recorder = self.recorder_factory(out, self.normalization,
+                                                      meta=dict(self.device))
+            return self.recorder.status()
+
+    def stop_recording(self, reason="stopped"):
+        recorder = self.recorder
+        return None if recorder is None else recorder.stop(reason)
+
+    def recording_status(self):
+        recorder = self.recorder
+        return None if recorder is None else recorder.status()
+
     def close(self):
         self.cancel.set()
+        self.stop_recording("source_stopped")
         with self.condition:
             self.condition.notify_all()
         if self.thread is not None:

@@ -41,7 +41,8 @@ def test_the_signal_window_is_the_front_page_and_the_old_page_stays(tmp_path):
         assert 'id="device"' in page.text      # the card is not always device 0
         # The grade after you act, this session's list, and the "行动后再看" switch.
         for element in ('id="compare"', 'id="session-rows"', 'id="advice-after"',
-                        'id="float"', 'id="floating"'):    # and the small window
+                        'id="float"', 'id="floating"',    # and the small window
+                        'id="record"'):                  # and recording
             assert element in page.text
         for path, kind in (("/signal.js", "javascript"),
                            ("/signal_view.js", "javascript"),

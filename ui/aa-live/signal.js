@@ -9,7 +9,7 @@
   const SUITS = {c: "♣", d: "♦", h: "♥", s: "♠"};
   const now = () => globalThis.performance?.now?.() ?? Date.now();
   let memory = {}, generation = null, instance = null, sequence = null, progressAt = 0;
-  let status = {}, pending = false, modeTouched = false;
+  let status = {}, pending = false, modeTouched = false, recordPending = false;
   // The capture card's device number on this Mac (it can swap with the
   // built-in camera), remembered in this browser.
   const DEVICE_KEY = "pokersense.signal.device";
@@ -166,6 +166,15 @@
     el("advice-live").setAttribute("aria-pressed", String(!afterAct));
     el("advice-after").setAttribute("aria-pressed", String(afterAct));
     el("float").hidden = !("documentPictureInPicture" in window) || Boolean(pip);
+    const rec = view.header.recording;
+    el("record").hidden = !rec.can;
+    el("record").disabled = recordPending;
+    el("record").classList.toggle("on", rec.active);
+    el("record").title = rec.active ? "点一下停止录像" : "把采集卡的画面录下来，存在数据文件夹里，以后可以回放";
+    el("record-text").textContent = rec.active ? `${rec.text} · 停止` : rec.text;
+    el("record-note").hidden = !rec.note || rec.active;
+    el("record-note").textContent = rec.note;
+    el("record-note").title = rec.folder ? `存在数据文件夹的 PokerSense_private/aa-mac-recordings/${rec.folder}` : "";
     const mini = pip?.document.getElementById("mini-state");
     if (mini) mini.textContent = view.street ? `· ${view.street}` : `· ${view.header.health.text}`;
   }
@@ -217,6 +226,20 @@
     finally { clearTimeout(timeout); pending = false; memory = {}; await poll(); }
   }
 
+  async function record() {
+    const on = !status.recording?.active;
+    recordPending = true; error(""); draw(status);
+    try {
+      const response = await fetch("/api/recording", {method: "POST",
+        headers: {...headers, "Content-Type": "application/json"}, body: JSON.stringify({on})});
+      const result = await response.json();
+      if (!response.ok) throw Error(typeof result.detail === "string" ? result.detail : `HTTP ${response.status}`);
+      status = result;
+    } catch (failure) { error(failure.message); }
+    finally { recordPending = false; draw(status); }
+  }
+
+  el("record").addEventListener("click", record);
   el("source-form").addEventListener("submit", event => {
     event.preventDefault(); if (!el("start").disabled) command("start");
   });

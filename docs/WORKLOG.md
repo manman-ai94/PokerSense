@@ -18,9 +18,16 @@
 | `fix/release-capture-when-idle` | 65d2a07（已并进本机 main） | 还没有 | 没有页面开着 3 分钟就关掉采集卡或录像回放 |
 | `feat/hu-range-equity` | 1d12deb（已并进本机 main） | 还没有 | 单挑转牌、河牌算你对对手范围的胜率，显示在新界面 |
 | `feat/grade-after-acting` | ded65f9（已并进本机 main） | 还没有 | 你行动后给这一步打分、本场记录、“行动后再看”开关 |
-| `feat/floating-window` | 本条提交 | 还没有 | 置顶小窗（Chrome 画中画） |
+| `feat/floating-window` | f81b5ea（已并进本机 main） | 还没有 | 置顶小窗（Chrome 画中画） |
+| `feat/record-in-window` | 本条提交 | 还没有 | 窗口里直接录采集卡画面；Mac 上用 Chrome 打开窗口 |
 
 ## 记录
+
+**2026-10-08 · `feat/record-in-window`（本机）**
+- 做了什么：设计稿第 5 步（最后一步）。接采集卡观察时窗口顶上有“录像”按钮，边识别边录，红色“录制中 分:秒”，再点停止；Mac 上装了 Chrome 就用 Chrome 打开窗口（置顶小窗只有 Chrome 有）。
+- 怎么做的：新 `aa_recorder.py` 把服务已拿到的手机画面放回黑底 1920×1080，按 `record-aa-capture` 同一格式写（30 帧、60 秒一段、`segments.csv`），单独线程编码不拖识别；停止观察、关页面 3 分钟或满 2 小时自动停；新接口 `POST /api/recording`，只收采集卡。
+- 怎么验证的：录像器、来源、会话、接口都有测试（假编码器）；Playwright 里按真实速度回放主人上桌记录点了开始和停止，宽窄窗口都看过；desktop/ui/tools 测试、JS 测试和 flake8 通过。
+- 还剩什么：要主人在 Mac 上接采集卡点一次“录像”，确认真编码器写出能回放的文件；1440 像素以下顶栏会排成两行。
 
 **2026-10-08 · `feat/floating-window`（本机）**
 - 做了什么：设计稿第 4 步。新窗口右上角加“置顶小窗”：颜色区搬进一个浮在所有窗口上面的小窗，关掉就搬回来；右上角“本桌设置和详细数据”缩短成“设置和数据”，一行放得下。

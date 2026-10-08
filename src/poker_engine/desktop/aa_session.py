@@ -60,6 +60,8 @@ class AARecognitionSession:
         self._source_options = {}
         self._error = None
         self._timing = None
+        self._source = None              # the open source, for recording it
+        self._last_recording = None      # how the last source's recording ended
 
     def _clear(self):
         self._payload = self._preview = self._sequence = None
@@ -89,9 +91,26 @@ class AARecognitionSession:
                 "processing_ms": self._processing_ms,
                 "source_kind": self._source_kind, "pts_seconds": self._pts_seconds,
                 "source_options": copy.deepcopy(self._source_options),
-                "timing": copy.deepcopy(self._timing)}
+                "timing": copy.deepcopy(self._timing),
+                "recording": self._recording()}
         result["realtime"] = observation_runtime_status(result, now=time.monotonic())
         return result
+
+    def _recording(self):
+        status = getattr(self._source, "recording_status", None)
+        return status() if callable(status) else self._last_recording
+
+    def record(self, on, out=None):
+        """Start (into ``out``) or stop recording what the running source
+        shows; RuntimeError when nothing that can be recorded is running."""
+        with self._lock:
+            self._expire()
+            source = self._source
+            if self._status != "RUNNING" or source is None:
+                raise RuntimeError("现在没有在接画面")
+        if not hasattr(source, "start_recording"):
+            raise RuntimeError("这个画面来源不能录像")
+        return source.start_recording(out) if on else source.stop_recording()
 
     def snapshot(self):
         with self._lock:
@@ -122,6 +141,7 @@ class AARecognitionSession:
             self._generation += 1
             self._clear()
             self._source_options = options
+            self._last_recording = None
             self._source_kind = options.get("mode")
             self._error = None
             self._status = "STARTING"
@@ -164,6 +184,9 @@ class AARecognitionSession:
                 if callable(reset):
                     reset()
             source = self._source_factory(options)
+            with self._lock:
+                if generation == self._generation:
+                    self._source = source
             processed = 0
             while not cancel.is_set():
                 read_started = time.monotonic()
@@ -260,6 +283,9 @@ class AARecognitionSession:
         except Exception as exc:
             self._finish(generation, cancel, "ERROR", str(exc))
         finally:
+            with self._lock:
+                if self._source is source:
+                    self._source = None
             if source is not None:
                 try:
                     source.close()
@@ -269,7 +295,10 @@ class AARecognitionSession:
                             self._status = "ERROR"
                             self._error = f"Source close failed: {exc}"
                             self._clear()
+            status = getattr(source, "recording_status", None)
             with self._lock:
+                if callable(status) and self._source is None:
+                    self._last_recording = status()
                 if self._cancel is cancel and self._status == "STOPPING":
                     self._status = "STOPPED"
 

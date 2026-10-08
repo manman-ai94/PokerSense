@@ -254,3 +254,37 @@ def test_the_service_grades_your_decisions_against_its_own_advice(tmp_path):
     service = app.state.aa_session
     assert isinstance(service._grades, AAGrades)
     assert service._grades._advice is service._solver_advice
+
+
+def test_recording_is_asked_for_by_the_page_and_only_from_the_capture_card(tmp_path):
+    class Recording(Session):
+        kind = "capture-card"
+
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def snapshot(self):
+            return {**super().snapshot(), "source_kind": self.kind}
+
+        def record(self, on, out=None):
+            self.calls.append((on, out))
+
+    session = Recording()
+    app = aa_server.create_app(tmp_path / "missing.json", session=session,
+                               recordings_dir=tmp_path / "recordings")
+    with TestClient(app) as client:
+        assert client.post("/api/recording", json={"on": True}).status_code == 403
+        assert client.post("/api/recording", json={"on": "yes"},
+                           headers=HEADERS).status_code == 400
+        assert client.post("/api/recording", json={"on": True},
+                           headers=HEADERS).status_code == 200
+        on, out = session.calls[-1]
+        assert on is True and out.parent == tmp_path / "recordings"
+        assert out.name.endswith("-live")
+        assert client.post("/api/recording", json={"on": False},
+                           headers=HEADERS).status_code == 200
+        assert session.calls[-1] == (False, None)
+        session.kind = "video-replay"
+        refused = client.post("/api/recording", json={"on": True}, headers=HEADERS)
+        assert refused.status_code == 409 and len(session.calls) == 2

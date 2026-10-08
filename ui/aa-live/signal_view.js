@@ -386,6 +386,25 @@
     return Math.max(0, (now - memory[slot].at) / 1000);
   }
 
+  function duration(seconds) {
+    const total = Math.max(0, Math.floor(num(seconds) ?? 0));
+    const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
+    const two = value => String(value).padStart(2, "0");
+    return h ? `${h}:${two(m)}:${two(s)}` : `${two(m)}:${two(s)}`;
+  }
+
+  // The "录像" button: recording what the capture card shows, from the service.
+  function recordingView(state, running) {
+    const rec = state?.recording;
+    const can = running && state?.source_kind === "capture-card";
+    if (rec?.active) return {can: true, active: true, text: `录制中 ${duration(rec.seconds)}`, note: ""};
+    const minutes = Math.round((num(rec?.seconds) ?? 0) / 60);
+    const note = !rec ? "" : rec.error ? `录像出错：${rec.error}`
+      : rec.stopped_reason === "time_limit" ? "已存好 · 满 2 小时自动停"
+        : `已存好 · ${minutes < 1 ? "不到 1" : minutes} 分钟`;
+    return {can, active: false, text: "录像", note, folder: rec?.folder || ""};
+  }
+
   function header(state) {
     const status = String(state?.status || "STOPPED").toUpperCase();
     const ms = num(state?.processing_ms);
@@ -400,6 +419,7 @@
               : {tone: "neutral", text: "还没开始"};
     const session = running ? sessionView(state.payload.grade_v1) : null;
     return {health, running: Boolean(running), session: session?.pill || null,
+      recording: recordingView(state, Boolean(running)),
       active: ["STARTING", "RUNNING", "STALE", "STOPPING"].includes(status)};
   }
 

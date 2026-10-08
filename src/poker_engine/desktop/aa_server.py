@@ -30,6 +30,7 @@ from .aa_saved_strategy import SavedStrategyInputs
 from .aa_analysis_records import AAAnalysisRecordStore, AnalysisRecordError
 from .aa_hand_input import AAHandInput, HandInputError, digest
 from .aa_study_records import AAStudyRecordStore, StudyRecordError
+from poker_engine.data_paths import private_root
 from poker_engine.perceptual.capture.capture_card_backend import default_capture_api
 from poker_engine.strategy.river_bounds_v1 import river_payoff_bounds
 
@@ -84,6 +85,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                replay_video=None, replay_video_start=0.0, replay_video_exclude=(),
                replay_video_speed=1.0, frame_log=None, session=None, rules_path=None,
                records_dir=None, bundle_sha256=None, idle_stop_seconds=None,
+               recordings_dir=None,
                analysis_service=None, review_service=None, study_service=None,
                hand_input_service=None, analysis_records_service=None):
     profile_path = Path(profile_path)
@@ -495,6 +497,31 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
             analysis.cancel()
             touched()
             service.start(options)
+            return service.snapshot()
+
+    @app.post("/api/recording")
+    async def recording(request: Request):
+        """Start or stop recording what the capture card shows (aa_recorder)."""
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "无法读取 JSON") from None
+        if (not isinstance(body, dict) or set(body) != {"on"}
+                or type(body["on"]) is not bool):
+            raise HTTPException(400, "录像设置字段不受支持")
+        with controls_lock:
+            touched()
+            on = body["on"]
+            if on and service.snapshot().get("source_kind") != "capture-card":
+                raise HTTPException(409, "接采集卡时才能录像")
+            root = Path(recordings_dir) if recordings_dir else (
+                private_root() / "aa-mac-recordings")
+            out = root / time.strftime("%Y%m%d-%H%M%S-live")
+            try:
+                service.record(on, out if on else None)
+            except (RuntimeError, ValueError, OSError) as exc:
+                raise HTTPException(
+                    409, f"没有{'开始' if on else '停止'}录像：{exc}") from None
             return service.snapshot()
 
     @app.post("/api/stop")

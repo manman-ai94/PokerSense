@@ -105,3 +105,30 @@ def test_the_desktop_entry_stops_an_unwatched_source_after_three_minutes(tmp_pat
     assert entry.parser().parse_args(["--idle-stop", "0"]).idle_stop == 0
     app = entry.create_app(entry.parser().parse_args(["--state", str(tmp_path)]))
     assert app.state.idle_stop.seconds == 180
+
+
+def test_a_mac_with_chrome_opens_the_page_in_chrome(tmp_path):
+    """The small always-on-top window needs Chrome; Safari has no such window."""
+    chrome = tmp_path / "Google Chrome.app"
+    calls, fallback = [], []
+
+    def run(command, **kwargs):
+        calls.append(command)
+
+    url = "http://127.0.0.1:5000/"
+    entry.open_page(url, platform="darwin", chrome=tmp_path / "none.app", run=run,
+                    fallback=fallback.append)
+    assert (calls, fallback) == ([], [url])            # no Chrome: the default
+    chrome.mkdir()
+    entry.open_page(url, platform="darwin", chrome=chrome, run=run,
+                    fallback=fallback.append)
+    assert calls == [["open", "-a", str(chrome), url]] and fallback == [url]
+    entry.open_page(url, platform="win32", chrome=chrome, run=run,
+                    fallback=fallback.append)
+    assert len(calls) == 1 and fallback == [url, url]  # Windows: the default
+
+    def broken(command, **kwargs):
+        raise entry.subprocess.CalledProcessError(1, command)
+    entry.open_page(url, platform="darwin", chrome=chrome, run=broken,
+                    fallback=fallback.append)
+    assert fallback == [url, url, url]

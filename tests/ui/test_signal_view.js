@@ -263,4 +263,21 @@ assert.deepEqual([empty.pill, empty.rows, empty.empty],
 assert.equal(sessionView(undefined), null);
 view = signalView(running(base({hero_controls_v1: {visible: false}})), 0, {});
 assert.equal(view.session, null); assert.equal(view.header.session, null);
+// The "录像" button: only while the capture card is being watched, with a running clock.
+view = signalView(running(base()), 0, {});
+assert.deepEqual(view.header.recording, {can: true, active: false, text: "录像", note: "", folder: ""});
+view = signalView({...running(base()), source_kind: "video-replay"}, 0, {});
+assert.equal(view.header.recording.can, false);
+view = signalView({...running(base()), recording: {active: true, seconds: 65.4}}, 0, {});
+assert.deepEqual([view.header.recording.active, view.header.recording.text], [true, "录制中 01:05"]);
+view = signalView({...running(base()), recording: {active: true, seconds: 3725}}, 0, {});
+assert.equal(view.header.recording.text, "录制中 1:02:05");
+// After it stops (or after the service stops) it says what became of it.
+const stopped = extra => signalView({status: "STOPPED", recording: {active: false, ...extra}}, 0, {}).header.recording;
+assert.deepEqual(stopped({seconds: 1260, stopped_reason: "stopped", folder: "20261008-020000-live"}),
+  {can: false, active: false, text: "录像", note: "已存好 · 21 分钟", folder: "20261008-020000-live"});
+assert.equal(stopped({seconds: 12, stopped_reason: "source_stopped"}).note, "已存好 · 不到 1 分钟");
+assert.equal(stopped({seconds: 7200, stopped_reason: "time_limit"}).note, "已存好 · 满 2 小时自动停");
+assert.equal(stopped({seconds: 3, error: "the H.264 encoder did not open"}).note,
+  "录像出错：the H.264 encoder did not open");
 console.log("signal view cases passed");

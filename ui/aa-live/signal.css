@@ -137,6 +137,12 @@ a { color: #9CC2FF; }
 .srow small { font-size: 13px; color: var(--muted); }
 .grade { display: inline-flex; align-items: center; justify-content: center; min-width: 60px; height: 26px; padding: 0 8px; border-radius: 13px; font-size: 13px; font-weight: 800; color: #0A0C0D; }
 .grade.best { background: #45D483; } .grade.fine { background: #A6E9C3; } .grade.slip { background: #F5C542; } .grade.mistake { background: #FF6B5B; }
+.pill.rec { cursor: pointer; }
+.pill.rec .dot { background: #FF5A4E; }
+.pill.rec.on { background: #3A1714; border-color: #FF5A4E; color: #FFC9C2; font-family: inherit; }
+.pill.rec.on .dot { animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .pill.rec.on .dot { animation: none; } }
 .toggle { display: inline-flex; padding: 3px; border-radius: 12px; background: var(--raised); border: 1px solid var(--edge); }
 .toggle button { height: 30px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .toggle button[aria-pressed="true"] { background: var(--text); color: var(--ground); font-weight: 700; }
@@ -167,7 +173,7 @@ a { color: #9CC2FF; }
 
 /* A narrow window (the small always-on-top size) keeps only the colour field. */
 @media (max-width: 560px) {
-  .side, .source, .bar .link, .bar .session, .toggle, .rule { display: none; }
+  .side, .source, .bar .link:not(.rec.on), .bar .session, .bar .muted, .toggle, .rule { display: none; }
   .signal { padding: 16px 18px 20px; gap: 14px; }
   .cards-row { gap: 12px; } .cards.big .card { width: 44px; height: 60px; font-size: 22px; }
   .card { width: 34px; height: 48px; font-size: 17px; } .cards { min-height: 48px; }

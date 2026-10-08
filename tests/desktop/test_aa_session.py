@@ -340,3 +340,54 @@ def test_frame_summary_keeps_the_rebuilt_hand_compact():
         "hand_id": "hand_7", "complete": True, "start": "pot_went_down", "dealer": 2,
         "actions": [[9, "flop", 3, "raise", "19", "pot_rise"]]}
     assert frame_summary({})["actions_v1"] is None
+
+
+def test_the_running_source_can_be_recorded_and_its_outcome_stays_after_stop():
+    class Recordable(Source):
+        def __init__(self):
+            super().__init__()
+            self.recording = None
+
+        def start_recording(self, out):
+            self.recording = {"active": True, "folder": out.name}
+            return self.recording
+
+        def stop_recording(self, reason="stopped"):
+            self.recording = {**self.recording, "active": False,
+                              "stopped_reason": reason}
+            return self.recording
+
+        def recording_status(self):
+            return self.recording
+
+        def close(self):
+            if self.recording and self.recording["active"]:
+                self.stop_recording("source_stopped")
+            super().close()
+
+    from pathlib import Path
+
+    source = Recordable()
+    session = AARecognitionSession(lambda _: source, Reader)
+    with pytest.raises(RuntimeError):
+        session.record(True, Path("never"))           # nothing running yet
+    session.start({})
+    try:
+        wait_until(lambda: session.snapshot()["status"] == "RUNNING")
+        assert session.snapshot()["recording"] is None
+        assert session.record(True, Path("20261008-live"))["active"] is True
+        assert session.snapshot()["recording"]["folder"] == "20261008-live"
+    finally:
+        session.stop()
+        wait_until(lambda: session.snapshot()["status"] == "STOPPED")
+    # Stopping the source ends the recording; the window can still say so.
+    assert session.snapshot()["recording"] == {
+        "active": False, "folder": "20261008-live", "stopped_reason": "source_stopped"}
+    plain = AARecognitionSession(lambda _: Source(), Reader)
+    plain.start({})
+    try:
+        wait_until(lambda: plain.snapshot()["status"] == "RUNNING")
+        with pytest.raises(RuntimeError):
+            plain.record(True, Path("x"))             # a source with no recorder
+    finally:
+        plain.stop()

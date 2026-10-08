@@ -196,6 +196,9 @@ class AAVideoSource(AACaptureSource):
         return {"source_video_pts": self.video.last_pts,
                 "source_id": f"video-replay:{self.video.skips}"}
 
+    def start_recording(self, out):
+        raise RuntimeError("录像回放不用再录")
+
     def read(self):
         try:
             return super().read()
