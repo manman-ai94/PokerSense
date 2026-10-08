@@ -28,6 +28,23 @@ def test_summary_reports_bb_per_100_and_paired_differences():
     assert versus == {"a": {"delta_bb_per_100": 75.0, "ci95": [26.0, 124.0]}}
 
 
+def test_results_split_by_how_the_hand_reached_the_flop():
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    report = run_scoreboard(rules, ["tag", "always_call"], deals=4, base_seed=3,
+                            reference="always_call")
+    for name, row in report["strategies"].items():
+        parts = row["by_flop"]
+        assert set(parts) == {"preflop", "heads_up", "multiway"}
+        total = sum(part["bb_per_100"] for part in parts.values())
+        assert abs(total - row["bb_per_100"]) < 0.05
+        assert abs(sum(p["share"] for p in parts.values()) - 1) < 1e-3
+    # Calling everything sees most flops with company.
+    assert report["strategies"]["always_call"]["by_flop"]["multiway"]["share"] > 0.3
+    versus = report["versus_reference"]["tag"]
+    assert abs(sum(p["delta_bb_per_100"] for p in versus["by_flop"].values())
+               - versus["delta_bb_per_100"]) < 0.05
+
+
 def test_runs_are_reproducible_and_independent_of_workers():
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     kwargs = {"deals": 3, "base_seed": 4, "reference": "always_call"}

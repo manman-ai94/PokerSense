@@ -46,6 +46,20 @@ def table(report):
         lines.append(f"{pair}: {row['delta_bb_per_100']:+.1f} "
                      f"[{ci[0]:.1f}, {ci[1]:.1f}]" if ci else f"{pair}: "
                      f"{row['delta_bb_per_100']:+.1f}")
+    lines.append("by flop (bb/100 from hands over before it / heads-up / multiway; "
+                 "share of hands):")
+    for name, row in rows:
+        parts = row.get("by_flop")
+        if not parts:
+            continue
+        versus = (report["versus_reference"].get(name) or {}).get("by_flop") or {}
+        cells = []
+        for flop, part in parts.items():
+            delta = versus.get(flop)
+            cells.append(f"{flop} {part['bb_per_100']:+.1f} ({part['share']:.0%})"
+                         + ("" if delta is None else
+                            f" vs ref {delta['delta_bb_per_100']:+.1f}"))
+        lines.append(f"  {name}: " + " | ".join(cells))
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)

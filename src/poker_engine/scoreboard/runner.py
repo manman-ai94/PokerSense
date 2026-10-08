@@ -8,7 +8,11 @@ between strategies use exactly the same cards and opponents. All-in hands are
 scored by their expected result (see ``allin_ev``).
 
 Results are reported in big blinds per 100 hands with a 95% interval computed
-over deals, which are independent of each other.
+over deals, which are independent of each other. Each strategy's result is
+also split by how its hand reached the flop (``by_flop``): over before it
+(folded, won, or all in before the flop), heads-up, or with two or more
+opponents. The parts add up to the whole, and the split of the difference to
+the reference shows where a strategy wins or loses.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ POOLS = {"population": ("population",), "aa": ("aa_population",),
          "styles": ("tag", "lag", "rock", "station")}
 DEFAULT_POOL = POOLS["population"]
 MAX_ACTIONS = 400
+FLOP = ("preflop", "heads_up", "multiway")      # how a hand reached the flop
 
 
 def lineup(seed, pool, seats):
@@ -47,20 +52,28 @@ def _salt(base_seed, seed, seat):
 
 
 def play_hand(arena, seed, deciders, hero, *, all_in_ev=True):
-    """Hero's result in chips and whether the all-in EV replaced the runout."""
+    """Hero's result in chips, whether the all-in EV replaced the runout, and
+    how the hand reached the flop for hero (one of ``FLOP``)."""
     arena.reset(seed)
     actions = 0
+    flop, reached = "preflop", False
     while not arena.terminal:
         actions += 1
         if actions > MAX_ACTIONS:
             raise RuntimeError("hand did not finish")
         seat = arena.actor
-        arena.step(deciders[seat](arena.observe(seat)))
+        observation = arena.observe(seat)
+        if not reached and observation["street"] != "preflop":
+            reached = True                  # the first decision after the flop
+            if hero not in observation["folded"]:
+                live = len(observation["occupied_seats"]) - len(observation["folded"])
+                flop = "heads_up" if live == 2 else "multiway"
+        arena.step(deciders[seat](observation))
     if all_in_ev:
         expected = runout_ev(arena, seed=seed)
         if expected is not None:
-            return expected[hero], True
-    return float(arena.terminal_returns()[hero]), False
+            return expected[hero], True, flop
+    return float(arena.terminal_returns()[hero]), False, flop
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
@@ -82,14 +95,20 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True):
         row = {}
         for name in strategies:
             total, adjusted = 0.0, 0
+            split = {part: [0.0, 0] for part in FLOP}
             for hero in seats:
                 deciders = dict(bound)
                 deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
-                value, was_adjusted = play_hand(arena, seed, deciders, hero,
-                                                all_in_ev=all_in_ev)
+                value, was_adjusted, flop = play_hand(arena, seed, deciders, hero,
+                                                      all_in_ev=all_in_ev)
                 total += value
                 adjusted += was_adjusted
-            row[name] = (total / len(seats) / big_blind, adjusted)
+                split[flop][0] += value
+                split[flop][1] += 1
+            scale = len(seats) * big_blind
+            row[name] = (total / scale, adjusted,
+                         {part: (chips / scale, hands)
+                          for part, (chips, hands) in split.items()})
         rows.append((seed, row))
     counts = {name: dict(bots[name].counts) for name in strategies
               if getattr(bots[name], "counts", None)}
@@ -127,6 +146,36 @@ def summarize(rows, strategies, reference, seats):
                 "ci95": None if half is None else [round((mean - half) * 100, 2),
                                                    round((mean + half) * 100, 2)]}
     return summary, versus
+
+
+def flop_split(rows, strategies, reference, seats):
+    """Each strategy's bb/100 from hands that ended before the flop, went to
+    it heads-up or multiway (adding up to its whole result), with the share
+    of its hands in each; and each part of its difference to the reference."""
+    def part(name, flop):
+        return [row[name][2][flop][0] for _, row in rows]
+
+    split, versus = {}, {}
+    for name in strategies:
+        split[name] = {}
+        for flop in FLOP:
+            mean, half = _interval(part(name, flop))
+            hands = sum(row[name][2][flop][1] for _, row in rows)
+            split[name][flop] = {
+                "bb_per_100": round(mean * 100, 2),
+                "ci95": None if half is None else [round((mean - half) * 100, 2),
+                                                   round((mean + half) * 100, 2)],
+                "share": round(hands / (len(rows) * seats), 4)}
+        if reference in strategies and name != reference:
+            versus[name] = {}
+            for flop in FLOP:
+                mean, half = _interval([a - b for a, b in zip(
+                    part(name, flop), part(reference, flop))])
+                versus[name][flop] = {
+                    "delta_bb_per_100": round(mean * 100, 2),
+                    "ci95": None if half is None else [round((mean - half) * 100, 2),
+                                                       round((mean + half) * 100, 2)]}
+    return split, versus
 
 
 def pairwise(rows, strategies):
@@ -185,6 +234,11 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     seats = rules.table_size
     reference = reference or strategies[0]
     summary, versus = summarize(rows, strategies, reference, seats)
+    by_flop, by_flop_versus = flop_split(rows, strategies, reference, seats)
+    for name, parts in by_flop.items():
+        summary[name]["by_flop"] = parts
+    for name, parts in by_flop_versus.items():
+        versus[name]["by_flop"] = parts
     return {
         "schema_version": 1,
         "rules": rules_dict,
@@ -209,5 +263,5 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     }
 
 
-__all__ = ["DEFAULT_POOL", "POOLS", "lineup", "pairwise", "play_hand", "run_scoreboard",
-           "score_deals", "summarize"]
+__all__ = ["DEFAULT_POOL", "FLOP", "POOLS", "flop_split", "lineup", "pairwise",
+           "play_hand", "run_scoreboard", "score_deals", "summarize"]
