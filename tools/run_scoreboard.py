@@ -2,15 +2,17 @@
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
-        [--pool population|aa|styles|tag,lag] \\
+        [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
         [--mushroom 3 [--mushroom-take 0.135]] [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
 pool is a name from ``runner.POOLS`` or a comma-separated list of policies;
-the default, "population", plays like real players. ``--mushroom 3`` plays
-the AA mushroom pool with the dealer putting in 3 big blinds (see
-``scoreboard/mushroom.py``).
+the default, "population", plays like real players; "aa_real" like the AA
+players measured on recordings (``scoreboard/aa_real.py``); "reg", "maniac",
+"nit" and "tough" are the tougher opponents of ``scoreboard/opponents.py``.
+``--mushroom 3`` plays the AA mushroom pool with the dealer putting in 3 big
+blinds (see ``scoreboard/mushroom.py``).
 """
 
 from __future__ import annotations
@@ -49,20 +51,12 @@ def table(report):
         lines.append(f"{pair}: {row['delta_bb_per_100']:+.1f} "
                      f"[{ci[0]:.1f}, {ci[1]:.1f}]" if ci else f"{pair}: "
                      f"{row['delta_bb_per_100']:+.1f}")
-    lines.append("by flop (bb/100 from hands over before it / heads-up / multiway; "
-                 "share of hands):")
-    for name, row in rows:
-        parts = row.get("by_flop")
-        if not parts:
-            continue
-        versus = (report["versus_reference"].get(name) or {}).get("by_flop") or {}
-        cells = []
-        for flop, part in parts.items():
-            delta = versus.get(flop)
-            cells.append(f"{flop} {part['bb_per_100']:+.1f} ({part['share']:.0%})"
-                         + ("" if delta is None else
-                            f" vs ref {delta['delta_bb_per_100']:+.1f}"))
-        lines.append(f"  {name}: " + " | ".join(cells))
+    lines += split_lines(report, rows, "by_flop",
+                         "by flop (bb/100 from hands over before it / heads-up / "
+                         "multiway; share of hands):")
+    lines += split_lines(report, rows, "by_end",
+                         "by where the hand ended (folded or won on a street, or "
+                         "showdown; share of hands):")
     if report.get("mushroom"):
         lines.append("mushroom pool: the dealer puts in "
                      f"{report['mushroom']['post_big_blinds']:g} big blinds, the small "
@@ -70,6 +64,23 @@ def table(report):
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
+
+
+def split_lines(report, rows, key, title):
+    lines = [title]
+    for name, row in rows:
+        parts = row.get(key)
+        if not parts:
+            continue
+        versus = (report["versus_reference"].get(name) or {}).get(key) or {}
+        cells = []
+        for flop, part in parts.items():
+            delta = versus.get(flop)
+            cells.append(f"{flop} {part['bb_per_100']:+.1f} ({part['share']:.0%})"
+                         + ("" if delta is None else
+                            f" vs ref {delta['delta_bb_per_100']:+.1f}"))
+        lines.append(f"  {name}: " + " | ".join(cells))
+    return lines if len(lines) > 1 else []
 
 
 def show_progress(done, total, seconds):
@@ -86,7 +97,7 @@ def main(argv=None):
     parser.add_argument("--deals", type=int, default=2000)
     parser.add_argument("--strategies", default=",".join(POLICY_NAMES))
     parser.add_argument("--pool", default="population",
-                        help="pool name (population, aa, styles) or policies a,b,c")
+                        help="pool name (" + ", ".join(POOLS) + ") or policies a,b,c")
     parser.add_argument("--reference", default="always_call")
     parser.add_argument("--workers", type=int,
                         default=max(1, (os.cpu_count() or 1) - 2),

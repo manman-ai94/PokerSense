@@ -238,6 +238,12 @@ def make_policy(name):
     if "/" in name:
         before, after = name.split("/", 1)
         return Split(make_policy(before), make_policy(after))
+    if name == "aa_real":
+        from .aa_real import AARealBot          # imports this module
+        return AARealBot()
+    if name in OPPONENT_NAMES:
+        from .opponents import ToughBot         # imports this module
+        return ToughBot(name)
     if name in ("population", "aa_population"):
         from .population import PopulationBot   # imports this module
         return PopulationBot(adjusted=name == "aa_population")
@@ -260,6 +266,9 @@ def make_policy(name):
 
 POLICY_NAMES = ("always_call", "random", "rfi_table", "aa_preflop", *STYLES,
                 "population", "aa_population")
+# Tougher opponents (see opponents.py), kept out of the default strategy list;
+# "aa_real" (aa_real.py) plays like the AA players measured on recordings.
+OPPONENT_NAMES = ("reg", "maniac", "nit")
 
-__all__ = ["POLICY_NAMES", "STYLES", "Split", "StyleBot", "make_policy", "position",
-           "raise_toward"]
+__all__ = ["OPPONENT_NAMES", "POLICY_NAMES", "STYLES", "Split", "StyleBot",
+           "make_policy", "position", "raise_toward"]
