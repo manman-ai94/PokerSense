@@ -27,6 +27,9 @@ hand paid in (a table where the small blind wins half the pots carries far
 less than the default assumes), so the run should be repeated with the
 measured share (``run_gauntlet.py`` does this itself).
 
+With ``bomb`` a share of the deals are bomb pots (see ``bomb``) and each
+result is also split into normal hands and bomb pots (``by_kind``).
+
 With ``reads`` (a number of hands) each strategy's decisions carry what a
 player would have seen of every opponent in that many hands
 (``observation["reads"]``, see ``reads``); ``aa_preflop`` adjusts the
@@ -47,6 +50,7 @@ from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 from .allin_ev import runout_ev
+from .bomb import KINDS, Bomb
 from .bots import make_policy
 from .mushroom import Mushroom, main_pot_shares, pool_result, small_blind
 from . import reads as opponent_reads
@@ -100,15 +104,17 @@ class Hand(NamedTuple):
     end: str                # where it ended for hero (``END``)
     small_blind: float      # the small blind's share of the main pot (0 without
     #                         a mushroom pool): how often it takes the pool
+    kind: str = "normal"    # or "bomb" for a bomb pot (``KINDS``)
 
 
 def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
-              reads=None):
+              reads=None, bomb=None):
     """One hand from ``hero``'s seat, as a ``Hand``.
 
     ``reads``: added to ``hero``'s observations as ``observation["reads"]``.
+    ``bomb``: chips every player puts in when the hand is a bomb pot.
     """
-    arena.reset(seed)
+    arena.reset(seed, bomb=bomb)
     if mushroom is not None:
         post, carried = mushroom.pool(seed, float(arena.rules.big_blind))
         pool = f"{carried + post:g}"
@@ -140,14 +146,16 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
     if mushroom is not None:
         value += pool_result(arena, mushroom, carried, post, hero, shares)
         taken = shares.get(small_blind(arena), 0.0)
-    return Hand(value, adjusted, flop, ended(arena.observe(hero), hero), taken)
+    return Hand(value, adjusted, flop, ended(arena.observe(hero), hero), taken,
+                "normal" if bomb is None else "bomb")
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
-                mushroom=None, reads=None):
+                mushroom=None, reads=None, bomb=None):
     """Per deal and strategy: (average result in big blinds, all-in hands).
 
     ``reads``: None, or {"hands": n, "shares": ``reads.measure`` result}.
+    ``bomb``: None, or the arguments of a ``Bomb``.
 
     Also returns, per strategy that keeps them, the counts of how it decided
     (for example how often a solver strategy fell back to its base policy).
@@ -157,28 +165,32 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
     seats = arena.occupied_seats
     big_blind = float(rules.big_blind)
     mushroom = None if mushroom is None else Mushroom(**mushroom)
+    bomb = None if bomb is None else Bomb(**bomb)
     bots = {name: make_policy(name) for name in {*strategies, *pool}}
     rows = []
     for seed in seeds:
         styles = lineup(seed, pool, seats)
         bound = {seat: bots[styles[seat]].for_game(_salt(base_seed, seed, seat))
                  for seat in seats}
+        posted = None if bomb is None else bomb.chips(seed, big_blind)
         row = {}
         for name in strategies:
             total, adjusted, taken = 0.0, 0, 0.0
             split = {part: [0.0, 0] for part in FLOP}
             end = {part: [0.0, 0] for part in END}
+            kind = {part: [0.0, 0] for part in KINDS}
             for hero in seats:
                 deciders = dict(bound)
                 deciders[hero] = bots[name].for_game(_salt(base_seed, seed, hero))
                 seen = None if reads is None else opponent_reads.sample(
                     reads["shares"], styles, hero, seed, reads["hands"])
                 hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
-                                 mushroom=mushroom, reads=seen)
+                                 mushroom=mushroom, reads=seen, bomb=posted)
                 total += hand.value
                 adjusted += hand.adjusted
                 taken += hand.small_blind
-                for parts, part in ((split, hand.flop), (end, hand.end)):
+                for parts, part in ((split, hand.flop), (end, hand.end),
+                                    (kind, hand.kind)):
                     parts[part][0] += hand.value
                     parts[part][1] += 1
             scale = len(seats) * big_blind
@@ -187,7 +199,9 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                           for part, (chips, hands) in split.items()},
                          {part: (chips / scale, hands)
                           for part, (chips, hands) in end.items()},
-                         taken)
+                         taken,
+                         {part: (chips / scale, hands)
+                          for part, (chips, hands) in kind.items()})
         rows.append((seed, row))
     counts = {name: dict(bots[name].counts) for name in strategies
               if getattr(bots[name], "counts", None)}
@@ -275,11 +289,12 @@ def pairwise(rows, strategies):
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
-                   progress=None, mushroom=None, reads=None):
+                   progress=None, mushroom=None, reads=None, bomb=None):
     """Score ``strategies`` over ``deals`` deals; same arguments, same result.
 
     ``mushroom``: None, or a ``Mushroom`` to play the AA mushroom pool.
     ``reads``: None, or the hands of reads on the opponents each decision has.
+    ``bomb``: None, or a ``Bomb`` to make some deals bomb pots.
 
     ``progress(done, total, seconds)`` is called after each batch of deals.
     """
@@ -297,7 +312,9 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "hands": reads,
         "shares": opponent_reads.measure(rules, pool, base_seed=base_seed)}
     args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev,
-             pool_rule, seen) for part in chunks]
+             pool_rule, seen,
+             None if bomb is None else {"post": bomb.post, "share": bomb.share})
+            for part in chunks]
     results = []
 
     def finished(result):
@@ -327,7 +344,10 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         for name in strategies:
             taken = sum(row[name][4] for _, row in rows)
             summary[name]["mushroom_take"] = round(taken / (len(rows) * seats), 4)
-    for key, index, names in (("by_flop", 2, FLOP), ("by_end", 3, END)):
+    splits = [("by_flop", 2, FLOP), ("by_end", 3, END)]
+    if bomb is not None:
+        splits.append(("by_kind", 5, KINDS))
+    for key, index, names in splits:
         split, split_versus = flop_split(rows, strategies, reference, seats,
                                          index, names)
         for name, parts in split.items():
@@ -342,6 +362,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "hands_per_strategy": deals * seats,
         "all_in_ev": all_in_ev,
         "mushroom": None if mushroom is None else mushroom.to_dict(),
+        "bomb": None if bomb is None else bomb.to_dict(),
         "base_seed": base_seed,
         "reads": seen,
         "strategies": summary,

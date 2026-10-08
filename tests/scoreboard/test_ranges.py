@@ -58,3 +58,22 @@ def test_every_opponent_still_in_gets_a_range_read_from_their_actions():
                 return
             arena.step(pool.decide(observation, _rng("test", observation)))
     raise AssertionError("no multiway postflop decision in 40 deals")
+
+
+def test_ranges_kept_from_earlier_decisions_are_the_same_as_read_again():
+    from poker_engine.scoreboard import ranges
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    arena = AAFullHandArena(rules).reset(5, bomb="14")
+    model = PopulationBot(adjusted=True)
+    bots = {seat: make_policy("aa_population").for_game(str(seat))
+            for seat in arena.occupied_seats}
+    seen = []
+    while not arena.terminal and len(seen) < 4:
+        observation = arena.observe(arena.actor)
+        seen.append(observation)
+        opponent_ranges(observation, model)             # fills the cache
+        arena.step(bots[arena.actor](observation))
+    last = seen[-1]
+    kept = opponent_ranges(last, model)
+    ranges._KEPT.clear()
+    assert kept == opponent_ranges(last, model)

@@ -51,7 +51,8 @@ def public_replay(observation):
                             occupied_seats=observation["occupied_seats"],
                             dealer_seat=observation["dealer_seat"])
     arena.reset(0, deck=replay_deck(observation["board_history"],
-                                    len(observation["occupied_seats"])))
+                                    len(observation["occupied_seats"])),
+                bomb=observation.get("bomb_pot"))
     decisions = []
     for row in observation["public_history"]:
         seat = arena.actor

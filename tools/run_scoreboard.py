@@ -3,7 +3,8 @@
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
         [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
-        [--mushroom 3 [--mushroom-take 0.135]] [--workers 10] [--out result.json]
+        [--mushroom 3 [--mushroom-take 0.135]] [--bomb 7 [--bomb-share 0.07]] \\
+        [--reads 100] [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
@@ -12,7 +13,9 @@ the default, "population", plays like real players; "aa_real" like the AA
 players measured on recordings (``scoreboard/aa_real.py``); "reg", "maniac",
 "nit" and "tough" are the tougher opponents of ``scoreboard/opponents.py``.
 ``--mushroom 3`` plays the AA mushroom pool with the dealer putting in 3 big
-blinds (see ``scoreboard/mushroom.py``).
+blinds (see ``scoreboard/mushroom.py``). ``--bomb 7`` makes 7% of the deals
+bomb pots where every player puts in 7 big blinds and the hand starts on the
+flop (``--bomb-share 1`` for bomb pots only; see ``scoreboard/bomb.py``).
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from pathlib import Path
 import sys
 
 from poker_engine.scoreboard.bots import POLICY_NAMES
+from poker_engine.scoreboard.bomb import SHARE, Bomb
 from poker_engine.scoreboard.mushroom import TAKE, Mushroom
 from poker_engine.scoreboard.runner import POOLS, run_scoreboard
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
@@ -57,6 +61,11 @@ def table(report):
     lines += split_lines(report, rows, "by_end",
                          "by where the hand ended (folded or won on a street, or "
                          "showdown; share of hands):")
+    lines += split_lines(report, rows, "by_kind",
+                         "normal hands and bomb pots (share of hands):")
+    if report.get("bomb"):
+        lines.append(f"bomb pots: {report['bomb']['share']:.0%} of deals, every "
+                     f"player puts in {report['bomb']['post_big_blinds']:g} big blinds")
     if report.get("mushroom"):
         lines.append("mushroom pool: the dealer puts in "
                      f"{report['mushroom']['post_big_blinds']:g} big blinds, the small "
@@ -109,6 +118,10 @@ def main(argv=None):
                         help="play the AA mushroom pool: the dealer's post")
     parser.add_argument("--mushroom-take", type=float, default=TAKE,
                         help="chance a hand's small blind takes the pool")
+    parser.add_argument("--bomb", type=float, metavar="BIG_BLINDS",
+                        help="make some deals bomb pots: what every player puts in")
+    parser.add_argument("--bomb-share", type=float, default=SHARE,
+                        help="share of deals that are bomb pots (1: only bomb pots)")
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from this "
                         "many hands (aa_preflop uses them; noreads+name ignores them)")
@@ -123,7 +136,9 @@ def main(argv=None):
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
                             mushroom=None if args.mushroom is None else Mushroom(
                                 args.mushroom, args.mushroom_take),
-                            reads=args.reads)
+                            reads=args.reads,
+                            bomb=None if args.bomb is None else Bomb(
+                                args.bomb, args.bomb_share))
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))

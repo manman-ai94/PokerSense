@@ -139,8 +139,13 @@ class AAFullHandArena:
     def _chips(self, units):
         return Decimal(units) * self.rules.minimum_chip
 
-    def reset(self, seed, *, deck=None):
-        """Reset with local RNG. Explicit 52-card deck is a synthetic test hook."""
+    def reset(self, seed, *, deck=None, bomb=None):
+        """Reset with local RNG. Explicit 52-card deck is a synthetic test hook.
+
+        ``bomb`` (chips) deals a bomb pot (暴击): every player puts in that
+        amount instead of the antes, blinds and straddle, and the hand starts
+        on the flop with no preflop betting.
+        """
         from pokerkit import Automation, Card, Deck, NoLimitTexasHoldem
         if type(seed) is not int:
             raise ValueError("seed must be an integer")
@@ -157,10 +162,16 @@ class AAFullHandArena:
         self._board_history = []
         self._folded = set()
         self._settlement = None
+        self._bomb = None if bomb is None else _decimal(bomb)
         antes = self._units(self.rules.ante)
         blinds = [self._units(self.rules.small_blind),
                   self._units(self.rules.big_blind)] + [0] * (len(self._seats) - 2)
-        if self._straddler is not None:
+        if self._bomb is not None:
+            if self._bomb <= 0 or any(self._bomb >= stack
+                                      for stack in self.starting_stacks.values()):
+                raise ValueError("a bomb pot needs a post below every stack")
+            antes, blinds = self._units(self._bomb), [0] * len(self._seats)
+        elif self._straddler is not None:
             blinds[self._seats.index(self._straddler)] = self._units(
                 self.rules.straddle_amount)
         automations = (
@@ -173,7 +184,7 @@ class AAFullHandArena:
             automations, True, antes, blinds, self._units(self.rules.big_blind),
             tuple(self._units(self.starting_stacks[s]) for s in self._seats),
             len(self._seats), divmod=_fractional_divmod)
-        if self._straddler is not None:
+        if self._straddler is not None and self._bomb is None:
             # PokerKit's default min_bet applies to every street. A live UTG
             # straddle changes only the preflop minimum full raise increment.
             streets = self._state.streets
@@ -187,6 +198,9 @@ class AAFullHandArena:
             self._holes.append(tuple(hole))
             self._state.deal_hole(hole, index)
         self._advance()
+        while self._bomb is not None and self.street == "preflop":
+            self._state.check_or_call()         # nothing to call: not a decision
+            self._advance()
         return self
 
     def _take(self, count):
@@ -310,7 +324,9 @@ class AAFullHandArena:
             "big_blind": _money(self.rules.big_blind),
             "observing_seat": seat, "actor": self.actor,
             "occupied_seats": list(self.occupied_seats),
-            "dealer_seat": self.dealer_seat, "straddler_seat": self._straddler,
+            "dealer_seat": self.dealer_seat,
+            "straddler_seat": None if self._bomb is not None else self._straddler,
+            "bomb_pot": None if self._bomb is None else _money(self._bomb),
             "street": self.street,
             "terminal": self.terminal,
             "own_hole": [repr(card) for card in self._holes[index]],

@@ -43,6 +43,7 @@ import os
 from pathlib import Path
 import sys
 
+from poker_engine.scoreboard.bomb import SHARE, Bomb
 from poker_engine.scoreboard.mushroom import TAKE, Mushroom
 from poker_engine.scoreboard.runner import POOLS, run_scoreboard
 from poker_engine.solver.texassolver import solver_binary
@@ -75,8 +76,11 @@ def weakest(row, base):
     against the first pool (the baseline table), worst first: (part, bb/100
     here minus there, share of hands here)."""
     parts = []
-    for key, label in (("by_flop", "to the flop:"), ("by_end", "ended:")):
+    for key, label in (("by_flop", "to the flop:"), ("by_end", "ended:"),
+                       ("by_kind", "hands:")):
         for part, value in row.get(key, {}).items():
+            if part not in base.get(key, {}):
+                continue
             gap = value["bb_per_100"] - base[key][part]["bb_per_100"]
             if value["share"] > 0 and gap < 0:
                 parts.append((f"{label} {part}", round(gap, 2), value["share"]))
@@ -96,6 +100,9 @@ def summarize(reports, strategies, reference):
             versus = report["versus_reference"].get(name)
             cell = {"bb_per_100": row["bb_per_100"], "ci95": row["ci95"],
                     "verdict": verdict(row), "weakest": weak}
+            bomb = row.get("by_kind", {}).get("bomb")
+            if bomb and bomb["share"]:
+                cell["bomb"] = bomb
             if versus is not None:
                 cell["vs_reference"] = {"delta_bb_per_100": versus["delta_bb_per_100"],
                                         "ci95": versus["ci95"],
@@ -112,6 +119,12 @@ def measured_take(report):
     return max(MIN_TAKE, sum(shares) / len(shares))
 
 
+def bomb_settings(args):
+    if args.bomb is None:
+        return None
+    return Bomb(args.bomb, args.bomb_share).to_dict()
+
+
 def finished(args, pool, strategies):
     """With ``--resume``, the pool's report already saved by the same run
     settings (an interrupted run picks up where it stopped), else None."""
@@ -125,6 +138,7 @@ def finished(args, pool, strategies):
             and set(strategies) <= set(report["strategies"])
             and post == args.mushroom
             and (report.get("reads") or {}).get("hands") == (args.reads or None)
+            and report.get("bomb") == bomb_settings(args)
             and (args.mushroom_take is None or post is None
                  or report["mushroom"]["take"] == args.mushroom_take))
     return report if same else None
@@ -144,6 +158,9 @@ def table(summary, pools, reference, takes=None):
                 text += f"  (vs {reference} {delta:+.1f})"
             if takes:
                 text += f"  [mushroom take {takes[pool]:.0%}]"
+            if "bomb" in cell and cell["bomb"]["share"] < 1:
+                text += (f"  [bomb pots {cell['bomb']['bb_per_100']:+.1f} of it, "
+                         f"{cell['bomb']['share']:.0%} of hands]")
             lines.append(text)
             if cell["verdict"] != "wins" and cell["weakest"]:
                 lines.append(f"              below {pools[0]} most: " + ", ".join(
@@ -177,6 +194,10 @@ def main(argv=None):
     parser.add_argument("--mushroom-take", type=float,
                         help=f"one share for every pool (default: measured; "
                         f"the AA players' is {TAKE})")
+    parser.add_argument("--bomb", type=float, metavar="BIG_BLINDS",
+                        help="make some deals bomb pots: what every player puts in")
+    parser.add_argument("--bomb-share", type=float, default=SHARE,
+                        help="share of deals that are bomb pots (1: only bomb pots)")
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from "
                         "this many hands (noreads+name ignores them)")
@@ -200,6 +221,7 @@ def main(argv=None):
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
     reports, takes = {}, {}
+    bomb = None if args.bomb is None else Bomb(args.bomb, args.bomb_share)
     for pool in pools:
         saved = finished(args, pool, strategies)
         if saved is not None:
@@ -218,7 +240,7 @@ def main(argv=None):
                         deals=min(args.deals, args.calibration_deals),
                         pool=POOLS[pool], workers=args.workers,
                         base_seed=args.seed, mushroom=Mushroom(args.mushroom, take),
-                        reads=args.reads,
+                        reads=args.reads, bomb=bomb,
                         progress=lambda done, total, seconds, pool=pool: progress(
                             f"{pool} (mushroom take)", done, total, seconds)))
             takes[pool] = take
@@ -227,7 +249,8 @@ def main(argv=None):
             rules, strategies, deals=args.deals, pool=POOLS[pool],
             workers=args.workers, base_seed=args.seed,
             reference=args.reference or strategies[0], mushroom=mushroom,
-            reads=args.reads, progress=lambda done, total, seconds, pool=pool: progress(
+            reads=args.reads, bomb=bomb,
+            progress=lambda done, total, seconds, pool=pool: progress(
                 pool, done, total, seconds))
         if args.out:
             (args.out / f"{pool}.json").write_text(json.dumps(reports[pool], indent=1),
@@ -237,6 +260,7 @@ def main(argv=None):
         (args.out / "summary.json").write_text(json.dumps({
             "deals": args.deals, "seed": args.seed, "pools": pools,
             "reference": args.reference, "reads": args.reads,
+            "bomb": bomb_settings(args),
             "mushroom": None if args.mushroom is None else {
                 "post_big_blinds": args.mushroom, "take": takes},
             "strategies": summary}, indent=1), encoding="utf-8")
@@ -245,7 +269,9 @@ def main(argv=None):
     print(f"{hands} hands per strategy and pool, seed {args.seed}"
           + ("" if args.mushroom is None else
              f", mushroom {args.mushroom:g} big blinds")
-          + ("" if not args.reads else f", reads from {args.reads} hands"))
+          + ("" if not args.reads else f", reads from {args.reads} hands")
+          + ("" if args.bomb is None else
+             f", bomb pots {args.bomb_share:.0%} of deals ({args.bomb:g} big blinds)"))
 
 
 if __name__ == "__main__":
