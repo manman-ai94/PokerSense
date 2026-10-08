@@ -77,3 +77,31 @@ def test_ranges_kept_from_earlier_decisions_are_the_same_as_read_again():
     kept = opponent_ranges(last, model)
     ranges._KEPT.clear()
     assert kept == opponent_ranges(last, model)
+
+
+def test_reads_widen_the_range_of_a_seat_that_raises_more_than_the_model():
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    arena = AAFullHandArena(rules).reset(3)
+    opener = arena.actor
+    arena.step(next(a["id"] for a in arena.observe(opener)["legal_actions"]
+                    if a["kind"] == "raise_to"))
+    while len(arena.observe(0)["folded"]) < len(arena.occupied_seats) - 2:
+        arena.step("fold")
+    arena.step("check_call")
+    bet = next(a["id"] for a in arena.observe(arena.actor)["legal_actions"]
+               if a["kind"] == "raise_to")
+    if arena.actor == opener:
+        arena.step(bet)
+    observation = arena.observe(arena.actor)
+    model = PopulationBot(adjusted=True)
+
+    def width(reads):
+        weights = opponent_ranges({**observation, "reads": reads} if reads else
+                                  observation, model)[opener]
+        return sum(weights.values())
+
+    plain = width(None)
+    assert width({str(opener): {"hands": 100, "vpip": 0.37, "pfr": 0.115}}) == plain
+    wide = width({str(opener): {"hands": 300, "vpip": 0.5, "pfr": 0.35}})
+    tight = width({str(opener): {"hands": 300, "vpip": 0.15, "pfr": 0.05}})
+    assert tight < plain < wide

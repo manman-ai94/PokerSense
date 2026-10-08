@@ -124,11 +124,21 @@ def preflop_shares(name, spot, adjusted=False):
     return raise_share, call_share
 
 
-def preflop_band(observation, name, adjusted=False):
+def read_shares(raise_share, call_share, read=(1.0, 1.0)):
+    """(raise, call) shares scaled by a seat's read factors (``reads.factors``)."""
+    raise_factor, call_factor = read
+    if raise_factor == call_factor == 1.0:
+        return raise_share, call_share
+    raise_share = min(raise_share * raise_factor, MAX_CONTINUE)
+    return raise_share, min(call_share * call_factor, MAX_CONTINUE - raise_share)
+
+
+def preflop_band(observation, name, adjusted=False, read=(1.0, 1.0)):
     """The range the seat's own earlier preflop decisions leave it with.
 
     A range is a band of hand percentiles (0 = strongest). Each decision splits
     the band in raise, call and fold parts; the action taken keeps one part.
+    ``read``: the seat's (raise, call) factors, for its first decision.
     """
     me = observation["observing_seat"]
     history = actions(observation, "preflop")
@@ -137,7 +147,9 @@ def preflop_band(observation, name, adjusted=False):
         if player != me:
             continue
         spot = preflop_spot(history[:index], me)
-        raise_share, call_share = preflop_shares(name, spot, adjusted)
+        raise_share, call_share = read_shares(
+            *preflop_shares(name, spot, adjusted), read)
+        read = (1.0, 1.0)
         width = high - low
         if kind == "r":
             high = low + raise_share * width
@@ -194,11 +206,18 @@ class PopulationBot(_Policy):
         return self.postflop(observation, rng)
 
     def preflop(self, observation):
+        """``observation["read_factors"]`` (range reading only, see ``ranges``):
+        the seat's first decision scaled by its reads, as ``aa_preflop``
+        expects it to play."""
         name = stats_position(observation)
         me = observation["observing_seat"]
-        spot = preflop_spot(actions(observation, "preflop"), me)
-        raise_share, call_share = preflop_shares(name, spot, self.adjusted)
-        low, high = preflop_band(observation, name, self.adjusted)
+        history = actions(observation, "preflop")
+        spot = preflop_spot(history, me)
+        read = tuple(observation.get("read_factors") or (1.0, 1.0))
+        first = all(player != me for player, _ in history)
+        raise_share, call_share = read_shares(
+            *preflop_shares(name, spot, self.adjusted), read if first else (1.0, 1.0))
+        low, high = preflop_band(observation, name, self.adjusted, read)
         share = combo_percentile(observation["own_hole"])
         place = (share - low) / (high - low) if high > low else 1.0
         if place <= raise_share:
@@ -232,4 +251,5 @@ class PopulationBot(_Policy):
 
 
 __all__ = ["PopulationBot", "aa_factors", "fallbacks", "population_stats",
-           "preflop_band", "preflop_shares", "stats_position", "threshold"]
+           "preflop_band", "preflop_shares", "read_shares", "stats_position",
+           "threshold"]

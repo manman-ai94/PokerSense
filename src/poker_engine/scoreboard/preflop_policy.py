@@ -66,7 +66,7 @@ import math
 from poker_engine.core.enums import Position
 
 from .bots import _Policy, position, raise_toward, raises_this_street
-from .population import MAX_CONTINUE, NAMES, PopulationBot, actions, preflop_shares
+from .population import NAMES, PopulationBot, actions, preflop_shares, read_shares
 from .reads import MODEL, factors
 from .spots import preflop_spot
 from .strength import class_combos, hand_class, preflop_table
@@ -165,15 +165,6 @@ def stats_name(observation, seat):
         if seat_position == Position.BB:
             return "SB"
     return NAMES[seat_position]
-
-
-def read_shares(raise_share, call_share, read=(1.0, 1.0)):
-    """(raise, call) shares scaled by a seat's read factors (see ``reads``)."""
-    raise_factor, call_factor = read
-    if raise_factor == call_factor == 1.0:
-        return raise_share, call_share
-    raise_share = min(raise_share * raise_factor, MAX_CONTINUE)
-    return raise_share, min(call_share * call_factor, MAX_CONTINUE - raise_share)
 
 
 def band(history, seat, name, adjusted=True, read=(1.0, 1.0)):
