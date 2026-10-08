@@ -46,6 +46,12 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "还没开始");
 assert.equal(view.header.health.text, "还没开始");
 view = signalView({status: "STALE"}, 0, {});
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面断了");
+// A start that failed (no card on the Mac): the red text above says why.
+view = signalView({status: "ERROR", source_kind: "capture-card", capture_available: true,
+  capture_devices: ["FaceTime HD Camera"]}, 0, {});
+assert.equal(view.tone, "warn"); assert.equal(view.title, "没开起来");
+assert.equal(view.note, "原因写在上面红字里，弄好后再点“开始”。Mac 现在认到的摄像头：FaceTime HD Camera");
+assert.deepEqual(view.header.health, {tone: "bad", text: "出错了"});
 // No table on screen: calm at first (between hands), a warning when it lasts.
 const blind = {};
 view = signalView(running({...base(), scene_supported: false}), 0, blind);

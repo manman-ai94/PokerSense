@@ -9,9 +9,12 @@ the card's number changes with the cable or hub. Black is the card with no
 picture from the phone yet (a camera always shows something): a chosen
 device that stays black is kept without opening the others, so the Mac's
 camera does not light up while the phone is locked or not mirroring yet.
-When no device shows the phone, the first black one is used, else the
-chosen one; a black card that lights up later (the phone unlocked or started
-mirroring) is then reported as showing the phone. ``device`` says which one
+When no device shows the phone, the first black one is used; a black card
+that lights up later (the phone unlocked or started mirroring) is then
+reported as showing the phone. When only a camera's picture was seen (the
+card is not on the Mac's USB), nothing is kept open, so the camera does not
+stay lit, and the error says so (``CAMERA_ONLY``); else the chosen device is
+read and its error says what is wrong. ``device`` says which one
 was used, whether it showed the phone (``device_check``) and what each
 device looked at showed (``device_seen``); the session reports it and a
 recording keeps it.
@@ -89,11 +92,15 @@ class CameraList:
             self.listed = listed
 
 
+# What to plug when the Mac does not see the card (a card started after the
+# window may only be seen by a newly opened one).
+PLUG = ("请把采集卡自己的 USB 直接插到 Mac（扩展坞插在手机上，不要插 Mac），再点开始；"
+        "插好了还是这样，就关掉终端窗口，从桌面重新打开“PokerSense 开始”")
+CAMERA_ONLY = f"Mac 只认到它自带的摄像头，没认到采集卡（摄像头已经关上）：{PLUG}"
 # The capture backend's English errors, as the window says them.
 PLAIN_ERRORS = (
     ("could not open capture-card device",
-     "Mac 没认到采集卡：请把采集卡自己的 USB 直接插到 Mac（扩展坞插在手机上，不要插 Mac），"
-     "再点开始"),
+     f"Mac 没认到采集卡：{PLUG}"),
     ("stopped producing frames", "采集卡没有画面了：线松了或拔掉了，接好后再点开始"),
     ("reported signal loss",
      "采集卡收不到手机画面：手机要亮屏并切到“屏幕镜像”，再点开始"),
@@ -197,6 +204,8 @@ class AACaptureSource:
         try:
             if self.find_phone:
                 self.find()
+                if not self.cancel.is_set() and self._camera_only():
+                    raise RuntimeError(CAMERA_ONLY)
             waiting = self._black_card()
             while not self.cancel.is_set():
                 host_started = time.monotonic()
@@ -236,6 +245,11 @@ class AACaptureSource:
                     self.condition.notify_all()
             else:
                 self.device_lock.release()
+
+    def _camera_only(self):
+        """Only a camera's picture was seen: no phone, no black card."""
+        kinds = set(self.device["device_seen"].values())
+        return "other" in kinds and not kinds & {"phone", "dark"}
 
     def _black_card(self):
         """The device in use is a card that was black when looked at."""

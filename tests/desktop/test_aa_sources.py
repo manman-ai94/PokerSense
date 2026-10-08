@@ -258,10 +258,13 @@ def full_frame(kind):
 
 def devices(shows):
     """A backend factory over devices {index: "phone" | "camera" | "black"};
-    a device not listed cannot be opened. ``opened`` lists (index, normalized)."""
+    a device not listed cannot be opened. ``opened`` lists (index, normalized);
+    ``Backend.captured`` the same for each frame taken."""
     opened = []
 
     class Backend:
+        captured = []
+
         def __init__(self, device_index, normalization=None, **kwargs):
             if device_index not in shows:
                 raise RuntimeError(f"could not open capture-card device index "
@@ -271,6 +274,7 @@ def devices(shows):
 
         def capture(self, target):
             assert target.window_id == f"uvc-{self.index}"
+            Backend.captured.append((self.index, self.normalization is not None))
             time.sleep(0.005)
             self.seq += 1
             frame = full_frame(shows[self.index])
@@ -316,16 +320,18 @@ def test_the_chosen_device_is_looked_at_first():
         source.close()
 
 
-def test_without_the_phone_the_chosen_device_is_used_and_said_so():
+def test_with_only_the_camera_nothing_is_kept_open_and_it_is_said_so():
+    # The card is unplugged: the Mac's camera is looked at once, then let go.
     backend, _ = devices({0: "camera"})
     source = AACaptureSource({"device_index": 0, "find_phone": True},
                              backend_factory=backend)
     try:
-        source.read()
-        assert source.device["device_index"] == 0
+        with pytest.raises(RuntimeError, match="^Mac 只认到它自带的摄像头，没认到采集卡"):
+            source.read()
         assert source.device["device_check"] == "no_phone_found"
         assert source.device["device_seen"] == {"0": "other", "1": None, "2": None,
                                                 "3": None}
+        assert (0, True) not in backend.captured     # the camera is not read on
     finally:
         source.close()
 
