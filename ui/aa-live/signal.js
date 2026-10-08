@@ -12,6 +12,11 @@
   const DEVICE_KEY = "pokersense.signal.device";
   try { const saved = localStorage.getItem(DEVICE_KEY); if (saved !== null) el("device").value = saved; }
   catch (ignored) { /* storage can be unavailable */ }
+  // "行动后再看": hold the advice back on your turn, grade what you did.
+  const ADVICE_KEY = "pokersense.signal.advice";
+  let afterAct = false;
+  try { afterAct = localStorage.getItem(ADVICE_KEY) === "after"; }
+  catch (ignored) { /* storage can be unavailable */ }
 
   function node(tag, className, text) {
     const item = document.createElement(tag);
@@ -40,8 +45,11 @@
     el("price").textContent = view.price || "";
     cards("hero-cards", view.cards.hero);
     cards("board-cards", view.cards.board);
-    el("board-cap").textContent = view.pot ? `公共牌 · 底池 ${view.pot}` : "公共牌";
-    const verdict = view.verdict;
+    const pot = view.potCap ?? view.pot;
+    el("board-cap").textContent = pot ? `公共牌 · 底池 ${pot}` : "公共牌";
+    el("context").hidden = !view.context;
+    el("context").textContent = view.context || "";
+    const verdict = view.verdict || view.graded;
     el("word").textContent = verdict ? verdict.word : view.title;
     el("word").className = verdict ? "word" : "word status";
     el("size").textContent = verdict?.size || "";
@@ -65,6 +73,16 @@
       row.append(node("span", null, item.text), bar, node("span", "opt-value", item.value));
       return row;
     }));
+    const compare = view.graded?.compare || [];
+    el("compare").hidden = !compare.length;
+    el("compare").replaceChildren(...compare.map(item => {
+      const box = node("div", `cmp${item.best ? " best" : ""}`);
+      box.append(node("span", null, item.label), node("b", null, item.text));
+      if (item.value) box.append(node("small", null, item.value));
+      return box;
+    }));
+    el("rule").hidden = !view.rule;
+    el("rule").textContent = view.rule || "";
     el("numbers").replaceChildren(...view.numbers.map(item => {
       const box = node("div");
       box.append(node("span", null, item.label), node("b", null, item.value));
@@ -101,6 +119,24 @@
     if (!log.length) log.push(node("span", "st", ""), node("span", null, "还没有这一手的动作"));
     el("log").replaceChildren(...log);
     el("basis").replaceChildren(...view.basis.map(text => node("span", "pill", text)));
+    const session = view.session;
+    el("session-block").hidden = !session;
+    if (!session) return;
+    el("session-stats").replaceChildren(...session.stats.map(item => {
+      const box = node("div");
+      const value = node("b", null, item.value);
+      if (item.unit) value.append(node("small", null, ` ${item.unit}`));
+      box.append(node("span", "label", item.label), value);
+      return box;
+    }));
+    const rows = session.rows.map(item => {
+      const line = node("div", "srow");
+      const text = node("div");
+      text.append(node("strong", null, item.title), node("small", null, item.detail));
+      line.append(node("span", "num", item.time), text, node("span", `grade ${item.tone}`, item.grade));
+      return line;
+    });
+    el("session-rows").replaceChildren(...(rows.length ? rows : [node("p", "muted", session.empty)]));
   }
 
   function renderHeader(view) {
@@ -122,10 +158,14 @@
     el("start").disabled = view.header.active || pending || !available[el("mode").value] ||
       status.profile?.ready === false;
     el("stop").disabled = !view.header.active && !pending;
+    el("session").hidden = !view.header.session;
+    el("session").textContent = view.header.session || "";
+    el("advice-live").setAttribute("aria-pressed", String(!afterAct));
+    el("advice-after").setAttribute("aria-pressed", String(afterAct));
   }
 
   function draw(state) {
-    const view = SignalView.signalView(state, now(), memory);
+    const view = SignalView.signalView(state, now(), memory, {afterAct});
     renderHeader(view); renderSignal(view); renderSide(view);
   }
 
@@ -176,6 +216,13 @@
   });
   el("stop").addEventListener("click", () => command("stop"));
   el("mode").addEventListener("change", () => { modeTouched = true; draw({...status, payload: null}); });
+  for (const [id, value] of [["advice-live", false], ["advice-after", true]]) {
+    el(id).addEventListener("click", () => {
+      afterAct = value;
+      try { localStorage.setItem(ADVICE_KEY, value ? "after" : "live"); } catch (ignored) { /* not kept */ }
+      draw(status);
+    });
+  }
   el("device").addEventListener("change", () => {
     try { localStorage.setItem(DEVICE_KEY, el("device").value); } catch (ignored) { /* not kept */ }
   });

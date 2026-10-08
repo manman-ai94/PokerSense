@@ -245,3 +245,12 @@ def test_video_replay_is_offered_only_when_a_recording_is_configured(
         assert client.post("/api/start", json=body,
                            headers=HEADERS).status_code == 200
         assert session.starts == [body]
+
+
+def test_the_service_grades_your_decisions_against_its_own_advice(tmp_path):
+    from poker_engine.desktop.aa_grading import AAGrades
+
+    app = aa_server.create_app(tmp_path / "missing.json", replay_pool=tmp_path)
+    service = app.state.aa_session
+    assert isinstance(service._grades, AAGrades)
+    assert service._grades._advice is service._solver_advice

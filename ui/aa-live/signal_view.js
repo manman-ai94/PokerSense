@@ -57,8 +57,16 @@
     return number === null ? null : String(Math.round(number * 100) / 100);
   };
   const pct = value => `${Math.round(value * 100)}%`;
+  const SUITS = {c: "♣︎", d: "♦︎", h: "♥︎", s: "♠︎"};
+  const GRADES = {best: "最佳", fine: "可以", slip: "小失误", mistake: "错误"};
+  const RULE = "怎么打分：翻前看比最好的选择少赢几个大盲；转牌、河牌看求解器多常这样打：" +
+    "最常用或一半以上是“最佳”，两成以上“可以”，更少是“小失误”，几乎从不这样打是“错误”。";
   const one = value => (Math.round(value * 10) / 10).toFixed(1);
-  const signed = value => `${value > 0 ? "+" : value < 0 ? "−" : ""}${one(Math.abs(value))}`;
+  // "+1.6", "−0.3", and "0.0" for anything that rounds to zero.
+  const signed = value => {
+    const text = one(Math.abs(value));
+    return `${text === "0.0" ? "" : value > 0 ? "+" : "−"}${text}`;
+  };
 
   function reasonText(reason) {
     if (typeof reason === "string" && reason.startsWith("players_"))
@@ -71,8 +79,11 @@
     const seats = row.seat_states_v1?.seats || {};
     const dealt = [];
     for (let seat = 0; seat < 8; seat++) if (DEALT.has(seats[seat]?.state)) dealt.push(seat);
-    const dealer = Number.isInteger(history?.dealer) ? history.dealer : row.dealer_seat;
-    const names = POSITIONS[dealt.length];
+    return positionsOf(Number.isInteger(history?.dealer) ? history.dealer : row.dealer_seat, dealt);
+  }
+
+  function positionsOf(dealer, dealt) {
+    const names = POSITIONS[dealt?.length];
     const result = {};
     if (!names || !dealt.includes(dealer)) return result;
     const start = dealt.indexOf(dealer);
@@ -194,6 +205,8 @@
   }
 
   const short = label => `${label.word}${label.size ? ` ${label.size}` : ""}`;
+  // A label followed straight by more words: "和跟注 2 差不多".
+  const spaced = label => `${short(label)}${label.size ? " " : ""}`;
   const verb = row => row.label.word.replace("到", "");
 
   function readyVerdict(advice, controls, stack) {
@@ -223,6 +236,106 @@
     return {...top.label, kind: "solver", note,
       mix: rows.filter((item, i) => i === 0 || item.frequency >= 0.01).map(item => ({
         text: short(item.label), tone: item.label.tone, share: item.frequency, percent: pct(item.frequency)}))};
+  }
+
+  // -- after you acted: the grade of that step and this session's list -------
+
+  // What you did, in words: "跟注 4", "下注 30", "全下 80".
+  function didText(item) {
+    const kind = item.action?.kind;
+    const amount = chips(item.action?.amount);
+    if (kind === "fold") return "弃牌";
+    if (kind === "check") return "过牌";
+    const word = kind === "call" ? "跟注" : kind === "all_in" ? "全下"
+      : kind === "raise" ? (item.street !== "preflop" && !(Number(item.to_call) > 0) ? "下注" : "加注")
+        : "动作没读清";
+    return `${word}${amount && Number(amount) > 0 ? ` ${amount}` : ""}`;
+  }
+
+  const group = action => (["bet", "raise", "all_in"].includes(action) ? "raise" : action);
+
+  function handText(cards) {
+    return cardList(cards, 2).map(card => (card && !card.unread
+      ? `${card.rank === "T" ? "10" : card.rank}${SUITS[card.suit]}` : "?")).join(" ");
+  }
+
+  function clockText(at) {
+    if (!isNumber(at)) return "";
+    const date = new Date(Number(at) * 1000);
+    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+
+  // One graded step: the grade word, how far off it was, and you vs the best.
+  function gradeView(item) {
+    const stack = num(item.stack);
+    const did = didText(item);
+    if (Array.isArray(item.options) && item.options.length) {
+      const options = item.options.map(option => ({...option, label: preflopLabel(option, stack)}));
+      const best = options[0], chosen = options.find(option => option.action === item.chosen);
+      const lost = num(item.lost_big_blinds) ?? 0;
+      const same = chosen === best;
+      const compare = [{label: same ? "你做了 · 就是最好的打法" : "你做了", text: did, best: same,
+        value: chosen ? `${signed(chosen.big_blinds)} 大盲` : ""}];
+      if (!same) compare.push({label: "最好的打法", text: short(best.label), best: true,
+        value: `${signed(best.big_blinds)} 大盲`});
+      return {word: GRADES[item.grade] || "", grade: item.grade, size: lost >= 0.05 ? `−${one(lost)}` : "",
+        note: lost >= 0.05 ? `这一步比最好的打法少赢 ${one(lost)} 个大盲`
+          : same ? "就是最好的打法" : `和${spaced(best.label)}差不多，都可以`,
+        detail: same ? `你${did} · 和建议一样` : lost < 0.05 ? `你${did} · 和${spaced(best.label)}差不多`
+          : `你${did} · 最好${short(best.label)} · 少赢 ${one(lost)}`,
+        compare, mix: []};
+    }
+    const rows = (item.advice || []).map(row => ({...row, label: solverLabel(row, item.to_call, stack)}));
+    const share = num(item.frequency) ?? 0;
+    const how = share >= 0.95 ? "求解器每次都这样打" : share < 0.02 ? "求解器几乎从不这样打"
+      : `求解器 ${pct(share)} 的时候这样打`;
+    const top = rows[0];
+    const same = !top || group(top.label.action) === item.chosen;
+    const compare = [{label: same ? "你做了 · 就是求解器最常用的打法" : "你做了", text: did,
+      value: `求解器 ${pct(share)}`, best: same}];
+    if (top && group(top.label.action) !== item.chosen)
+      compare.push({label: "求解器最常用", text: short(top.label), value: pct(top.frequency), best: true});
+    return {word: GRADES[item.grade] || "", grade: item.grade, size: pct(share), note: how,
+      detail: `你${did} · ${share >= 0.95 || share < 0.02 ? how : `求解器 ${pct(share)} 这样打`}`, compare,
+      mix: rows.filter((row, i) => i === 0 || row.frequency >= 0.01).map(row => ({
+        text: short(row.label), tone: row.label.tone, share: row.frequency, percent: pct(row.frequency)}))};
+  }
+
+  // "CO，UTG 加注 4，底池 13，跟注要 4": the spot as it was.
+  function gradeContext(item) {
+    const names = positionsOf(item.dealer, item.dealt);
+    const parts = [names[HERO] ? `${names[HERO]} · 你` : "你"];
+    const facing = item.facing;
+    if (facing) {
+      const verb = facing.kind === "all_in" ? "全下"
+        : item.street === "preflop" || facing.raises > 1 ? "加注" : "下注";
+      parts.push(`${names[facing.slot] || `${facing.slot} 号位`} ${verb}${isNumber(facing.amount) &&
+        Number(facing.amount) > 0 ? ` ${chips(facing.amount)}` : ""}`);
+    }
+    if (isNumber(item.pot)) parts.push(`底池 ${chips(item.pot)}`);
+    parts.push(Number(item.to_call) > 0 ? `跟注要 ${chips(item.to_call)}` : "可以过牌");
+    return parts.join("，");
+  }
+
+  function gradeScreen(item) {
+    const graded = gradeView(item);
+    return {tone: "grade", graded, title: graded.word, note: graded.note, rule: RULE,
+      tags: [STREETS[item.street], "你已行动 · 打分"].filter(Boolean),
+      price: `${clockText(item.at)} 这一步 · 下次轮到你之前一直显示`.trim(),
+      cards: {hero: cardList(item.hero, 2, 2), board: cardList(item.board, 5, BOARD[item.street] ?? 0)},
+      potCap: chips(item.pot), context: gradeContext(item), numbers: [], basis: ["只显示建议和打分，不替你点"]};
+  }
+
+  function sessionView(grades) {
+    if (!grades || !isNumber(grades.graded)) return null;
+    return {pill: `本场 ${grades.hands} 手 · 照建议 ${grades.best}/${grades.graded}`,
+      stats: [{label: "有建议的", value: String(grades.graded)},
+        {label: "照着打", value: String(grades.best)},
+        {label: "翻前少赢", value: one(num(grades.preflop_lost_big_blinds) ?? 0), unit: "大盲"}],
+      rows: (grades.rows || []).slice(0, 6).map(item => ({time: clockText(item.at),
+        title: `${STREETS[item.street] || ""} · ${handText(item.hero)}`, detail: gradeView(item).detail,
+        grade: GRADES[item.grade] || "", tone: item.grade})),
+      empty: "轮到你、有了建议、你做完以后，这里记一笔"};
   }
 
   function numbers(math, advice) {
@@ -280,15 +393,18 @@
           : status === "STARTING" ? {tone: "neutral", text: "正在启动"}
             : status === "ENDED" ? {tone: "neutral", text: "录像放完了"}
               : {tone: "neutral", text: "还没开始"};
-    return {health, running: Boolean(running),
+    const session = running ? sessionView(state.payload.grade_v1) : null;
+    return {health, running: Boolean(running), session: session?.pill || null,
       active: ["STARTING", "RUNNING", "STALE", "STOPPING"].includes(status)};
   }
 
-  function signalView(state, now, memory = {}) {
+  // settings.afterAct: hold the advice back on your turn and only grade
+  // what you did ("行动后再看").
+  function signalView(state, now, memory = {}, settings = {}) {
     const top = header(state);
     const row = top.running ? state.payload : null;
     const base = {header: top, street: null, tags: [], cards: {hero: cardList(null, 2), board: cardList(null, 5)},
-      pot: null, seats: [], log: [], numbers: [], basis: [], price: null};
+      pot: null, seats: [], log: [], numbers: [], basis: [], price: null, session: null};
     if (!row) {
       since(memory, "turn", null, now); since(memory, "solve", null, now);
       const stale = String(state?.status).toUpperCase() === "STALE";
@@ -318,7 +434,7 @@
       cards: {hero: cardList(row.cards?.hero, 2, IN_HAND.has(row.seat_states_v1?.seats?.[HERO]?.state) ? 2 : 0),
         board: cardList(row.cards?.board_slots, 5, BOARD[street] ?? 0)},
       pot: chips(row.pot?.value), seats: seatList(row, names, history),
-      log: handLog(history, names, street, yourTurn)};
+      log: handLog(history, names, street, yourTurn), session: sessionView(row.grade_v1)};
     const waited = since(memory, "turn", yourTurn ? decisionKey(row, history) : null, now);
     const computing = yourTurn && advice?.status === "computing";
     const solving = since(memory, "solve", computing ? `${advice.hand_id}|${advice.street}|${advice.decision}` : null, now);
@@ -328,6 +444,7 @@
     if (yourTurn && (controls.button === "check" || isNumber(price))) {
       view.price = controls.button === "check" ? "现在可以过牌" : priceText(history, names, street, price, stack);
     }
+    if (!yourTurn && row.grade_v1?.last) return {...view, ...gradeScreen(row.grade_v1.last)};
     if (!yourTurn) {
       const actor = Number.isInteger(row.current_actor) && row.current_actor !== HERO
         ? `${names[row.current_actor] || `${row.current_actor} 号位`} 在想` : null;
@@ -337,6 +454,10 @@
           {label: "还在局", value: `${view.seats.filter(seat => !seat.out).length} 人`, note: ""}]};
     }
     view.numbers = numbers(math, advice);
+    if (settings.afterAct && (advice?.status === "ready" || computing)) {
+      return {...view, tone: "info", title: "你先决定",
+        note: "点完以后这里给这一步打分。想先看建议，点上面的“实时建议”。"};
+    }
     if (advice?.status === "ready") {
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
@@ -383,7 +504,7 @@
     return {...view, tone: "info", title: "这一步不给建议", note: `${reasonText(reason)}。`};
   }
 
-  const api = {signalView, positions, reasonText};
+  const api = {signalView, positions, reasonText, gradeView, sessionView};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.SignalView = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -90,10 +90,21 @@ class AASolverAdvice:
         self._bot = bot
         self._executor = executor
         self._preflop = preflop
+        self.reset()
+
+    def reset(self):
+        """Forget the hand being followed: a new observation numbers its
+        frames, and so its hands, from 0 again."""
         self._rows, self._hand_id, self._jobs = [], None, {}
 
     def __call__(self, payload, frame):
         return self.observe(payload, frame)
+
+    def settled(self):
+        """This hand's id and its decisions so far: {(decision, street):
+        outcome}, None while still being worked out. A solve that finishes
+        after you acted is here too, for grading what you did."""
+        return self._hand_id, {key: self._settle(key) for key in list(self._jobs)}
 
     def observe(self, payload, frame):
         return self.observe_fields(frame_summary(payload), frame)
@@ -212,16 +223,23 @@ class AASolverAdvice:
                 "range_equity": edge,
                 "seconds": round(time.monotonic() - started, 2)}
 
-    def _outcome(self, key, street):
+    def _settle(self, key):
+        """The decision's outcome, or None while the solve is running."""
         job = self._jobs[key]
         if isinstance(job, Future):
             if not job.done():
-                return self._report("computing", None, street=street, decision=key[0])
+                return None
             try:
                 job = job.result()
             except Exception:              # the solver process failed
                 job = {"status": "abstain", "reason": "solver_error"}
             self._jobs[key] = job
+        return job
+
+    def _outcome(self, key, street):
+        job = self._settle(key)
+        if job is None:
+            return self._report("computing", None, street=street, decision=key[0])
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
                                 "advice", "options", "pot", "to_call", "pot_offset",

@@ -194,3 +194,16 @@ def test_a_hand_joined_midway_gets_no_advice():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     result = run(advice, range(50), complete=False)[-1]
     assert (result["status"], result["reason"]) == ("abstain", "hand_incomplete")
+
+
+def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
+    executor = Inline(finish=False)
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
+    run(advice, range(50))
+    assert advice.settled() == ("hand_1", {(9, "turn"): None})    # still computing
+    done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    run(done, range(50))
+    hand, outcomes = done.settled()
+    assert hand == "hand_1" and outcomes[(9, "turn")]["status"] == "ready"
+    done.reset()
+    assert done.settled() == (None, {})

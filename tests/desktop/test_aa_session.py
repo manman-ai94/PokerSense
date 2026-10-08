@@ -279,6 +279,37 @@ def test_table_math_enriches_payload_and_frames_are_logged(tmp_path):
     assert rows[0]["timing"]["recognition_ms"] >= 0
 
 
+def test_grades_follow_the_advice_and_reset_when_a_source_starts():
+    class Grades:
+        def __init__(self):
+            self.resets, self.seen = 0, []
+
+        def reset(self):
+            self.resets += 1
+
+        def __call__(self, payload, frame):
+            self.seen.append(payload.get("solver_advice_v1"))
+            return {"graded": len(self.seen)}
+
+    grades, sources = Grades(), []
+
+    def create(options):
+        sources.append(Source())
+        return sources[-1]
+
+    session = AARecognitionSession(
+        create, Reader, solver_advice=lambda payload, frame: {"status": "idle"},
+        grades=grades)
+    for _ in range(2):
+        session.start({})
+        try:
+            wait_until(lambda: (session.snapshot()["payload"] or {}).get("grade_v1"))
+        finally:
+            session.stop()
+            wait_until(lambda: session.snapshot()["status"] == "STOPPED")
+    assert grades.resets == 2 and grades.seen[0] == {"status": "idle"}
+
+
 def test_frame_summary_prefers_current_evidence_and_keeps_legacy_fields():
     from poker_engine.desktop.aa_session import frame_summary
 

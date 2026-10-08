@@ -26,7 +26,7 @@ class AARecognitionSession:
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
                  interval_seconds=0.1, table_math=None, solver_advice=None,
-                 frame_log=None):
+                 grades=None, frame_log=None):
         if not callable(source_factory) or not callable(reader_factory):
             raise TypeError("source_factory and reader_factory must be callable")
         for name, value in (("stale_after", stale_after),
@@ -40,11 +40,13 @@ class AARecognitionSession:
         self._reader_factory = reader_factory
         self._stale_after = stale_after
         self._interval = interval_seconds
-        # Optional payload -> dict enrichments (table math; solver advice, which
-        # also takes the frame number) and a JSONL file receiving one
+        # Optional payload -> dict enrichments (table math; solver advice and
+        # the grades of your decisions, which also take the frame number and
+        # are reset when a source starts) and a JSONL file receiving one
         # timing/field record per processed frame.
         self._table_math = table_math
         self._solver_advice = solver_advice
+        self._grades = grades
         self._frame_log = frame_log
         self._lock = threading.RLock()
         self._worker = None
@@ -156,6 +158,11 @@ class AARecognitionSession:
             reader = self._reader_factory()
             if cancel.is_set():
                 return
+            # Frames, and so hand ids, count from 0 again for each source.
+            for enrichment in (self._solver_advice, self._grades):
+                reset = getattr(enrichment, "reset", None)
+                if callable(reset):
+                    reset()
             source = self._source_factory(options)
             processed = 0
             while not cancel.is_set():
@@ -205,6 +212,8 @@ class AARecognitionSession:
                 if self._solver_advice is not None:
                     advice = self._solver_advice(payload, processed)
                     payload["solver_advice_v1"] = advice
+                if self._grades is not None:
+                    payload["grade_v1"] = self._grades(payload, processed)
                 advice_finished = time.monotonic()
                 # Detach mutable reader results and reject NaN/non-JSON values.
                 payload = json.loads(json.dumps(payload, allow_nan=False))
@@ -323,9 +332,10 @@ def _advice(advice):
     """The solver advice status, without its fixed wording."""
     if not advice:
         return None
-    return {key: advice[key] for key in ("status", "reason", "street", "decision",
-                                         "advice", "options", "pot_offset",
-                                         "stacks_assumed", "range_equity", "seconds")
+    return {key: advice[key] for key in ("status", "reason", "hand_id", "street",
+                                         "decision", "advice", "options", "to_call",
+                                         "pot_offset", "stacks_assumed",
+                                         "range_equity", "seconds")
             if key in advice}
 
 

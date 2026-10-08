@@ -2,7 +2,7 @@
 // The signal window's view model (ui/aa-live/signal_view.js) for each state it shows.
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const {signalView, positions} = require(path.resolve(__dirname, "../../ui/aa-live/signal_view.js"));
+const {signalView, positions, gradeView, sessionView} = require(path.resolve(__dirname, "../../ui/aa-live/signal_view.js"));
 
 const seats = states => ({seats: Object.fromEntries(states.map((state, seat) => [seat, {state}]))});
 const full_ = () => seats(["active", "active", "active", "active", "active", "empty", "active", "active"]);
@@ -180,4 +180,85 @@ const solving = {};
 signalView(running(base({solver_advice_v1: states[0][0]})), 0, solving);
 view = signalView(running(base({solver_advice_v1: states[0][0]})), 2100, solving);
 assert.equal(view.note, "已算 2 秒，通常 1–4 秒。先看价格：");
+// After you acted: the last graded step stays up until your next turn.
+const preflopGrade = {at: 1700000000, hand_id: "hand_9", street: "preflop", hero: ["Kc", "Tc"],
+  board: [null, null, null, null, null], pot: "13", to_call: "4", stack: "160", dealer: 3,
+  dealt: [0, 2, 3, 4, 5, 6, 7], facing: {slot: 6, kind: "raise", amount: "4", raises: 1},
+  action: {kind: "call", amount: "4"}, chosen: "call", lost_big_blinds: 1.2, grade: "slip",
+  options: [{action: "raise", big_blinds: 1.6, chips_in: "14", to: "14"},
+    {action: "call", big_blinds: 0.4, chips_in: "4"}, {action: "fold", big_blinds: 0}]};
+const riverGrade = {at: 1700000300, hand_id: "hand_12", street: "river", hero: ["4d", "4s"],
+  board: ["6h", "8s", "Kd", "8h", "2d"], pot: "85", to_call: "28", stack: "160", dealer: 3,
+  dealt: [0, 1, 2, 3, 4, 5, 6, 7], facing: {slot: 2, kind: "raise", amount: "28", raises: 1},
+  action: {kind: "fold", amount: "0"}, chosen: "fold", frequency: 0.43, grade: "fine",
+  advice: [{action: "call", frequency: 0.57}, {action: "fold", frequency: 0.43}]};
+const grades = {schema_version: 1, hands: 87, graded: 2, best: 0, preflop_lost_big_blinds: 1.2,
+  last: preflopGrade, rows: [riverGrade, preflopGrade]};
+view = signalView(running(base({hero_controls_v1: {visible: false}, current_actor: 2, grade_v1: grades})), 0, {});
+assert.equal(view.tone, "grade");
+assert.equal(view.graded.word, "小失误"); assert.equal(view.graded.size, "−1.2");
+assert.equal(view.graded.note, "这一步比最好的打法少赢 1.2 个大盲");
+assert.deepEqual(view.graded.compare.map(item => [item.label, item.text, item.value, Boolean(item.best)]),
+  [["你做了", "跟注 4", "+0.4 大盲", false], ["最好的打法", "加注到 14", "+1.6 大盲", true]]);
+assert.deepEqual(view.tags, ["翻前", "你已行动 · 打分"]);
+assert.match(view.price, /^\d\d:\d\d 这一步 · 下次轮到你之前一直显示$/);
+assert.equal(view.context, "SB · 你，UTG 加注 4，底池 13，跟注要 4");
+assert.deepEqual(view.cards.hero.map(card => card.rank + card.suit), ["Kc", "Tc"]);
+assert.equal(view.potCap, "13"); assert.match(view.rule, /^怎么打分/);
+// The live table on the side and the session list stay current.
+assert.equal(view.pot, "85"); assert.equal(view.header.session, "本场 87 手 · 照建议 0/2");
+assert.deepEqual(view.session.stats.map(item => [item.label, item.value]),
+  [["有建议的", "2"], ["照着打", "0"], ["翻前少赢", "1.2"]]);
+assert.deepEqual(view.session.rows.map(item => [item.title, item.detail, item.grade, item.tone]), [
+  ["河牌 · 4♦︎ 4♠︎", "你弃牌 · 求解器 43% 这样打", "可以", "fine"],
+  ["翻前 · K♣︎ 10♣︎", "你跟注 4 · 最好加注到 14 · 少赢 1.2", "小失误", "slip"]]);
+assert.match(view.session.rows[0].time, /^\d\d:\d\d$/);
+// A solver grade: how often the solver does what you did, its mix, its most frequent action.
+let graded = gradeView(riverGrade);
+assert.deepEqual([graded.word, graded.size, graded.note], ["可以", "43%", "求解器 43% 的时候这样打"]);
+assert.deepEqual(graded.compare.map(item => [item.label, item.text, item.value]),
+  [["你做了", "弃牌", "求解器 43%"], ["求解器最常用", "跟注 28", "57%"]]);
+assert.equal(gradeView({...riverGrade, chosen: "call", frequency: 0.57, grade: "best"}).compare[0].label,
+  "你做了 · 就是求解器最常用的打法");
+assert.deepEqual(graded.mix.map(item => item.percent), ["57%", "43%"]);
+graded = gradeView({...riverGrade, action: {kind: "call", amount: "28"}, chosen: "call", frequency: 1, grade: "best",
+  advice: [{action: "call", frequency: 1}]});
+assert.deepEqual([graded.word, graded.note, graded.compare.length, graded.detail],
+  ["最佳", "求解器每次都这样打", 1, "你跟注 28 · 求解器每次都这样打"]);
+graded = gradeView({...riverGrade, street: "turn", to_call: "0", action: {kind: "raise", amount: "40"},
+  chosen: "raise", frequency: 0.01, grade: "mistake", advice: [{action: "check", frequency: 0.99},
+    {action: "bet", frequency: 0.01, chips: "30", to: "30"}]});
+assert.deepEqual([graded.word, graded.note, graded.detail],
+  ["错误", "求解器几乎从不这样打", "你下注 40 · 求解器几乎从不这样打"]);
+// The best preflop option, or one worth about the same.
+graded = gradeView({...preflopGrade, action: {kind: "raise", amount: "14"}, chosen: "raise",
+  lost_big_blinds: 0, grade: "best"});
+assert.deepEqual([graded.word, graded.size, graded.note, graded.detail, graded.compare.length],
+  ["最佳", "", "就是最好的打法", "你加注 14 · 和建议一样", 1]);
+assert.equal(graded.compare[0].label, "你做了 · 就是最好的打法");
+graded = gradeView({...preflopGrade, lost_big_blinds: 0.02, grade: "best"});
+assert.equal(graded.note, "和加注到 14 差不多，都可以");
+// A value that rounds to zero has no sign.
+graded = gradeView({...preflopGrade, options: [{action: "raise", big_blinds: 3.11, chips_in: "14", to: "14"},
+  {action: "call", big_blinds: -0.04, chips_in: "4"}, {action: "fold", big_blinds: 0}], lost_big_blinds: 3.15});
+assert.equal(graded.compare[0].value, "0.0 大盲");
+// Your turn again: the advice, not the old grade.
+view = signalView(running(base({...river, grade_v1: grades})), 0, {});
+assert.equal(view.tone, "call"); assert.equal(view.verdict.word, "跟注");
+// "行动后再看": on your turn the advice is held back until you act.
+view = signalView(running(base({...river, grade_v1: grades})), 0, {}, {afterAct: true});
+assert.equal(view.tone, "info"); assert.equal(view.title, "你先决定"); assert.equal(view.verdict, undefined);
+assert.equal(view.numbers[0].value, "25%");
+view = signalView(running(base({solver_advice_v1: states[0][0]})), 0, {}, {afterAct: true});
+assert.equal(view.title, "你先决定");
+view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "hand_incomplete"}})), 0, {},
+  {afterAct: true});
+assert.equal(view.title, "这一手不给建议");
+// Nothing graded yet: an empty list that says when it fills.
+const empty = sessionView({hands: 3, graded: 0, best: 0, preflop_lost_big_blinds: 0, last: null, rows: []});
+assert.deepEqual([empty.pill, empty.rows, empty.empty],
+  ["本场 3 手 · 照建议 0/0", [], "轮到你、有了建议、你做完以后，这里记一笔"]);
+assert.equal(sessionView(undefined), null);
+view = signalView(running(base({hero_controls_v1: {visible: false}})), 0, {});
+assert.equal(view.session, null); assert.equal(view.header.session, null);
 console.log("signal view cases passed");

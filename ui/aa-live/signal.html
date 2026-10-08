@@ -31,6 +31,11 @@
     <button id="stop" type="button" class="ghost" disabled>停止</button>
   </form>
   <span class="grow"></span>
+  <span id="session" class="pill session" hidden></span>
+  <div class="toggle" role="group" aria-label="建议显示方式">
+    <button id="advice-live" type="button" aria-pressed="true">实时建议</button>
+    <button id="advice-after" type="button" aria-pressed="false" title="轮到你时先不显示建议，你点完再打分">行动后再看</button>
+  </div>
   <a class="pill link" href="/classic">本桌设置和详细数据</a>
 </header>
 <p id="error" class="error" role="alert" hidden></p>
@@ -40,6 +45,7 @@
     <div class="cards-row">
       <div class="cards-block"><span class="cap">你的牌</span><div id="hero-cards" class="cards big"></div></div>
       <div class="cards-block"><span id="board-cap" class="cap">公共牌</span><div id="board-cards" class="cards"></div></div>
+      <p id="context" class="context" hidden></p>
     </div>
     <div class="verdict" aria-live="polite">
       <div class="verdict-line"><span id="word" class="word">正在连接</span><span id="size" class="size"></span></div>
@@ -47,12 +53,19 @@
     </div>
     <div id="mix" class="mix" role="img" hidden></div>
     <div id="options" class="options" hidden></div>
+    <div id="compare" class="compare" hidden></div>
     <div id="numbers" class="numbers"></div>
+    <p id="rule" class="rule" hidden></p>
   </section>
   <aside class="side" aria-label="牌桌和这一手">
     <div class="side-head"><span class="label">牌桌 · 识别结果</span><span id="speed" class="muted"></span></div>
     <div id="table" class="table"></div>
     <div class="log-block"><span class="label">这一手</span><div id="log" class="log"></div></div>
+    <div id="session-block" class="session-block" hidden>
+      <span class="label">本场到现在 · 每一步打完就更新</span>
+      <div id="session-stats" class="session-stats"></div>
+      <div id="session-rows" class="session-rows"></div>
+    </div>
     <div id="basis" class="basis"></div>
   </aside>
 </main>
