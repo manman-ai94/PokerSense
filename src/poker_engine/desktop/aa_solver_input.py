@@ -33,6 +33,9 @@ one action fits (``inferred``):
 - otherwise, a seat whose turn it was and is folded on the table now folded,
   unless it acts again later on that street (it folded then; what it missed
   here can be a raise);
+- otherwise, a seat whose turn it was and does not act again on that street
+  called or raised to the bet it still has on the table, while the table is
+  on that street (10/08: a raise to 27 missed, the next seat folded to it);
 - before your turn, the seats still to act folded (folded on the table) or
   checked or called, unless your price (the button's call amount) is more
   than that leaves you: then the one of them still in bet up to it.
@@ -320,12 +323,34 @@ def _fill(arena, actions, at, table):
     elif table["states"].get(seat) == "folded" and not later:
         action = _missed(arena, seat, table, None)
         rest = list(actions)
+    elif not later:
+        action = _from_wager(arena, seat, table)
+        rest = list(actions)
     else:
         return None             # it checked, called or raised: no telling
     if action is None:
         return None
     action.update(frame=nxt["frame"], source="inferred")
     return rest[:at] + [action] + rest[at:]
+
+
+def _from_wager(arena, seat, table):
+    """The call or raise ``seat`` made, told by its bet still on the table
+    while the table is on the replay's street; None when there is no telling."""
+    wager = (table.get("wagers") or {}).get(seat)
+    street = next((name for name, count in reversed(BOARD)
+                   if len(table.get("board") or ()) >= count), "preflop")
+    if wager is None or street != arena.street:
+        return None
+    bets = {int(key): Decimal(value)
+            for key, value in arena.observe(seat)["bets"].items()}
+    top = max(bets.values())
+    if wager == top:
+        return {"slot": seat, "kind": "call", "street": street, "amount": None}
+    if wager > top:
+        return {"slot": seat, "kind": "raise", "street": street,
+                "amount": str(wager - bets[seat])}
+    return None
 
 
 def fill_to_seat(arena, seat, table):
