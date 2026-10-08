@@ -94,6 +94,10 @@ const next = base({action_history_v1: {...river.action_history_v1, actions: [
   ...river.action_history_v1.actions, {street: "river", slot: 4, kind: "call", amount: "28"}]}});
 view = signalView(running(next), 5000, memory);
 assert.equal(view.tags[2], "已等 0 秒");
+// A new price is a new decision too, even when your action before it was not read.
+view = signalView(running(base({hero_controls_v1: {visible: true, button: "call", call_amount: "28"}})), 6000, memory);
+view = signalView(running(base({hero_controls_v1: {visible: true, button: "call", call_amount: "80"}})), 9000, memory);
+assert.equal(view.tags[2], "已等 0 秒");
 
 // A big bet that covers the stack reads as all in; a narrow top choice says so.
 view = signalView(running(base({solver_advice_v1: {status: "ready", street: "turn", to_call: "0",
@@ -127,6 +131,14 @@ assert.ok(!view.basis.some(line => line.includes("蘑菇池")));
 // As the small blind the mushroom pool read on the table is counted.
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1, mushroom_pool: "48"}}), 0, {});
 assert.ok(view.basis.includes("算上蘑菇池 48：你是小盲，赢下底池就一起拿走"));
+assert.ok(!view.basis.some(line => line.includes("本场看到")));
+view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1, reads_hands: 37}}), 0, {});
+assert.ok(view.basis.includes("各对手爱不爱入池、加注，按本场看到的 37 手调整"));
+assert.ok(view.seats.every(seat => seat.read === null));
+view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1,
+  seat_reads: {"3": {hands: 20, vpip: 0.7, pfr: 0.1, tag: "loose"}, "5": {hands: 20, vpip: 0.3, pfr: 0.1, tag: null}}}}), 0, {});
+assert.equal(view.seats[3].read, "很松");
+assert.equal(view.seats[5].read, null);
 // From the big blind with nothing to call, calling is a check.
 view = signalView(running({...pre, solver_advice_v1: {...pre.solver_advice_v1,
   options: [{action: "call", chips: 0.5, big_blinds: 0.25, chips_in: "0"}, {action: "raise", chips: -1, big_blinds: -0.5, to: "12", chips_in: "10"}]}}), 0, {});
@@ -214,8 +226,17 @@ assert.equal(view.potCap, "13"); assert.match(view.rule, /^怎么打分/);
 assert.deepEqual(view.numbers.map(item => [item.label, item.value]), [["本场照着打", "0/2"], ["翻前少赢", "1.2"]]);
 // The live table on the side and the session list stay current.
 assert.equal(view.pot, "85"); assert.equal(view.header.session, "本场 87 手 · 照建议 0/2");
-assert.deepEqual(view.session.stats.map(item => [item.label, item.value]),
-  [["有建议的", "2"], ["照着打", "0"], ["翻前少赢", "1.2"]]);
+// A report from before the session counts (no actions or chips yet): what there is.
+assert.deepEqual(view.session.stats.map(item => [item.label, item.value, item.unit]),
+  [["有建议", "2", undefined], ["照着打", "0/2", undefined], ["输赢 · 大盲", "—", undefined]]);
+assert.equal(view.session.spread, "最佳 0 · 可以 0 · 小失误 0 · 错误 0 · 翻前少赢 1.2 大盲");
+const counted = sessionView({...grades, decisions: 5, advised: 4, grades: {best: 0, fine: 1, slip: 1, mistake: 0},
+  net_big_blinds: -12.5, rebuys: 1});
+assert.deepEqual(counted.stats.map(item => [item.label, item.value, item.unit]),
+  [["有建议", "4/5", undefined], ["照着打", "0/2", undefined], ["输赢 · 大盲", "−12.5", undefined]]);
+assert.equal(counted.spread, "最佳 0 · 可以 1 · 小失误 1 · 错误 0 · 翻前少赢 1.2 大盲 · 补码 1 次不算输赢");
+assert.equal(sessionView({...grades, net_big_blinds: 3}).stats[2].value, "+3.0");
+assert.equal(sessionView({...grades, net_big_blinds: -234.5}).stats[2].value, "−235");
 assert.deepEqual(view.session.rows.map(item => [item.title, item.detail, item.grade, item.tone]), [
   ["河牌 · 4♦︎ 4♠︎", "你弃牌 · 求解器 43% 这样打", "可以", "fine"],
   ["翻前 · K♣︎ 10♣︎", "你跟注 4 · 最好加注到 14 · 少赢 1.2", "小失误", "slip"]]);

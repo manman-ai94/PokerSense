@@ -19,18 +19,27 @@ the time, until your action for it appears in the hand's history
   mistake.
 
 An action that cannot be matched to an option (a check facing a bet, a raise
-the policy did not offer) is left ungraded rather than guessed. Every grade
+the policy did not offer) is left ungraded rather than guessed, and so is an
+action whose decision had no advice of its own: the advice for your action
+before it on that street is not this one's. Every grade
 of this observation is kept, newest first in the report, with the hands you
 were dealt, how many grades were best, and the big blinds given up preflop.
+
+The report also sums up the observation for the session list: how many of
+your actions there were and how many had advice ready, how many grades of
+each kind, and your chips won or lost in big blinds (``HeroChips``).
 For study only; nothing here acts on the client.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import json
 import time
 
 from .aa_session import frame_summary
+from .aa_solver_advice import decision_key
+from .aa_solver_input import RULES_PATH
 
 HERO = 4
 SHOWN = 20                          # grades sent with each frame, newest first
@@ -39,6 +48,9 @@ AGGRESSIVE = frozenset({"bet", "raise", "allin"})
 PREFLOP = ((0.05, "best"), (0.5, "fine"), (2.0, "slip"))       # big blinds lost
 SOLVER = ((0.5, "best"), (0.2, "fine"), (0.02, "slip"))        # solver frequency
 MULTIWAY = ((0.05, "fine"), (0.15, "slip"))     # share off your action's span
+GRADES = ("best", "fine", "slip", "mistake")
+IN_PLAY = frozenset({"active", "all_in"})
+BIG_BLIND = Decimal(json.loads(RULES_PATH.read_text(encoding="utf-8"))["big_blind"])
 
 
 def _decimal(value):
@@ -147,6 +159,55 @@ def _facing(actions, street):
     return {"slot": last[2], "kind": last[3], "amount": last[4], "raises": len(raises)}
 
 
+class HeroChips:
+    """Your chips won or lost since you were first dealt in, rebuys left out.
+
+    What you have is your stack plus the chips in front of you on this
+    street (a blind you posted is still in front of you when the hand
+    starts); after you fold only the stack is yours. A reading counts once
+    two readable frames in a row agree. The result moves when a new hand
+    starts and while you are out of the hand (folded, or waiting with no
+    cards), so the chips of a pot still being played do not count as lost
+    or won yet. Coming back from 0, or after the seat was read empty, while
+    you are not in a hand is a rebuy or a new buy-in: the change is not a
+    result (a pot you win after being all in comes while you are still in
+    the hand)."""
+
+    def __init__(self):
+        self.start = self.settled = self._last = self._steady = None
+        self.rebuys, self.added, self._hand = 0, Decimal(0), None
+        self._empty, self._away = 0, False
+
+    def observe(self, fields, hand, dealt):
+        stacks = fields.get("stacks") or {}
+        state = (fields.get("participants") or {}).get(str(HERO))
+        total = _decimal(stacks.get(str(HERO), stacks.get(HERO)))
+        front = _decimal((fields.get("street_wagers") or {}).get(str(HERO)))
+        if total is not None and front is not None and state != "folded":
+            total += front
+        self._empty = self._empty + 1 if state == "empty" else 0
+        self._away = self._away or self._empty >= 2
+        if total is not None and state != "empty":
+            if total == self._last and (total != self._steady or self._away):
+                if (self._steady is not None and total != self._steady
+                        and state not in IN_PLAY and (self._steady == 0 or self._away)):
+                    self.rebuys += 1
+                    self.added += total - self._steady
+                    self.settled = None if self.start is None else total
+                self._steady, self._away = total, False
+            self._last = total
+        if self.start is None:
+            if dealt and self._steady is not None:
+                self.start = self.settled = self._steady
+        elif hand != self._hand or state in ("folded", "waiting"):
+            self.settled = self._steady
+        self._hand = hand
+
+    def net(self):
+        """Chips won (negative when lost), or None before you were dealt in."""
+        return None if self.start is None else self.settled - self.start - self.added
+
+
 class AAGrades:
     """Grades of your decisions in one observation; fed every frame."""
 
@@ -158,6 +219,8 @@ class AAGrades:
     def reset(self):
         self._rows, self._dealt = [], set()
         self._hand, self._spots, self._done = None, {}, set()
+        self._decisions = self._advised = 0
+        self._chips = HeroChips()
 
     def __call__(self, payload, frame):
         return self.observe_fields(frame_summary(payload), frame)
@@ -170,6 +233,7 @@ class AAGrades:
                 self._hand, self._spots, self._done = hand, {}, set()
             if len([card for card in fields.get("hero") or () if card]) == 2:
                 self._dealt.add(hand)
+            self._chips.observe(fields, hand, hand in self._dealt)
             if (fields.get("hero_controls") or {}).get("visible"):
                 self._remember(fields, history)
             hand_id, outcomes = self._advice.settled()
@@ -178,11 +242,19 @@ class AAGrades:
         return self.report()
 
     def report(self):
+        net = self._chips.net()
         return {"schema_version": 1, "hands": len(self._dealt),
+                "decisions": self._decisions, "advised": self._advised,
                 "graded": len(self._rows),
                 "best": sum(row["grade"] == "best" for row in self._rows),
+                "grades": {grade: sum(row["grade"] == grade for row in self._rows)
+                           for grade in GRADES},
                 "preflop_lost_big_blinds": round(sum(
                     row.get("lost_big_blinds", 0.0) for row in self._rows), 2),
+                "net_chips": None if net is None else str(net),
+                "net_big_blinds": (None if net is None
+                                   else round(float(net / BIG_BLIND), 1)),
+                "rebuys": self._chips.rebuys,
                 "last": self._rows[-1] if self._rows else None,
                 "rows": self._rows[:-SHOWN - 1:-1], "acts_on_client": False}
 
@@ -207,28 +279,41 @@ class AAGrades:
                 fields.get("participants") or {}).items()
                 if state in DEALT and _slot(seat) is not None),
             "facing": _facing(actions, street)}
-        spot = self._spots.setdefault((len(actions), street), seen)
+        spot = self._spots.setdefault(decision_key(fields, history), seen)
         for name, value in seen.items():     # a read that came in late
             if spot[name] is None or (isinstance(value, list) and None in spot[name]
                                       and None not in value):
                 spot[name] = value
 
     def _grade(self, history, outcomes):
+        before = -1                 # where your action before this one is
         for index, action in enumerate(history["actions"]):
             frame, street, slot, kind, amount, source = action[:6]
-            if _slot(slot) != HERO or frame in self._done or source == "pending":
+            if _slot(slot) != HERO:
                 continue
-            keys = [key for key in outcomes if key[1] == street and key[0] <= index]
+            mine, before = before, index
+            if frame in self._done or source == "pending":
+                continue
+            # Advice asked after your action before this one: an earlier
+            # decision's advice does not grade this one.
+            keys = [key for key in outcomes
+                    if key[1] == street and mine < key[0] <= index]
             if not keys:
                 self._done.add(frame)            # no advice for this decision
+                self._decisions += 1
                 continue
-            key = max(keys)
+            latest = max(key[0] for key in keys)
+            key = [key for key in keys if key[0] == latest][-1]
             outcome = outcomes[key]
             if outcome is None:                  # the solve is still running
                 continue
             self._done.add(frame)
-            if outcome.get("status") == "ready" and key in self._spots:
-                row = self._row(self._spots[key], outcome, kind, amount)
+            self._decisions += 1
+            self._advised += outcome.get("status") == "ready"
+            spot = self._spots.get(key) or next(
+                (seen for at, seen in self._spots.items() if at[:2] == key[:2]), None)
+            if outcome.get("status") == "ready" and spot is not None:
+                row = self._row(spot, outcome, kind, amount)
                 if row is not None:
                     self._rows.append(row)
 
@@ -254,4 +339,5 @@ class AAGrades:
                 "action": {"kind": kind, "amount": amount}, **shown, **graded}
 
 
-__all__ = ["AAGrades", "multiway_grade", "preflop_grade", "solver_grade"]
+__all__ = ["AAGrades", "HeroChips", "multiway_grade", "preflop_grade",
+           "solver_grade"]

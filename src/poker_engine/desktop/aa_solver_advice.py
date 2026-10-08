@@ -24,8 +24,11 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   action changes (``cuts``). The report's ``heads_up`` says which.
 
 An action the history missed but the table shows (``aa_solver_input``) is
-filled in; the report's ``inferred_actions`` counts them. Every frame
-reports where the current decision stands:
+filled in; the report's ``inferred_actions`` counts them. A decision is the
+actions read so far, the street and what your button shows
+(``decision_key``): when your action and a re-raise are both missed, the
+new price is still a new decision. Every frame reports where the current
+decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -38,8 +41,13 @@ screen are added to the pot the policy sees). The mushroom pool read at the
 top left of the table (``aa_mushroom``) goes to the preflop policy too, in a
 hand of four or more players: the small blind takes it with the pot, so the
 policy counts it as extra pot when you are the small blind (the report's
-``mushroom_pool`` is then the amount counted). The advice comes from a model
-of how people play and is for study only; nothing here acts on the client.
+``mushroom_pool`` is then the amount counted). Each opponent's entry and
+raise rates over the hands seen so far (``aa_reads``) go to the preflop
+policy too, which widens or narrows that seat's expected range by them (the
+report's ``reads_hands`` is how many hands they come from; every report's
+``seat_reads`` has each seat's numbers and word for the window). The advice comes
+from a model of how people play and is for study only; nothing here acts on
+the client.
 """
 
 from __future__ import annotations
@@ -61,6 +69,7 @@ from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import range_equity
 from poker_engine.solver.texassolver import amount_of
 
+from .aa_reads import AAReads
 from .aa_session import frame_summary
 from .aa_solver_input import hand_facts, solver_observation
 
@@ -89,6 +98,13 @@ def _decimal(value):
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+
+
+def decision_key(fields, history):
+    """(actions read, street, your button): one of your decisions."""
+    controls = fields.get("hero_controls") or {}
+    return (len(history["actions"]), fields.get("street"),
+            f"{controls.get('button')}:{controls.get('call_amount')}")
 
 
 def advice_rows(strategy, observation):
@@ -136,9 +152,11 @@ class AASolverAdvice:
         self.reset()
 
     def reset(self):
-        """Forget the hand being followed: a new observation numbers its
-        frames, and so its hands, from 0 again."""
+        """Forget the hand being followed and the reads: a new observation
+        numbers its frames, and so its hands, from 0 again, and may be
+        another table."""
         self._rows, self._hand_id, self._jobs = [], None, {}
+        self.reads = AAReads()
 
     def __call__(self, payload, frame):
         return self.observe(payload, frame)
@@ -159,6 +177,7 @@ class AASolverAdvice:
         if not history:
             return self._report("idle", "no_hand")
         if history["hand_id"] != self._hand_id:
+            self.reads.add_hand(self._rows)
             self._rows, self._hand_id, self._jobs = [], history["hand_id"], {}
         self._rows.append({"processed": frame, "fields": fields})
         del self._rows[:-MAX_ROWS]
@@ -170,7 +189,7 @@ class AASolverAdvice:
         cards = [card for card in fields.get("hero") or () if card]
         if len(cards) != 2:
             return self._report("idle", "your_cards_not_read", street=street)
-        key = (len(history["actions"]), street)
+        key = decision_key(fields, history)
         job = self._jobs.get(key)
         retry = isinstance(job, dict) and frame >= job.get("retry_at", frame + 1)
         if job is None or retry:
@@ -277,6 +296,9 @@ class AASolverAdvice:
             observation = {**observation, "mushroom_pool": str(pool)}
             if position(observation) == Position.SB:
                 counted = str(pool)
+        reads = self.reads.snapshot()
+        if reads:
+            observation = {**observation, "reads": reads}
         choice = self._preflop_policy().choose(observation)
         big_blind = Decimal(observation["rules"]["big_blind"])
         mine = Decimal(observation["bets"][str(HERO)])
@@ -300,6 +322,7 @@ class AASolverAdvice:
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": None if offset is None else str(offset),
                 "mushroom_pool": counted,
+                "reads_hands": self.reads.hands if reads else 0,
                 "stacks_assumed": observation["stacks_unknown"],
                 "inferred_actions": observation.get("inferred_actions", 0),
                 "basis": PREFLOP_BASIS,
@@ -341,7 +364,7 @@ class AASolverAdvice:
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
                                 "kind", "heads_up", "advice", "options", "cuts", "pot",
-                                "to_call", "pot_offset", "mushroom_pool",
+                                "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
                                 "seconds", "basis")
                                 if name in job})
@@ -349,7 +372,9 @@ class AASolverAdvice:
     def _report(self, status, reason, **extra):
         return {"schema_version": 1, "status": status, "reason": reason,
                 "hand_id": self._hand_id, "basis": BASIS, **extra,
+                "seat_reads": self.reads.labels(),
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "advice_rows", "multiway_row", "range_report"]
+__all__ = ["AASolverAdvice", "advice_rows", "decision_key", "multiway_row",
+           "range_report"]

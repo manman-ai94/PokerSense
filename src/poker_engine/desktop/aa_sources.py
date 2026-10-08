@@ -141,7 +141,10 @@ class AACaptureSource:
 
     def close(self):
         self.cancel.set()
-        self.stop_recording("source_stopped")
+        with self.condition:        # a recorder being made is waited for
+            recorder = self.recorder
+        if recorder is not None:
+            recorder.stop("source_stopped")
         with self.condition:
             self.condition.notify_all()
         if self.thread is not None:

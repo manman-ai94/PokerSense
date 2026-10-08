@@ -113,6 +113,7 @@ a { color: #9CC2FF; }
 .seat b { font-size: 13px; color: var(--text); }
 .seat .num { font-size: 15px; }
 .seat.out { opacity: .4; }
+.seat small.read { display: inline-block; white-space: nowrap; margin-left: 4px; padding: 0 4px; border-radius: 4px; background: var(--edge); color: var(--text); font-size: 11px; }
 .seat.acting { border: 2px solid var(--text); }
 .seat.hero { border: 2px solid var(--call); background: #14251C; }
 .seat.bet { border: 2px solid var(--raise); }
@@ -128,6 +129,7 @@ a { color: #9CC2FF; }
 .session-stats div { padding: 8px 10px; border-radius: 10px; background: var(--raised); display: flex; flex-direction: column; gap: 2px; }
 .session-stats b { font-family: var(--num); font-size: 28px; font-weight: 800; line-height: 1; }
 .session-stats b small { font-family: var(--han); font-size: 13px; font-weight: 600; }
+.session-spread { margin: 0; font-size: 12px; }
 .session-rows { display: flex; flex-direction: column; }
 .session-rows p { margin: 0; }
 .srow { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--line); }

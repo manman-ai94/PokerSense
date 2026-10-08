@@ -111,8 +111,12 @@
     return list;
   }
 
+  // A seat's play this session (aa_reads), once its hands say it clearly.
+  const READ_TAGS = {raises: "常加注", loose: "很松", tight: "很紧"};
+
   function seatList(row, names, history) {
     const seats = row.seat_states_v1?.seats || {};
+    const reads = row.solver_advice_v1?.seat_reads || {};
     const street = row.street_v1?.street;
     const bets = {};
     for (const action of history?.actions || []) {
@@ -126,7 +130,7 @@
       list.push({seat, name: seatName(seat, names), state, hero: seat === HERO,
         acting: row.current_actor === seat, dealer: row.dealer_seat === seat,
         stack: chips(row.stacks?.[seat]?.value), bet: bets[seat] ? chips(bets[seat]) : null,
-        out: !IN_HAND.has(state)});
+        read: READ_TAGS[reads[seat]?.tag] || null, out: !IN_HAND.has(state)});
     }
     return list;
   }
@@ -398,12 +402,22 @@
         : ["只显示建议，不替你点"]};
   }
 
+  // This session so far: how many of your actions had advice, how many you played as advised, your
+  // chips won or lost (rebuys left out), and how the grades spread.
   function sessionView(grades) {
     if (!grades || !isNumber(grades.graded)) return null;
+    const net = num(grades.net_big_blinds);
+    const counts = grades.grades || {};
+    const spread = Object.keys(GRADES).map(grade => `${GRADES[grade]} ${counts[grade] ?? 0}`);
+    spread.push(`翻前少赢 ${one(num(grades.preflop_lost_big_blinds) ?? 0)} 大盲`);
+    if (grades.rebuys > 0) spread.push(`补码 ${grades.rebuys} 次不算输赢`);
     return {pill: `本场 ${grades.hands} 手 · 照建议 ${grades.best}/${grades.graded}`,
-      stats: [{label: "有建议的", value: String(grades.graded)},
-        {label: "照着打", value: String(grades.best)},
-        {label: "翻前少赢", value: one(num(grades.preflop_lost_big_blinds) ?? 0), unit: "大盲"}],
+      stats: [{label: "有建议", value: isNumber(grades.decisions)
+          ? `${grades.advised}/${grades.decisions}` : String(grades.graded)},
+        {label: "照着打", value: `${grades.best}/${grades.graded}`},
+        {label: "输赢 · 大盲", value: net === null ? "—" : `${net > 0 ? "+" : net < 0 ? "−" : ""}${
+          Math.abs(net) >= 100 ? Math.round(Math.abs(net)) : one(Math.abs(net))}`}],
+      spread: spread.join(" · "),
       rows: (grades.rows || []).slice(0, 6).map(item => ({time: clockText(item.at),
         title: `${STREETS[item.street] || ""} · ${handText(item.hero)}`, detail: gradeView(item).detail,
         grade: GRADES[item.grade] || "", tone: item.grade})),
@@ -439,13 +453,15 @@
     return list;
   }
 
-  // One decision: this hand, this street, and how often you already acted on it
-  // (an opponent's action read late does not restart the count).
+  // One decision: this hand, this street, how often you already acted on it (an opponent's action
+  // read late does not restart the count) and the price on your button (a new price is a new
+  // decision even when your action before it was not read).
   function decisionKey(row, history) {
     const street = row.street_v1?.street ?? "?";
     const mine = (history?.actions || []).filter(action =>
       action.street === street && action.slot === HERO).length;
-    return `${history?.hand_id ?? "?"}|${street}|${mine}`;
+    const controls = row.hero_controls_v1 || {};
+    return `${history?.hand_id ?? "?"}|${street}|${mine}|${controls.button}:${controls.call_amount}`;
   }
 
   // memory keeps when the current decision and the current solve were first
@@ -572,6 +588,8 @@
           basis.push(`底池比规则多 ${chips(advice.pot_offset)}，已算进去`);
         if (verdict.kind === "preflop" && isNumber(advice.mushroom_pool) && Number(advice.mushroom_pool) > 0)
           basis.push(`算上蘑菇池 ${chips(advice.mushroom_pool)}：你是小盲，赢下底池就一起拿走`);
+        if (verdict.kind === "preflop" && Number(advice.reads_hands) > 0)
+          basis.push(`各对手爱不爱入池、加注，按本场看到的 ${advice.reads_hands} 手调整`);
         if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length)
           basis.push("有人筹码没读到，按很深算");
         if (num(advice.inferred_actions) > 0)

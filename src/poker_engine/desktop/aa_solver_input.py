@@ -30,7 +30,9 @@ one action fits (``inferred``):
 - the next seat called or folded with nothing to call: the seat bet, as much
   as that call (or the next call, or your price) says; the same seat's bet
   read later on that street is that bet, read late;
-- otherwise, a seat whose turn it was and is folded on the table now folded;
+- otherwise, a seat whose turn it was and is folded on the table now folded,
+  unless it acts again later on that street (it folded then; what it missed
+  here can be a raise);
 - before your turn, the seats still to act folded (folded on the table) or
   checked or called, unless your price (the button's call amount) is more
   than that leaves you: then the one of them still in bet up to it.
@@ -271,7 +273,7 @@ def _fill(arena, actions, at, table):
             return None
         action = _missed(arena, seat, {**table, "states": {}}, amount_from)
         rest = [a for index, a in enumerate(actions) if index != late]
-    elif table["states"].get(seat) == "folded":
+    elif table["states"].get(seat) == "folded" and not later:
         action = _missed(arena, seat, table, None)
         rest = list(actions)
     else:
@@ -413,8 +415,9 @@ def solver_observation(facts, seat, cards):
     for a hand joined midway (its first actions are unknown), when the replay
     stops, when it is not ``seat``'s turn yet ("not_your_turn_yet": usually the
     action before has not been read yet), when the stack readings do not fit
-    the betting, or when the table would have dealt a board card the reader
-    has not seen.
+    the betting, when the table would have dealt a board card the reader
+    has not seen, or when the price to call is not what your button shows
+    (``facts["price"]``, when the button shows one).
     """
     if facts.get("complete") is not True:
         return None, "hand_incomplete"
@@ -439,6 +442,13 @@ def solver_observation(facts, seat, cards):
     observation = arena.observe(seat)
     if len(observation["board"]) > len(facts["board"]):
         return None, "board_not_read"
+    to_call = Decimal(observation["to_call"])
+    if (facts.get("price") is not None and to_call != facts["price"]
+            and to_call < Decimal(observation["stacks"][str(seat)])):
+        # A missed action rebuilt wrong (or a dealer moved by one seat): the
+        # table asks a price your button does not show. (Calling all in, the
+        # button shows no price; it can be read as a check.)
+        return None, "price_does_not_match"
     missing = [other for other in facts["seats"] if other not in stacks]
     observation = with_hole(observation, cards)
     observation["stacks_unknown"] = missing
