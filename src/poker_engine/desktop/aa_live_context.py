@@ -17,6 +17,7 @@ from tools.aa8_live_wagers_v2 import CausalWagersV2
 from tools.aa_seat_candidate import avatar_patch, plus_mask
 
 from .aa_hero_controls import AAHeroControls
+from .aa_mushroom import AAMushroomPool
 
 
 def stack_vector(stacks):
@@ -26,6 +27,7 @@ def stack_vector(stacks):
 class LiveFrameEvidence:
     def __init__(self, bank, profile, empty_reference):
         self.controls = AAHeroControls(bank)
+        self.mushroom = AAMushroomPool()
         self.dealer = AA8DealerReader()
         self.profile = profile
         self.empty_reference = empty_reference
@@ -34,6 +36,7 @@ class LiveFrameEvidence:
 
     def __call__(self, image, row):
         self.controls(image, row)
+        self.mushroom(image, row)
         row["live_dealer_candidate"] = self.dealer.read(image)["dealer_seat"]
         modes = row.get("special_modes") or {}
         clear = (row.get("scene_supported") is True

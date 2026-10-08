@@ -5,6 +5,8 @@ from concurrent.futures import Future
 
 import pytest
 
+from poker_engine.core.enums import Position
+from poker_engine.desktop import aa_solver_advice
 from poker_engine.desktop.aa_session import frame_summary
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice, multiway_row
 from poker_engine.scoreboard.multiway_bot import DEFAULTS
@@ -255,6 +257,36 @@ def test_extra_chips_on_screen_count_in_the_preflop_pot():
     result = advice.observe({**preflop_turn(("Ks", "Qs")), "pot": {"value": "40"}}, 12)
     assert result["status"] == "ready" and result["pot"] == "40"
     assert result["pot_offset"] == "21"           # the six-seat opening pot is 19
+
+
+class Preflop:
+    """A preflop policy that keeps what it was shown."""
+
+    def __init__(self):
+        self.seen = []
+
+    def choose(self, observation):
+        self.seen.append(observation)
+        return {"values": {"fold": 0.0, "call": 1.0}}
+
+
+def test_the_mushroom_pool_on_screen_goes_to_the_preflop_policy(monkeypatch):
+    def turn(pool):
+        policy = Preflop()
+        frame = {**preflop_turn(("Ks", "Qs")), "mushroom_pool_v1": {"value": pool}}
+        result = AASolverAdvice(Bot(), Inline(), preflop=policy).observe(frame, 12)
+        return policy.seen[-1], result
+
+    seen, result = turn("48")
+    assert seen["mushroom_pool"] == "48"
+    assert result["mushroom_pool"] is None      # not counted: not the small blind
+    assert "mushroom_pool" not in turn(None)[0]
+    monkeypatch.setattr(aa_solver_advice, "position", lambda observation: Position.SB)
+    assert turn("48")[1]["mushroom_pool"] == "48"
+    assert frame_summary({"mushroom_pool_v1": {"value": "48"}})["mushroom_pool"] == "48"
+    monkeypatch.setattr(aa_solver_advice, "MIN_PLAYERS", 7)    # fewer players: no pool
+    seen, result = turn("48")
+    assert "mushroom_pool" not in seen and result["mushroom_pool"] is None
 
 
 def test_a_solver_fallback_abstains_with_its_reason():

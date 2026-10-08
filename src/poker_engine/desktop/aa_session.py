@@ -334,6 +334,7 @@ def frame_summary(payload):
         "hero_controls": {key: controls.get(key)
                           for key in ("visible", "button", "call_amount", "reason")},
         "table_math": payload.get("table_math_v1"),
+        "mushroom_pool": (payload.get("mushroom_pool_v1") or {}).get("value"),
         # Betting history as read so far: the count and the latest actions
         # (enough to rebuild the sequence from consecutive frames), and the
         # chips in front of each seat on this street.
@@ -363,8 +364,8 @@ def _advice(advice):
         return None
     return {key: advice[key] for key in ("status", "reason", "hand_id", "street",
                                          "decision", "advice", "options", "to_call",
-                                         "pot_offset", "stacks_assumed",
-                                         "range_equity", "seconds")
+                                         "pot_offset", "mushroom_pool",
+                                         "stacks_assumed", "range_equity", "seconds")
             if key in advice}
 
 

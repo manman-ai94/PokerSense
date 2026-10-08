@@ -33,7 +33,11 @@ reports where the current decision stands:
 
 The pot the solver sees is corrected to the pot on screen: the AA rules do
 not post extra chips such as a mushroom or bomb pot (preflop, extra chips on
-screen are added to the pot the policy sees). The advice comes from a model
+screen are added to the pot the policy sees). The mushroom pool read at the
+top left of the table (``aa_mushroom``) goes to the preflop policy too, in a
+hand of four or more players: the small blind takes it with the pot, so the
+policy counts it as extra pot when you are the small blind (the report's
+``mushroom_pool`` is then the amount counted). The advice comes from a model
 of how people play and is for study only; nothing here acts on the client.
 """
 
@@ -43,6 +47,9 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
 import time
 
+from poker_engine.core.enums import Position
+from poker_engine.scoreboard.bots import position
+from poker_engine.scoreboard.mushroom import MIN_PLAYERS
 from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.population import PopulationBot
@@ -260,6 +267,13 @@ class AASolverAdvice:
         if pot is not None and pot > Decimal(observation["pot"]):
             offset = pot - Decimal(observation["pot"])
             observation = {**observation, "pot": str(pot)}
+        pool = _decimal(fields.get("mushroom_pool"))
+        counted = None
+        if (pool is not None and pool > 0
+                and len(observation["occupied_seats"]) >= MIN_PLAYERS):
+            observation = {**observation, "mushroom_pool": str(pool)}
+            if position(observation) == Position.SB:
+                counted = str(pool)
         choice = self._preflop_policy().choose(observation)
         big_blind = Decimal(observation["rules"]["big_blind"])
         mine = Decimal(observation["bets"][str(HERO)])
@@ -282,6 +296,7 @@ class AASolverAdvice:
         return {"status": "ready", "advice": advice, "options": options,
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": None if offset is None else str(offset),
+                "mushroom_pool": counted,
                 "stacks_assumed": observation["stacks_unknown"],
                 "basis": PREFLOP_BASIS,
                 "seconds": round(time.monotonic() - started, 3)}
@@ -338,8 +353,8 @@ class AASolverAdvice:
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
                                 "kind", "advice", "options", "cuts", "pot", "to_call",
-                                "pot_offset", "stacks_assumed", "range_equity",
-                                "seconds", "basis")
+                                "pot_offset", "mushroom_pool", "stacks_assumed",
+                                "range_equity", "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

@@ -565,6 +565,8 @@
           basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
         if (isNumber(advice.pot_offset) && Number(advice.pot_offset) > 0)
           basis.push(`底池比规则多 ${chips(advice.pot_offset)}，已算进去`);
+        if (verdict.kind === "preflop" && isNumber(advice.mushroom_pool) && Number(advice.mushroom_pool) > 0)
+          basis.push(`算上蘑菇池 ${chips(advice.mushroom_pool)}：你是小盲，赢下底池就一起拿走`);
         if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length)
           basis.push("有人筹码没读到，按很深算");
         basis.push("只显示建议，不替你点");
