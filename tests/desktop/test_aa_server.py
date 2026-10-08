@@ -293,6 +293,43 @@ def test_recording_is_asked_for_by_the_page_and_only_from_the_capture_card(
         assert refused.status_code == 409 and len(session.calls) == 2
 
 
+def test_recording_starts_only_once_the_window_has_seen_the_table(
+        tmp_path, monkeypatch):
+    # A computer camera also gives a 1920x1080 picture: the window records
+    # only when its recognition has seen the AA table lately.
+    monkeypatch.setattr(aa_recorder, "free_bytes", lambda path: 100 * aa_recorder.GB)
+
+    class Recording(Session):
+        seen = None
+
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def snapshot(self):
+            return {**super().snapshot(), "source_kind": "capture-card"}
+
+        def table_seen(self):
+            return self.seen
+
+        def record(self, on, out=None):
+            self.calls.append((on, out))
+
+    session = Recording()
+    app = aa_server.create_app(tmp_path / "missing.json", session=session,
+                               recordings_dir=tmp_path / "recordings")
+    with TestClient(app) as client:
+        for seen in (None, aa_server.TABLE_SECONDS + 1):
+            session.seen = seen
+            refused = client.post("/api/recording", json={"on": True}, headers=HEADERS)
+            assert refused.status_code == 409 and session.calls == []
+            assert refused.json()["detail"].startswith("没找到采集卡画面，录像没有开始。")
+        session.seen = 2.0
+        assert client.post("/api/recording", json={"on": True},
+                           headers=HEADERS).status_code == 200
+        assert session.calls[-1][0] is True
+
+
 def test_recording_does_not_start_with_little_room_left(tmp_path, monkeypatch):
     class Recording(Session):
         def __init__(self):

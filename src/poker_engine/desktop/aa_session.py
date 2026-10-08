@@ -62,12 +62,14 @@ class AARecognitionSession:
         self._timing = None
         self._source = None              # the open source, for recording it
         self._last_recording = None      # how the last source's recording ended
+        self._table_seen = None          # when a frame last showed the AA table
 
     def _clear(self):
         self._payload = self._preview = self._sequence = None
         self._source_frame = self._processing_ms = self._last_result = None
         self._pts_seconds = None
         self._timing = None
+        self._table_seen = None
 
     def _expire(self):
         now = time.monotonic()
@@ -116,6 +118,13 @@ class AARecognitionSession:
         with self._lock:
             self._expire()
             return self._snapshot()
+
+    def table_seen(self):
+        """Seconds since a frame of the running source last showed the AA
+        table (``scene_supported``), or None when none has."""
+        with self._lock:
+            return (None if self._table_seen is None
+                    else time.monotonic() - self._table_seen)
 
     def preview(self):
         with self._lock:
@@ -249,6 +258,8 @@ class AARecognitionSession:
                     self._status = "RUNNING"
                     self._error = None
                     self._payload = payload
+                    if payload.get("scene_supported") is True:
+                        self._table_seen = time.monotonic()
                     self._preview = encoded.tobytes()
                     self._sequence = processed
                     self._source_frame = raw_sequence

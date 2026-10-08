@@ -391,3 +391,22 @@ def test_the_running_source_can_be_recorded_and_its_outcome_stays_after_stop():
             plain.record(True, Path("x"))             # a source with no recorder
     finally:
         plain.stop()
+
+
+def test_the_session_knows_when_it_last_saw_the_table():
+    class TableReader(Reader):
+        def read(self, image, sequence, sample):
+            return {"hero": None, "strategy_eligible": False,
+                    "scene_supported": sequence >= 3}
+
+    session = AARecognitionSession(lambda _: Source(), TableReader)
+    assert session.table_seen() is None
+    session.start({})
+    try:
+        wait_until(lambda: (session.snapshot()["sequence"] or 0) >= 1)
+        wait_until(lambda: session.table_seen() is not None)
+        assert 0 <= session.table_seen() < 2
+    finally:
+        session.stop()
+        wait_until(lambda: session.snapshot()["status"] == "STOPPED")
+    assert session.table_seen() is None         # a new source starts over

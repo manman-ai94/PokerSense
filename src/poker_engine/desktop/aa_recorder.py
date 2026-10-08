@@ -19,6 +19,12 @@ A recording needs room: the service does not start one with less than
 recorded is kept) once a new segment finds less than ``STOP_FREE_GB``. The
 size written so far is in the status (``megabytes``): about 0.1-1.5 GB an
 hour on the recordings made so far.
+
+A recording is only worth it when it shows the phone. The capture card puts
+the phone's portrait screen between black bars (``picture``): measured on
+the recordings, the bars are 0 while a computer camera, which also gives a
+1920x1080 picture, is bright there (on 2026-10-07 a recording got the
+camera instead of the card).
 """
 
 from __future__ import annotations
@@ -40,6 +46,22 @@ LIMIT_SECONDS = 2 * 3600            # about 2 hours; a forgotten recording stops
 GB = 1024 ** 3
 MIN_FREE_GB = 20                    # free space a recording starts with
 STOP_FREE_GB = 10                   # and stops at
+BARS = ((0, 700), (1220, 1920))     # columns beside the phone strip (711-1208)
+BAR_DARK = 16                       # brightest bar pixel (99th percentile)
+STRIP_LIT = 4                       # mean brightness of a lit phone screen
+
+
+def picture(frame):
+    """What a full 1920x1080 frame shows: "phone" (a lit phone screen between
+    black bars), "dark" (black all over: the phone screen is off, or a
+    camera is still starting) or "other" (not the capture card's phone)."""
+    if not isinstance(frame, np.ndarray) or frame.shape[:2] != (SIZE[1], SIZE[0]):
+        return "other"
+    gray = frame.mean(axis=2) if frame.ndim == 3 else frame
+    bars = max(np.percentile(gray[::4, x0:x1:4], 99) for x0, x1 in BARS)
+    if bars > BAR_DARK:
+        return "other"
+    return "phone" if gray[:, 711:1209].mean() > STRIP_LIT else "dark"
 
 
 def free_bytes(path):
@@ -217,5 +239,5 @@ class AARecorder:
                 "error": None if self.error is None else str(self.error)}
 
 
-__all__ = ["AARecorder", "GB", "MIN_FREE_GB", "STOP_FREE_GB", "SegmentWriter",
-           "free_bytes", "strip_box"]
+__all__ = ["AARecorder", "free_bytes", "GB", "MIN_FREE_GB", "picture", "SegmentWriter",
+           "STOP_FREE_GB", "strip_box"]

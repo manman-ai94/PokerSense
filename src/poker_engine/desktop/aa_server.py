@@ -38,6 +38,9 @@ from poker_engine.strategy.river_bounds_v1 import river_payoff_bounds
 
 # Statuses in which the source (capture card, recording) is open.
 SOURCE_OPEN = ("STARTING", "RUNNING", "STALE")
+# The window records only once it has recognised the AA table this recently:
+# a computer camera gives a 1920x1080 picture too.
+TABLE_SECONDS = 15
 
 
 class IdleStop:
@@ -127,6 +130,11 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                              name="pokersense-idle-stop").start()
         yield
         stopped.set()
+        if (service.snapshot().get("recording") or {}).get("active"):
+            try:        # finish the recording before the process ends
+                service.record(False)
+            except RuntimeError:
+                pass
         service.stop()
         analysis.cancel()
         review.close()
@@ -515,12 +523,19 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
             on = body["on"]
             if on and service.snapshot().get("source_kind") != "capture-card":
                 raise HTTPException(409, "接采集卡时才能录像")
+            seen = getattr(service, "table_seen", None)
+            seen = seen() if callable(seen) else 0.0
+            if on and (seen is None or seen > TABLE_SECONDS):
+                # Not the phone (another camera picked) or not at a table.
+                raise HTTPException(
+                    409, "没找到采集卡画面，录像没有开始。窗口里要先认出手机牌桌"
+                         "（设备编号选对，手机切到“屏幕镜像”）。")
             root = Path(recordings_dir) if recordings_dir else (
                 private_root() / "aa-mac-recordings")
             free = aa_recorder.free_bytes(root) if on else None
             if free is not None and free < aa_recorder.MIN_FREE_GB * aa_recorder.GB:
                 raise HTTPException(
-                    409, f"磁盘只剩 {free / aa_recorder.GB:.0f} GB，不到 "
+                    409, f"磁盘只剩 {int(free // aa_recorder.GB)} GB，不到 "
                          f"{aa_recorder.MIN_FREE_GB} GB，没有开始录像。先腾出一些空间")
             out = root / time.strftime("%Y%m%d-%H%M%S-live")
             try:
