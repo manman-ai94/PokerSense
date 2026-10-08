@@ -43,13 +43,16 @@ hand of four or more players: the small blind takes it with the pot, so the
 policy counts it as extra pot when you are the small blind (the report's
 ``mushroom_pool`` is then the amount counted). Each opponent's entry and
 raise rates over the hands seen so far (``aa_reads``) go to the preflop
-policy too, which widens or narrows that seat's expected range by them (the
-report's ``reads_hands`` is how many hands they come from; every report's
-``seat_reads`` has each seat's numbers and word for the window). A bomb pot
-(暴击) is replayed as one (``aa_solver_input.bomb_post``) and advised like
-any other hand after the flop; the report's ``bomb_pot`` is each player's
-post. The advice comes from a model of how people play and is for study
-only; nothing here acts on the client.
+policy too, which widens or narrows that seat's expected range by them, and
+to the range reading after the flop (``ranges.opponent_ranges``: the same
+widening, and bets from a seat that raises far more than the model keep
+some hands the model would not bet with). The report's ``reads_hands`` is
+how many hands they come from; every report's ``seat_reads`` has each
+seat's numbers and word for the window. A bomb pot (暴击) is replayed as
+one (``aa_solver_input.bomb_post``) and advised like any other hand after
+the flop; the report's ``bomb_pot`` is each player's post. The advice
+comes from a model of how people play and is for study only; nothing here
+acts on the client.
 """
 
 from __future__ import annotations
@@ -93,6 +96,12 @@ HEADS_UP_BASIS = ("equity against the opponent's range (a population model fitte
                   "AA players' preflop play) against the price, the scoreboard's "
                   "range_multiway rule with its heads-up cuts; a flop solve takes "
                   "about a minute; for study only")
+
+
+def _read_hands(observation):
+    """How many finished hands the reads in ``observation`` come from."""
+    return max((read["hands"] for read in (observation.get("reads") or {}).values()),
+               default=0)
 
 
 def _decimal(value):
@@ -217,7 +226,8 @@ class AASolverAdvice:
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
         if len(live) > 2 or observation["street"] not in SOLVED:
-            return self._submit(self._multiway, observation, fields, time.monotonic())
+            return self._submit(self._multiway, self._with_reads(observation), fields,
+                                time.monotonic())
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
         pot = _decimal(fields.get("pot"))
@@ -233,6 +243,11 @@ class AASolverAdvice:
             self._executor = ThreadPoolExecutor(max_workers=1,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(function, *args)
+
+    def _with_reads(self, observation):
+        """``observation`` with each opponent's reads so far, when there are any."""
+        reads = self.reads.snapshot()
+        return {**observation, "reads": reads} if reads else observation
 
     def _ranges(self, observation):
         """Your share of the pot against every opponent's range, or None."""
@@ -271,6 +286,7 @@ class AASolverAdvice:
                 "range_equity": edge, "pot": observation["pot"],
                 "to_call": observation["to_call"],
                 "pot_offset": None if offset is None else str(offset),
+                "reads_hands": _read_hands(observation),
                 "stacks_assumed": observation["stacks_unknown"],
                 "inferred_actions": observation.get("inferred_actions", 0),
                 "bomb_pot": observation.get("bomb_pot"),
@@ -299,9 +315,7 @@ class AASolverAdvice:
             observation = {**observation, "mushroom_pool": str(pool)}
             if position(observation) == Position.SB:
                 counted = str(pool)
-        reads = self.reads.snapshot()
-        if reads:
-            observation = {**observation, "reads": reads}
+        observation = self._with_reads(observation)
         choice = self._preflop_policy().choose(observation)
         big_blind = Decimal(observation["rules"]["big_blind"])
         mine = Decimal(observation["bets"][str(HERO)])
@@ -325,7 +339,7 @@ class AASolverAdvice:
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": None if offset is None else str(offset),
                 "mushroom_pool": counted,
-                "reads_hands": self.reads.hands if reads else 0,
+                "reads_hands": _read_hands(observation),
                 "stacks_assumed": observation["stacks_unknown"],
                 "inferred_actions": observation.get("inferred_actions", 0),
                 "basis": PREFLOP_BASIS,

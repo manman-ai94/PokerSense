@@ -345,6 +345,10 @@ assert.equal(view.numbers[1].label, "你对他的范围能赢");
 // A bomb pot says so in the basis.
 view = signalView(running(multiway({action: "call", frequency: 1.0}, {bomb_pot: "14"})), 0, {});
 assert.ok(view.basis.includes("暴击局：每人先投 14，直接发翻牌"));
+assert.ok(!view.basis.some(line => line.includes("本场看到")));
+// The ranges follow each opponent's reads once there are some.
+view = signalView(running(multiway({action: "call", frequency: 1.0}, {reads_hands: 37})), 0, {});
+assert.ok(view.basis.includes("各对手的范围按本场看到的 37 手调整：爱加注的人下注时诈唬多算一些"));
 view = signalView(running(multiway({action: "fold", frequency: 1.0},
   {range_equity: {value: 0.18, opponents: 3}})), 0, {});
 assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "你能赢 18%，跟注要 25% 才够，不跟"]);
