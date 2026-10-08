@@ -14,16 +14,17 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   opponent's range there (``range_equity``, exact over the river cards). The
   solve runs on a background thread, so recognition never waits for it.
 
-- After the flop with more than one opponent there is no solver. Your share
-  of the pot against every opponent's range (read from their actions with
-  the same population model, ``scoreboard.ranges``) is worked out in the
-  background, and the scoreboard's ``range_multiway`` rule turns it into an
-  action against the price (``multiway_bot.choose``): bet, raise, call,
-  check or fold, with the shares where the action changes (``cuts``).
+- After the flop with more than one opponent there is no solver, and on the
+  heads-up flop a solve takes about a minute. Your share of the pot against
+  every opponent's range (read from their actions with the same population
+  model, ``scoreboard.ranges``) is worked out in the background, and the
+  scoreboard's ``range_multiway`` rule turns it into an action against the
+  price (``multiway_bot.choose``, with its heads-up cuts against one
+  opponent): bet, raise, call, check or fold, with the shares where the
+  action changes (``cuts``). The report's ``heads_up`` says which.
 
-The heads-up flop is not covered: a flop solve takes about a minute. There is
-no advice, but your share of the pot against the opponent's range is worked
-out the same way and added to the report when it is ready. Every frame
+An action the history missed but the table shows (``aa_solver_input``) is
+filled in; the report's ``inferred_actions`` counts them. Every frame
 reports where the current decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
@@ -52,6 +53,7 @@ from poker_engine.scoreboard.bots import position
 from poker_engine.scoreboard.mushroom import MIN_PLAYERS
 from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
+from poker_engine.scoreboard.multiway_bot import street_params
 from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
@@ -63,8 +65,7 @@ from .aa_session import frame_summary
 from .aa_solver_input import hand_facts, solver_observation
 
 HERO = 4                        # your seat: bottom centre
-STREETS = ("preflop", "turn", "river")   # a flop solve takes about a minute
-POSTFLOP = ("flop", "turn", "river")
+SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
 THREADS = 4                     # solver threads (the scoreboard uses one)
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
@@ -77,6 +78,10 @@ PREFLOP_BASIS = ("expected chips of each option against AA players' preflop "
 MULTIWAY_BASIS = ("equity against every opponent's range (a population model fitted to "
                   "AA players' preflop play) against the price, the scoreboard's "
                   "range_multiway rule; there is no multiway solver; for study only")
+HEADS_UP_BASIS = ("equity against the opponent's range (a population model fitted to "
+                  "AA players' preflop play) against the price, the scoreboard's "
+                  "range_multiway rule with its heads-up cuts; a flop solve takes "
+                  "about a minute; for study only")
 
 
 def _decimal(value):
@@ -160,7 +165,7 @@ class AASolverAdvice:
         if not (fields.get("hero_controls") or {}).get("visible"):
             return self._report("idle", "not_your_turn")
         street = fields.get("street")
-        if street not in STREETS and street not in POSTFLOP:
+        if street not in ("preflop", "flop", *SOLVED):
             return self._report("idle", "street_not_covered", street=street)
         cards = [card for card in fields.get("hero") or () if card]
         if len(cards) != 2:
@@ -182,21 +187,16 @@ class AASolverAdvice:
             # read: look again shortly.
             return {"status": "idle", "reason": "waiting_for_last_action",
                     "retry_at": frame + RETRY}
-        flop = fields.get("street") not in STREETS
         if observation is None:
-            return ({"status": "idle", "reason": "street_not_covered"} if flop
-                    else {"status": "abstain", "reason": reason})
+            return {"status": "abstain", "reason": reason}
         if observation["street"] != fields.get("street"):
             return {"status": "abstain", "reason": "street_mismatch"}
         if observation["street"] == "preflop":
             return self._preflop_advice(observation, fields)
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
-        if len(live) > 2:
+        if len(live) > 2 or observation["street"] not in SOLVED:
             return self._submit(self._multiway, observation, fields, time.monotonic())
-        if flop:
-            return {"status": "idle", "reason": "street_not_covered",
-                    "range_job": self._submit(self._ranges, observation)}
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
         pot = _decimal(fields.get("pot"))
@@ -229,27 +229,30 @@ class AASolverAdvice:
     def _multiway(self, observation, fields, started):
         """The ``range_multiway`` action for your share of the pot against the
         opponents' ranges; the share alone when your stack is not read."""
+        heads_up = len([seat for seat in observation["occupied_seats"]
+                        if seat not in observation["folded"]]) == 2
+        idle = "heads_up_flop" if heads_up else "more_than_one_opponent"
         edge = self._ranges(observation)
         if edge is None:
-            return {"status": "idle", "reason": "more_than_one_opponent"}
+            return {"status": "idle", "reason": idle}
         if HERO in observation["stacks_unknown"]:
-            return {"status": "idle", "reason": "more_than_one_opponent",
-                    "range_equity": edge}
+            return {"status": "idle", "reason": idle, "range_equity": edge}
         pot = _decimal(fields.get("pot"))
         offset = None
         if pot is not None and pot > Decimal(observation["pot"]):
             offset = pot - Decimal(observation["pot"])
             observation = {**observation, "pot": str(pot)}
         action = multiway_choice(observation, edge["value"])
-        return {"status": "ready", "kind": "multiway",
+        line = multiway_cuts(observation, street_params(observation))
+        return {"status": "ready", "kind": "multiway", "heads_up": heads_up,
                 "advice": [multiway_row(action, observation)],
-                "cuts": {name: round(value, 3)
-                         for name, value in multiway_cuts(observation).items()},
+                "cuts": {name: round(value, 3) for name, value in line.items()},
                 "range_equity": edge, "pot": observation["pot"],
                 "to_call": observation["to_call"],
                 "pot_offset": None if offset is None else str(offset),
                 "stacks_assumed": observation["stacks_unknown"],
-                "basis": MULTIWAY_BASIS,
+                "inferred_actions": observation.get("inferred_actions", 0),
+                "basis": HEADS_UP_BASIS if heads_up else MULTIWAY_BASIS,
                 "seconds": round(time.monotonic() - started, 2)}
 
     def _preflop_policy(self):
@@ -298,6 +301,7 @@ class AASolverAdvice:
                 "pot_offset": None if offset is None else str(offset),
                 "mushroom_pool": counted,
                 "stacks_assumed": observation["stacks_unknown"],
+                "inferred_actions": observation.get("inferred_actions", 0),
                 "basis": PREFLOP_BASIS,
                 "seconds": round(time.monotonic() - started, 3)}
 
@@ -314,28 +318,12 @@ class AASolverAdvice:
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": observation.get("pot_offset"),
                 "range_equity": edge,
+                "inferred_actions": observation.get("inferred_actions", 0),
                 "seconds": round(time.monotonic() - started, 2)}
 
     def _settle(self, key):
-        """The decision's outcome, or None while the solve is running.
-
-        An outcome without advice is there at once; its equity against the
-        opponents' ranges joins it when worked out.
-        """
+        """The decision's outcome, or None while the solve is running."""
         job = self._jobs[key]
-        if isinstance(job, dict) and isinstance(job.get("range_job"), Future):
-            future = job["range_job"]
-            job = {name: value for name, value in job.items() if name != "range_job"}
-            if not future.done():
-                return job
-            try:
-                edge = future.result()
-            except Exception:              # never lose the report over it
-                edge = None
-            if edge is not None:
-                job["range_equity"] = edge
-            self._jobs[key] = job
-            return job
         if isinstance(job, Future):
             if not job.done():
                 return None
@@ -352,9 +340,10 @@ class AASolverAdvice:
             return self._report("computing", None, street=street, decision=key[0])
         return self._report(job["status"], job.get("reason"), street=street,
                             decision=key[0], **{name: job[name] for name in (
-                                "kind", "advice", "options", "cuts", "pot", "to_call",
-                                "pot_offset", "mushroom_pool", "stacks_assumed",
-                                "range_equity", "seconds", "basis")
+                                "kind", "heads_up", "advice", "options", "cuts", "pot",
+                                "to_call", "pot_offset", "mushroom_pool",
+                                "stacks_assumed", "inferred_actions", "range_equity",
+                                "seconds", "basis")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

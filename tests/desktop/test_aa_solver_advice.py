@@ -1,5 +1,5 @@
-"""Advice for your preflop decisions, and solver advice for your heads-up turn
-and river decisions in the background."""
+"""Advice for your preflop decisions, solver advice for your heads-up turn
+and river decisions in the background, and the range rule's elsewhere."""
 
 from concurrent.futures import Future
 
@@ -29,7 +29,7 @@ BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "
 
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
-            turn=41, complete=True):
+            turn=41, complete=True, stacks_read=True):
     seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop]
     street = seen[-1][1] if seen else "preflop"
     street = "turn" if frame >= turn else "flop" if frame > 25 else street
@@ -41,7 +41,8 @@ def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
         "cards": {"hero": list(hero), "board_slots": board + [None] * (5 - len(board))},
         "seat_states_v1": {"seats": {
             str(s): {"state": "active" if s < seats else "empty"} for s in range(8)}},
-        "stacks": {str(s): {"value": "200"} for s in range(seats)},
+        "stacks": {str(s): {"value": "200" if stacks_read or s != 4 else None}
+                   for s in range(seats)},
         "hero_controls_v1": {"visible": frame >= shown, "button": "call",
                              "call_amount": "10"},
         "action_history_v1": {
@@ -122,12 +123,37 @@ def test_the_solve_runs_in_the_background_once_per_decision():
     assert results[-1]["status"] == "computing" and executor.submitted == 1
 
 
-def test_decisions_the_solver_does_not_cover_stay_idle():
+def test_without_your_cards_there_is_no_advice():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     assert run(advice, range(50), hero=())[-1]["reason"] == "your_cards_not_read"
-    flop = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
-    first = flop.observe({**payload(31), "hero_controls_v1": {"visible": True}}, 31)
-    assert (first["reason"], first["street"]) == ("street_not_covered", "flop")
+
+
+def flop_turn(advice, **options):
+    """Your turn on the flop, checked to you by seat 2."""
+    row = {**payload(31, **options), "hero_controls_v1": {"visible": True,
+                                                          "button": "check"}}
+    return advice.observe(row, 31)
+
+
+def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch):
+    bot = Bot({"CALL": 1.0})
+    report = flop_turn(AASolverAdvice(bot, Inline()))
+    assert (report["status"], report["kind"], report["heads_up"], report["street"]) == (
+        "ready", "multiway", True, "flop")
+    assert report["cuts"] == {"bet": DEFAULTS["hu_bet"]}
+    edge, [row] = report["range_equity"], report["advice"]
+    assert edge["opponents"] == 1 and edge["hands"] > 0
+    assert row["action"] == ("bet" if edge["value"] >= DEFAULTS["hu_bet"] else "check")
+    assert bot.seen == [] and "heads-up cuts" in report["basis"]
+    assert report["inferred_actions"] == 0
+    # Without your stack the share only; without the range nothing.
+    unread = flop_turn(AASolverAdvice(bot, Inline()), stacks_read=False)
+    assert (unread["status"], unread["reason"]) == ("idle", "heads_up_flop")
+    assert 0 < unread["range_equity"]["value"] < 1
+    blind = AASolverAdvice(bot, Inline())
+    monkeypatch.setattr(blind, "_ranges", lambda observation: None)
+    report = flop_turn(blind)
+    assert (report["reason"], "range_equity" in report) == ("heads_up_flop", False)
 
 
 # The same hand three-handed: seat 1 completes its big blind and checks along.
@@ -310,9 +336,19 @@ def test_the_frame_log_keeps_the_advice_status():
     assert "basis" not in summary
 
 
-def test_your_buttons_before_the_last_action_is_read_wait_for_it():
+def test_your_buttons_before_the_last_action_is_read():
+    # Seat 2's bet is read at 41; your price (call 10) fills it in at once.
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
-    results = run(advice, range(50), shown=37, turn=37)   # seat 2's bet read at 41
+    results = run(advice, range(50), shown=37, turn=37)
+    assert [r["status"] for r in results[37:41]] == ["ready"] * 4
+    assert results[37]["inferred_actions"] == 1
+    assert (results[-1]["status"], results[-1]["inferred_actions"]) == ("ready", 0)
+    # Without your price there is nothing to fill it in from: wait for it.
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    frames = [payload(frame, shown=37, turn=37) for frame in range(50)]
+    for frame in frames:
+        frame["hero_controls_v1"]["call_amount"] = None
+    results = [advice.observe(frame, index) for index, frame in enumerate(frames)]
     assert [r["reason"] for r in results[37:41]] == ["waiting_for_last_action"] * 4
     assert results[-1]["status"] == "ready"
 

@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from poker_engine.desktop.aa_solver_input import (check_hand, hand_facts,
+from poker_engine.desktop.aa_solver_input import (check_hand, fill_to_seat, hand_facts,
                                                   replay_hand, starting_stacks)
 
 # Six players, dealer 5: small blind 0, big blind 1, straddle 2; seat 3 acts first.
@@ -173,3 +173,36 @@ def test_stacks_that_do_not_fit_the_betting_give_no_observation():
 def test_a_fold_read_again_for_a_folded_seat_is_skipped():
     repeated = ACTIONS[:4] + [(15, "preflop", 3, "fold", "0")] + ACTIONS[4:]
     assert replay_hand(facts(repeated))["status"] == "ok"
+
+
+def test_a_missed_fold_is_filled_in_from_the_table():
+    missing = ACTIONS[:1] + ACTIONS[2:]              # seat 4's fold was not read
+    hand = {**facts(missing), "states": {seat: "active" for seat in range(6)} | {
+        3: "folded", 4: "folded", 0: "folded", 1: "folded"}, "price": None}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
+    assert [(a["slot"], a["kind"], a["source"]) for a in result["inferred"]] == [
+        (4, "fold", "inferred")]
+
+
+def test_a_bet_read_after_the_calls_is_moved_before_them():
+    late = ACTIONS[:7] + [(34, "flop", 2, "call", "10"), (36, "flop", 5, "raise", None)]
+    hand = {**facts(late), "states": {2: "active", 5: "active"}, "price": None}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
+    assert [(a["slot"], a["kind"], a["amount"]) for a in result["inferred"]] == [
+        (5, "raise", "10")]
+    # Without the seat states nothing is filled in.
+    assert replay_hand(facts(late))["status"] == "stopped"
+
+
+def test_the_seats_before_yours_are_filled_in_from_your_price():
+    hand = {**facts(ACTIONS[:6]), "states": {2: "active", 5: "active"},
+            "price": Decimal(10)}
+    arena = replay_hand(hand)["arena"]
+    assert arena.actor == 2
+    assert [(a["slot"], a["kind"], a["amount"]) for a in fill_to_seat(
+        arena, 5, hand)] == [(2, "raise", "10")]
+    checked = fill_to_seat(arena, 5, {**hand, "price": Decimal(0)})
+    assert [(a["slot"], a["kind"]) for a in checked] == [(2, "call")]
+    assert fill_to_seat(arena, 5, {**hand, "price": None}) is None

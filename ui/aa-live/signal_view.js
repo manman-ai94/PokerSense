@@ -61,7 +61,7 @@
   const GRADES = {best: "最佳", fine: "可以", slip: "小失误", mistake: "错误"};
   const RULE = "怎么打分：翻前看比最好的选择少赢几个大盲；转牌、河牌看求解器多常这样打：" +
     "最常用或一半以上是“最佳”，两成以上“可以”，更少是“小失误”，几乎从不这样打是“错误”。";
-  const MULTIWAY_RULE = "怎么打分：几个人的底池按你对他们的牌能赢几成来定该怎么打。和建议一样是“最佳”；" +
+  const MULTIWAY_RULE = "怎么打分：几个人的底池和单挑翻牌，按你对对手的牌能赢几成来定该怎么打。和建议一样是“最佳”；" +
     "不一样时看你能赢的离你那样打的线差多远：5 个点以内“可以”，15 个点以内“小失误”，更远是“错误”。";
   const one = value => (Math.round(value * 10) / 10).toFixed(1);
   // "+1.6", "−0.3", and "0.0" for anything that rounds to zero.
@@ -559,7 +559,9 @@
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
         const basis = verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
-          : verdict.kind === "multiway" ? ["按胜率和价格定", "没有多人求解器，对手范围按 AA 真人打法推算"]
+          : verdict.kind === "multiway" ? ["按胜率和价格定", advice.heads_up
+            ? "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算"
+            : "没有多人求解器，对手范围按 AA 真人打法推算"]
             : ["单挑求解器", "对手范围按 AA 真人打法推算"];
         if (isNumber(advice.seconds))
           basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
@@ -569,6 +571,8 @@
           basis.push(`算上蘑菇池 ${chips(advice.mushroom_pool)}：你是小盲，赢下底池就一起拿走`);
         if (Array.isArray(advice.stacks_assumed) && advice.stacks_assumed.length)
           basis.push("有人筹码没读到，按很深算");
+        if (num(advice.inferred_actions) > 0)
+          basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
         return {...view, tone: verdict.tone, verdict, basis};
       }
@@ -594,10 +598,11 @@
       return {...view, tone: "info", title: `${STREETS[advice.street] || view.street || "这条街"}不给打法`,
         note: flop ? "翻牌算一次要 40 秒左右，来不及。下面的数是实时的：" : "这条街现在不给建议。下面的数是实时的："};
     }
-    if (reason === "more_than_one_opponent") {
-      return {...view, tone: "info", title: "多人底池只给数字",
+    if (reason === "more_than_one_opponent" || reason === "heads_up_flop") {
+      const many = reason === "more_than_one_opponent";
+      return {...view, tone: "info", title: many ? "多人底池只给数字" : "单挑翻牌只给数字",
         note: isNumber(advice.range_equity?.value)
-          ? "你的筹码没读到，定不了下多少。胜率按 AA 真人打法推算每个对手可能拿的牌，只当参考。"
+          ? `你的筹码没读到，定不了下多少。胜率按 AA 真人打法推算${many ? "每个对手" : "对手"}可能拿的牌，只当参考。`
           : "对手可能拿的牌推算不出来。胜率是对随机牌算的，真人的牌通常更强，你实际能赢的多半更少，只当上限参考。"};
     }
     if (reason === "your_cards_not_read") {

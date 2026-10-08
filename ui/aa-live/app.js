@@ -149,7 +149,8 @@ function mathText(item, format) {
 }
 function percent(value) { return `${(value * 100).toFixed(1)}%`; }
 const ADVICE_REASONS = {no_hand:"等待一手牌开始", not_your_turn:"还没轮到你", street_not_covered:"翻牌不计算（求解要约一分钟，来不及）",
-  your_cards_not_read:"还没读到你的两张牌", more_than_one_opponent:"对手不止一个（多人底池不计算）",
+  your_cards_not_read:"还没读到你的两张牌", more_than_one_opponent:"对手不止一个，你的筹码没读到或推算不出对手范围（只给胜率）",
+  heads_up_flop:"单挑翻牌，你的筹码没读到或推算不出对手范围（只给胜率）",
   waiting_for_last_action:"等对手刚才的动作进入行动记录", hand_incomplete:"这手牌是中途接入的，前面的动作不知道",
   starts_after_preflop:"没有翻牌前下注（多半是暴击局），规则模型不支持", not_this_seats_turn:"重放时轮到的人对不上，可能漏记了动作",
   street_mismatch:"重放时街道对不上", illegal_at_the_table:"有下注额在牌桌上不合法", raise_without_amount:"有加注没读到金额",

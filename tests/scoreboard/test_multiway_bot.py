@@ -22,8 +22,8 @@ class Base:
 
 
 def spots(count=40):
-    """Postflop observations from simulated AA hands: (heads-up, multiway checked
-    to, multiway facing a bet)."""
+    """Postflop observations from simulated AA hands: (heads-up, heads-up flop
+    checked to, multiway checked to, multiway facing a bet)."""
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     arena, pool = AAFullHandArena(rules), make_policy("aa_population")
     found = {}
@@ -37,7 +37,9 @@ def spots(count=40):
                 kind = ("heads_up" if others == 1 else
                         "facing" if price > 0 else "checked_to")
                 found.setdefault(kind, observation)
-            if len(found) == 3:
+                if others == 1 and price == 0 and observation["street"] == "flop":
+                    found.setdefault("heads_up_flop", observation)
+            if len(found) == 4:
                 return found
             arena.step(pool.decide(observation, _rng("test", observation)))
     raise AssertionError(f"only found {sorted(found)}")
@@ -90,8 +92,21 @@ def test_no_equity_falls_back_to_the_base_policy(monkeypatch, table):
 
 def test_parameters_come_with_the_name():
     bot = make_policy("range_multiway@bet=0.4:raise=0.6:margin=0+aa_preflop")
-    assert bot.params == {"bet": 0.4, "raise": 0.6, "margin": 0.0, "trials": 600}
+    assert bot.params == {**multiway_bot.DEFAULTS, "bet": 0.4, "raise": 0.6,
+                          "margin": 0.0}
     assert bot.name == "range_multiway@bet=0.4:raise=0.6:margin=0+aa_preflop"
     assert make_policy("range_multiway+aa_preflop").params == multiway_bot.DEFAULTS
     with pytest.raises(ValueError):
         make_policy("range_multiway@size=1+aa_preflop")
+
+
+def test_with_hu_the_heads_up_flop_is_played_with_its_own_cuts(monkeypatch, table):
+    spot = table["heads_up_flop"]
+    assert bot_with(monkeypatch, 0.9).decide(spot, random.Random(0)) == "base"
+    assert bot_with(monkeypatch, 0.6, hu=1).decide(spot, random.Random(0)).startswith(
+        "raise_to")
+    assert bot_with(monkeypatch, 0.5, hu=1).decide(spot, random.Random(0)) == (
+        "check_call")                          # a multiway pot bets from 0.4
+    turn = {**spot, "street": "turn"}           # the solver plays heads-up turns
+    assert bot_with(monkeypatch, 0.9, hu=1).decide(turn, random.Random(0)) == "base"
+    assert multiway_bot.street_params(spot, multiway_bot.DEFAULTS)["bet"] == 0.55

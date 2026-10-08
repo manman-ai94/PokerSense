@@ -163,6 +163,7 @@ const states = [
   [{status: "idle", reason: "waiting_for_last_action"}, "info", "稍等"],
   [{status: "idle", reason: "street_not_covered", street: "flop"}, "info", "翻牌不给打法"],
   [{status: "idle", reason: "more_than_one_opponent"}, "info", "多人底池只给数字"],
+  [{status: "idle", reason: "heads_up_flop"}, "info", "单挑翻牌只给数字"],
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
@@ -283,6 +284,12 @@ assert.equal(view.verdict.note, "你能赢 31%，跟注只要 25% 就够");
 assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "没有多人求解器，对手范围按 AA 真人打法推算",
   "只显示建议，不替你点"]);
 assert.equal(view.numbers[1].label, "你对他们的牌能赢");
+// The heads-up flop by the same rule, and an action the table filled in.
+view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: true, inferred_actions: 1,
+  range_equity: {value: 0.31, opponents: 1, hands: 240}})), 0, {});
+assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算",
+  "有 1 个动作没读到，按牌桌补上", "只显示建议，不替你点"]);
+assert.equal(view.numbers[1].label, "你对他的范围能赢");
 view = signalView(running(multiway({action: "fold", frequency: 1.0},
   {range_equity: {value: 0.18, opponents: 3}})), 0, {});
 assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "你能赢 18%，跟注要 25% 才够，不跟"]);

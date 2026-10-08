@@ -11,8 +11,9 @@ the time, until your action for it appears in the hand's history
 - turn and river, by how often the solver takes that action, every bet or
   raise size counted together: its most frequent action or at least half the
   time best, at least 20% fine, at least 2% a slip, else a mistake;
-- after the flop with more than one opponent, against the action your share
-  of the pot against their ranges called for (``range_multiway``): that
+- after the flop with more than one opponent, and on the heads-up flop,
+  against the action your share of the pot against their ranges called for
+  (``range_multiway``, its heads-up cuts against one opponent): that
   action best, otherwise by how far the share is from where your action
   would have been the one: under 5 points fine, under 15 a slip, else a
   mistake.
