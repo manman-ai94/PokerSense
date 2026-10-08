@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import socket
 import sys
 import tomllib
@@ -132,3 +133,82 @@ def test_a_mac_with_chrome_opens_the_page_in_chrome(tmp_path):
     entry.open_page(url, platform="darwin", chrome=chrome, run=broken,
                     fallback=fallback.append)
     assert fallback == [url, url, url]
+
+
+def test_a_new_launch_closes_the_older_window_on_its_port():
+    # lsof lists this process, an older window and another program.
+    commands = {"201": ".venv/bin/python packaging/aa_live_entry.py --allow-capture",
+                "305": "/usr/sbin/someserver"}
+    calls, kills, stops, alive = [], [], [], {201: 2, 305: 99}
+
+    def run(command, **kwargs):
+        calls.append(command[0])
+        out = "100\n201\n305\n" if command[0] == "lsof" else commands[command[-1]]
+        return entry.subprocess.CompletedProcess(command, 0, stdout=out)
+
+    def kill(pid, sig):
+        kills.append((pid, sig))
+        if sig == 0:
+            alive[pid] -= 1
+            if alive[pid] < 0:
+                raise ProcessLookupError(pid)
+
+    closed = entry.take_over(8771, run=run, kill=kill, stop=stops.append, me=100,
+                             sleep=lambda seconds: None)
+    assert closed == [201] and stops == [8771]
+    assert kills[0] == (201, entry.signal.SIGTERM)       # a normal kill, then waits
+    assert {pid for pid, _ in kills} == {201}             # the other program is left
+    assert calls == ["lsof", "ps", "ps"]
+
+
+def test_without_lsof_nothing_is_closed():
+    def run(command, **kwargs):
+        raise FileNotFoundError(command[0])
+    assert entry.take_over(8771, run=run, kill=None, stop=None) == []
+
+
+@pytest.mark.skipif(entry.os.name == "nt" or shutil.which("lsof") is None,
+                    reason="needs lsof (macOS, Linux)")
+def test_a_second_launch_takes_the_port_of_the_first(tmp_path):
+    import subprocess
+    import time
+    import urllib.request
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    processes = []
+
+    def launch(name):
+        ready = tmp_path / f"{name}.json"
+        processes.append(subprocess.Popen(
+            [sys.executable, str(ROOT / "packaging" / "aa_live_entry.py"),
+             "--no-browser", "--state", str(tmp_path / "state"), "--port", str(port),
+             "--ready-file", str(ready)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            encoding="utf-8", errors="replace"))
+        deadline = time.monotonic() + 90
+        while not ready.is_file() or not ready.read_text(encoding="utf-8"):
+            assert processes[-1].poll() is None, processes[-1].stdout.read()[-1500:]
+            assert time.monotonic() < deadline, f"{name} never got ready"
+            time.sleep(0.1)
+        return json.loads(ready.read_text(encoding="utf-8"))["base"]
+
+    try:
+        first = launch("first")
+        # A page polls the first window, as Chrome does.
+        status = urllib.request.Request(first + "api/status",
+                                        headers={"X-AA-Live": "1"})
+        urllib.request.urlopen(status, timeout=10).read()
+        second = launch("second")
+        assert first == f"http://127.0.0.1:{port}/"
+        assert second == first
+        assert processes[0].wait(timeout=20) is not None
+        assert "关掉了之前开着的窗口" in processes[1].stdout.readline()
+    finally:
+        for process in processes:
+            process.terminate()
+            try:
+                process.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                process.kill()
