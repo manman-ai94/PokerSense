@@ -17,7 +17,7 @@ PokerSense 是一个德州扑克**实时策略分析**工具：用采集卡读�
 ## 当前阶段
 
 总目标：做一个胜率高的扑克 AI，人通过它的实时分析学习。按 [ROADMAP](docs/ROADMAP.md)
-的里程碑推进，当前顺序是：识别补缺（基本完成）→ 策略记分牌（完成）→ 单挑翻后求解（记分牌和实时观察页的转牌、河牌建议都已接上，真人验收还差约 20 个决策）→ 翻前策略（记分牌和实时观察页都已接上）→ 界面重做（2026-10-08 完成，“信号灯”窗口）→ 多人底池与保险（下一步）。
+的里程碑推进，当前顺序是：识别补缺（基本完成）→ 策略记分牌（完成）→ 单挑翻后求解（记分牌和实时观察页的转牌、河牌建议都已接上，真人验收还差约 20 个决策）→ 翻前策略（记分牌和实时观察页都已接上）→ 界面重做（2026-10-08 完成，“信号灯”窗口）→ 多人底池与保险（2026-10-08 完成：保险别买；多人底池按对手范围的胜率，记分牌上的打法 `range_multiway`）。
 已确定的方向：
 - 不自研全街策略，也不自研求解器；单挑翻后用现成开源求解器，多人底池先给数学参考并明确标注。
 - 每项策略改进都必须在“策略记分牌”（模拟牌桌上的 bb/100）上看到提升，不能凭感觉。
@@ -76,6 +76,7 @@ tools/setup_texassolver.sh
 PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 4 \
     --strategies rfi_table,solver_turn,solver_flop --reference rfi_table
 # “solver_turn+aa_preflop”：求解器策略换用 aa_preflop 做翻前（和多人底池），并按 AA 真人推算对手范围
+# “range_multiway+甲”：翻后几个人的底池按你对各对手范围的胜率打，其余照甲；参数可写在名字里，如 range_multiway@bet=0.4:raise=0.6+aa_preflop
 # 核对轮到你时的按钮（跟注额 / 让牌 / All in）和标注是否一致
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> \
     --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
@@ -105,7 +106,7 @@ PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <�
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
 | `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、观察时直接录采集卡画面 `aa_recorder.py`、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、当前这手牌的行动记录 `aa_action_history.py`（动作、金额、街道；全下从筹码变化推断）、把这手牌接成求解器输入（在模拟牌桌上重放）`aa_solver_input.py`、轮到你时的策略建议 `aa_solver_advice.py`（翻前用 `aa_preflop` 当场算各选择值多少；单挑转牌/河牌在后台用求解器；翻牌和多人底池在后台算你对各对手范围的胜率）、你行动后给这一步打分和本场记录 `aa_grading.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 前端（原生 HTML/JS，无构建步骤）：首页是“信号灯”窗口 `signal.html`（`signal_view.js` 算出要显示什么，`signal.js` 画出来，见 [设计说明](docs/design/signal-window.md)）；旧观察页 `index.html` 在 `/classic` |
-| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围；`ranges.py` 推算每个对手的范围和你对他们的胜率）；翻前策略 `preflop_policy.py`（`aa_preflop`：按当前底池、价格、筹码和后面的人怎么应对算每个选择值多少筹码，随盲注结构、人数、蘑菇池自动变化；用 169 类起手牌对战胜率表 `preflop_equity_v1.json`）；`population.py` 里的 `aa_population` 按 `aa_preflop_stats_v1.json`（AA 真人翻前频率）调松 |
+| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围；`ranges.py` 推算每个对手的范围和你对他们的胜率，`multiway_bot.py` 的 `range_multiway` 用它打多人底池）；翻前策略 `preflop_policy.py`（`aa_preflop`：按当前底池、价格、筹码和后面的人怎么应对算每个选择值多少筹码，随盲注结构、人数、蘑菇池自动变化；用 169 类起手牌对战胜率表 `preflop_equity_v1.json`）；`population.py` 里的 `aa_population` 按 `aa_preflop_stats_v1.json`（AA 真人翻前频率）调松 |
 | `src/poker_engine/solver/` | 调用本机编译的 TexasSolver（常驻后台，一次算一条街）；求解器本身不在仓库里，用 `tools/setup_texassolver.sh` 安装 |
 | `research/` | `hu_root`（单挑已保存策略查询）、`coverage_bridge` |
 | `tools/` | 离线命令行工具，其中不少是一次性研究脚本 |

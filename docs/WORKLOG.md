@@ -24,9 +24,16 @@
 | `fix/multiway-note` | 74e34f5（已并进本机 main） | 还没有 | 多人底池的说明改成“只当上限参考” |
 | `feat/insurance-hint` | 8055dd5（已并进本机 main） | 还没有 | 全下以后提示保险别买，按 AA 赔率表算保险亏多少 |
 | `feat/multiway-range-equity` | 5974b34（已并进本机 main） | 还没有 | 翻牌和多人底池算你对各对手范围的胜率 |
-| `feat/scoreboard-by-flop` | 本条提交 | 还没有 | 记分牌按翻牌时几个人分开看成绩 |
+| `feat/scoreboard-by-flop` | 644a03d（已并进本机 main） | 还没有 | 记分牌按翻牌时几个人分开看成绩 |
+| `research/multiway-range-policy` | 本条提交 | 还没有 | 记分牌上按对手范围胜率打多人底池的 `range_multiway` |
 
 ## 记录
+
+**2026-10-08 · `research/multiway-range-policy`（本机）**
+- 做了什么：里程碑 6 的多人底池打法。新策略 `range_multiway+甲`：翻牌后有两个以上对手时，按你对各对手范围的胜率决定（没人下注时胜率够 40% 就下注 2/3 池，面对下注够 60% 就加注到约一池，够价格就跟，不够就弃），其余照甲。
+- 怎么做的：新 `scoreboard/multiway_bot.py`，用 `ranges.py` 推算范围、算胜率（每次 600 次模拟）；参数可以写在名字里（`@bet=…:raise=…:margin=…`），`bots.make_policy` 认这个名字。
+- 怎么验证的：新测试 5 个；600 局试了 3 组参数（都为正，选最好一组为默认）；2000 局对 `aa_preflop` 每 100 手多赢：AA 人群种子 1 +32（+20 ~ +44），种子 2 +15（+2 ~ +28），2009 年真人人群 +9（+0.2 ~ +19），全部来自多人底池；scoreboard 测试和 flake8 通过。
+- 还剩什么：实时窗口在多人底池也给建议（要主人同意，现在只给数字）；和求解器一起用（`range_multiway+solver_turn+aa_preflop` 这类组合）要在 Mac 上跑。
 
 **2026-10-08 · `feat/scoreboard-by-flop`（本机）**
 - 做了什么：记分牌把每个策略的成绩按“翻牌前就结束 / 单挑看翻牌 / 几个人看翻牌”分成三块（加起来等于总成绩），和参照策略的差也分三块，命令行表格里多一段。

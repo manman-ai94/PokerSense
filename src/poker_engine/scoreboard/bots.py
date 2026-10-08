@@ -222,6 +222,9 @@ class Split(_Policy):
 
 
 def make_policy(name):
+    if name.startswith("range_multiway") and "+" in name:
+        from .multiway_bot import from_name      # imports this module
+        return from_name(name, make_policy)
     if name.startswith("solver_") and "+" in name:
         # "solver_flop+aa_preflop": the solver strategy on another base policy
         from .solver_bot import SolverBot       # needs TexasSolver installed
