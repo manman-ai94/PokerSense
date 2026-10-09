@@ -92,6 +92,7 @@ BOARD = (("flop", 3), ("turn", 4), ("river", 5))
 STREETS = ("preflop", "flop", "turn", "river")
 HERO = 4                            # your seat: bottom centre
 BOMB_BIG_BLINDS = 7                 # the table setting "暴击:7BB"
+WAGER_WAIT = 3                      # your-turn frames before the bets give your price
 
 
 def _rules(players):
@@ -136,6 +137,7 @@ def hand_facts(rows):
                        (latest.get("street_wagers") or {}).items()
                        if value not in (None, "")},
             "price": _price(latest.get("hero_controls") or {}),
+            "turn_frames": _turn_frames(fields),
             "all_in": _all_in(latest.get("hero_controls") or {})}
 
 
@@ -192,6 +194,16 @@ def _price(controls):
     if controls.get("button") == "call" and amount not in (None, ""):
         return Decimal(str(amount))
     return None
+
+
+def _turn_frames(fields):
+    """How many frames in a row, up to now, your buttons have been on screen."""
+    count = 0
+    for f in reversed(fields):
+        if not (f.get("hero_controls") or {}).get("visible"):
+            break
+        count += 1
+    return count
 
 
 def _all_in(controls):
@@ -482,13 +494,17 @@ def _wager_price(arena, seat, table):
     """Your price from the bets on the table when your button's is not read:
     the most an opponent has in on this street minus what you have in; None
     unless an opponent's bet is read while the table is on the replay's
-    street. 10/09: a bet's badge was read a moment late, your price was not
-    read, and the rough advice showed until the badge came."""
+    street, and only after your buttons have been up ``WAGER_WAIT`` frames:
+    the action before yours is usually read a moment after they show, and a
+    guess at it before then is worked out for nothing. 10/09: a bet's badge
+    was read a moment late, your price was not read, and the rough advice
+    showed until the badge came."""
     street = next((name for name, count in reversed(BOARD)
                    if len(table.get("board") or ()) >= count), "preflop")
     wagers = table.get("wagers") or {}
     others = [value for other, value in wagers.items() if other != seat]
-    if street != arena.street or street == "preflop" or not others:
+    if (street != arena.street or street == "preflop" or not others
+            or table.get("turn_frames", 0) < WAGER_WAIT):
         return None
     price = max(others) - wagers.get(seat, Decimal(0))
     return price if price > 0 else None
