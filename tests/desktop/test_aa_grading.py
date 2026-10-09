@@ -58,7 +58,8 @@ def preflop_acted(kind, amount, hero):
 
 
 def turn_decision(kind, amount, bot=None, executor=None, frames=50, **options):
-    advice = AASolverAdvice(bot or Bot(MIX), executor or Inline())
+    # Only frames count toward the rough rule here, however slow the machine.
+    advice = AASolverAdvice(bot or Bot(MIX), executor or Inline(), clock=lambda: 0.0)
     grades = AAGrades(advice, clock=lambda: 1000.0)
     rows = [(frame, payload(frame, **options)) for frame in range(frames)]
     return advice, grades, feed(advice, grades, rows + [
@@ -256,7 +257,7 @@ def test_the_session_counts_your_actions_the_advice_and_each_grade():
     report = turn_decision("call", "10", bot=Bot(error="own_hand_not_in_range"))[2]
     assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 1)
     assert report["last"]["kind"] == "multiway"
-    # The rough rule's action a second into your turn: advised, too rough to grade.
+    # The rough rule's action a moment into your turn: advised, too rough to grade.
     report = turn_decision("call", "10", frames=60, drop=(0,))[2]
     assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 0)
     # Advice that cannot be matched to what you did: advised, not graded.
