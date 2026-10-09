@@ -191,22 +191,22 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
     assert (report["reason"], "range_equity" in report) == ("heads_up_flop", False)
 
 
-def test_the_opponents_reads_go_to_the_range_reading_after_the_flop(monkeypatch):
+def test_the_opponents_reads_stay_out_of_the_range_reading_after_the_flop(
+        monkeypatch):
+    # Read by the preflop raise rate, a tight-aggressive player who bets
+    # honestly after the flop is taken as bluffing: left out for now.
     seen, real = [], aa_solver_advice.opponent_ranges
     monkeypatch.setattr(aa_solver_advice, "opponent_ranges",
                         lambda observation, model: seen.append(observation)
                         or real(observation, model))
     plain = flop_turn(AASolverAdvice(Bot({"CALL": 1.0}), Inline()))
-    assert "reads" not in seen[-1] and plain["reads_hands"] == 0
-    # Seat 2 has raised two hands in five over 30 hands: a maniac's bet keeps
-    # more of the hands the model would not bet with.
     reads = {"2": {"hands": 30, "vpip": 0.6, "pfr": 0.4}}
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     monkeypatch.setattr(advice.reads, "snapshot", lambda: reads)
     report = flop_turn(advice)
-    assert seen[-1]["reads"] == reads
-    assert report["status"] == "ready" and report["reads_hands"] == 30
-    assert report["range_equity"]["hands"] != plain["range_equity"]["hands"]
+    assert "reads" not in seen[-1] and report["status"] == "ready"
+    assert report["reads_hands"] == 0
+    assert report["range_equity"] == plain["range_equity"]
 
 
 # The same hand three-handed: seat 1 completes its big blind and checks along.
