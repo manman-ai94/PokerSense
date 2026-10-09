@@ -283,3 +283,19 @@ def test_a_call_badge_read_again_is_one_call():
     hand = feed(AAActionHistory(), frames)
     assert [(a["frame"], a["slot"], a["kind"]) for a in hand["actions"]] == [
         (3, 5, "call")]
+
+
+def test_badges_read_again_after_a_stall_are_left_out():
+    # After a stall the reader starts over and reads every badge still on the
+    # table again: the checks and the fold are already in, the bet is new.
+    first = [event(2, 0, "check"), event(3, 3, "fold"), event(4, 7, "check")]
+    again = [event(12, 0, "check"), event(12, 3, "fold"), event(12, 7, "check")]
+    frames = [payload("70", "flop", actions=first)] * 12 + [
+        payload("70", "flop", actions=again)] * 3 + [
+        payload("70", "flop", actions=again + [event(15, 1, "raise")])] * 2 + [
+        payload("112", "flop", actions=again + [event(15, 1, "raise")])] * 15
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["frame"], a["slot"], a["kind"], a["amount"])
+            for a in hand["actions"]] == [
+        (2, 0, "check", "0"), (3, 3, "fold", "0"), (4, 7, "check", "0"),
+        (15, 1, "raise", "42")]

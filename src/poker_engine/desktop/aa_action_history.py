@@ -30,14 +30,16 @@ This layer keeps the reader's actions and rebuilds the rest:
   was read: the blinds, the straddle and a bomb pot's posts go in before
   it, while the street can still be the last hand's. At 5- and
   6-handed tables on 10/08 none of the top seat's 21 bets and raises was
-  read as one, while its stack was read on 99% of frames. A call read for a
-  seat that already called on the street with no bet since is the badge
-  read again and is left out;
+  read as one, while its stack was read on 99% of frames;
+- **badges read again**: a fold read for a seat that already folded, or a
+  check or call for a seat that already checked or called on the street
+  with no bet since, is the badge still shown and read again, and is left
+  out;
 - **hand**: a new hand starts when the steady pot goes down, the board goes
   back to preflop, the dealer button moves, or after a readable table
   showed no hand in progress. A hand already running when observation
-  started (or restarted after a gap) is marked incomplete: actions before
-  it are unknown.
+  started (or restarted after a gap of more than a few seconds, see
+  ``aa_reader``) is marked incomplete: actions before it are unknown.
 """
 
 from __future__ import annotations
@@ -426,9 +428,8 @@ class AAActionHistory:
                     continue              # already seen from the stack
                 hand["actions"].remove(seen)  # not confirmed yet: the badge wins
             street = self._street_at(event["frame"])
-            if kind == "call" and self._called_already(event["slot"], street,
-                                                       event["frame"]):
-                continue                  # the call badge read again
+            if self._read_again(event["slot"], kind, street, event["frame"]):
+                continue                  # a badge still shown, read again
             hand["actions"].append({
                 "frame": event["frame"], "street": street,
                 "slot": event.get("slot"), "kind": kind,
@@ -439,14 +440,20 @@ class AAActionHistory:
         # before it on the same street.
         hand["actions"].sort(key=lambda action: action["frame"])
 
-    def _called_already(self, seat, street, frame):
-        """``seat`` called earlier on ``street`` and nobody bet since: a call
-        badge still shown is sometimes read again, often for several seats in
-        one frame as the street ends (10/08)."""
-        before = [a for a in self._hand["actions"]
-                  if a["street"] == street and a["frame"] < frame]
+    def _read_again(self, seat, kind, street, frame):
+        """A badge still shown and read again: ``seat`` already folded in this
+        hand, or already checked or called on ``street`` with nobody betting
+        since. A call badge is sometimes read again, often for several seats
+        in one frame as the street ends (10/08); after a stall the reader
+        starts over and reads every badge on the table again."""
+        before = [a for a in self._hand["actions"] if a["frame"] < frame]
+        if kind == "fold":
+            return any(a["slot"] == seat and a["kind"] == "fold" for a in before)
+        if kind not in ("check", "call"):
+            return False
+        before = [a for a in before if a["street"] == street]
         mine = [index for index, a in enumerate(before) if a["slot"] == seat]
-        if not mine or before[mine[-1]]["kind"] != "call":
+        if not mine or before[mine[-1]]["kind"] != kind:
             return False
         return not any(a["kind"] in ("raise", "all_in")
                        for a in before[mine[-1] + 1:])

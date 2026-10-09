@@ -177,6 +177,41 @@ def test_seat_states_follow_reads_and_reset_on_gaps(profile, image):
     assert after_gap["seat_states_v1"]["seats"]["2"]["state"] == "unknown"
 
 
+class BoardCandidate(Candidate):
+    """A readable table on the flop. A frame reading that starts over shows
+    no board card on its first two frames, as the real one needs a few
+    frames before the cards agree."""
+
+    def read(self, image, frame, sample):
+        row = super().read(image, frame, sample)
+        board = ["Ah", "7c", "2s", None, None] if self.count > 2 else [None] * 5
+        row.update(scene_supported=True, special_modes={}, pot={"value": "70"},
+                   cards={"source": self.audit, "board_slots": board,
+                          "hero": ["Kd", "Kc"]})
+        return row
+
+
+def test_a_stall_keeps_the_street_and_the_hand(profile, image):
+    reader = AA8Reader(profile, factory=BoardCandidate)
+    rows = [reader.read(image, i, {"pts_seconds": i / 10, "source_id": "session"})
+            for i in range(5)]
+    assert rows[-1]["street_v1"]["street"] == "flop"
+    hand = rows[-1]["action_history_v1"]["hand_id"]
+    # One frame took 1.5 s: the frame reading starts over and misses the
+    # board for two frames, while the flop and the hand go on.
+    stalled = [reader.read(image, 5 + i, {"pts_seconds": 1.9 + i / 10,
+                                          "source_id": "session"})
+               for i in range(3)]
+    assert stalled[0]["reader_gap_reset"] is True and stalled[0]["count"] == 1
+    assert [row["street_v1"]["street"] for row in stalled] == ["flop"] * 3
+    assert {row["action_history_v1"]["hand_id"] for row in stalled} == {hand}
+    # After a gap of more than HAND_GAP_SECONDS the hand counts as joined in
+    # the middle.
+    late = reader.read(image, 8, {"pts_seconds": 5.5, "source_id": "session"})
+    assert late["action_history_v1"]["hand_id"] != hand
+    assert late["action_history_v1"]["complete"] is False
+
+
 def test_insurance_suspends_streak(profile, image):
     reader = AA8Reader(profile, factory=Candidate)
     reader.read(image, 0, {"pts_seconds": 0})
