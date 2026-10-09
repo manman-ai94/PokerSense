@@ -849,7 +849,7 @@ def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines()
     assert weak["advice"] == [{"action": "check", "frequency": 1.0}]
     row = {"action": "check", "frequency": 1.0}
     assert aa_solver_advice.rough_aggression(
-        row, 0.3, 2, Decimal(100), Decimal(0), Decimal(0), Decimal(0),
+        row, 0.25, 2, Decimal(100), Decimal(0), Decimal(0), Decimal(0),
         Decimal(500)) is row
     # The bet never asks for more than your stack.
     capped = aa_solver_advice.rough_aggression(
