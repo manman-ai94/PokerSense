@@ -17,6 +17,7 @@
   // A missing read this soon after your buttons appear is usually the screen
   // settling (cards sliding in, a new street), so it waits before warning.
   const SETTLE_SECONDS = 1.5;
+  const FLASH_SECONDS = 3;          // an answer that changed blinks this long
   // Between hands the phone shows animations the reader does not take as a
   // table; only a longer gap is worth a warning.
   const BLIND_SECONDS = 8;
@@ -480,11 +481,30 @@
   // read late does not restart the count) and the price on your button (a new price is a new
   // decision even when your action before it was not read).
   function decisionKey(row, history) {
+    const controls = row.hero_controls_v1 || {};
+    return `${stepKey(row, history)}|${controls.button}:${controls.call_amount}`;
+  }
+
+  // Your step in the hand: the street and how many times you acted on it.
+  function stepKey(row, history) {
     const street = row.street_v1?.street ?? "?";
     const mine = (history?.actions || []).filter(action =>
       action.street === street && action.slot === HERO).length;
-    const controls = row.hero_controls_v1 || {};
-    return `${history?.hand_id ?? "?"}|${street}|${mine}|${controls.button}:${controls.call_amount}`;
+    return `${history?.hand_id ?? "?"}|${street}|${mine}`;
+  }
+
+  // The action shown for this step and, once it changed, what it was before:
+  // on 10/09 the rough answer showed first and the range rule changed it a
+  // second later, after you had acted on the first, with nothing on screen
+  // saying so.
+  function changed(memory, key, word, now) {
+    const shown = memory.shown;
+    if (!shown || shown.key !== key) {
+      memory.shown = {key, word, from: null, at: null};
+      return null;
+    }
+    if (shown.word !== word) Object.assign(shown, {from: shown.word, word, at: now});
+    return shown.from ? {from: shown.from, seconds: Math.max(0, (now - shown.at) / 1000)} : null;
   }
 
   // memory keeps when the current decision and the current solve were first
@@ -607,6 +627,7 @@
       pot: chips(row.pot?.value), seats: seatList(row, names, history),
       log: handLog(history, names, street, yourTurn), session: sessionView(row.grade_v1)};
     const waited = since(memory, "turn", yourTurn ? decisionKey(row, history) : null, now);
+    if (!yourTurn) memory.shown = null;     // your next turn is a new step
     const computing = yourTurn && advice?.status === "computing";
     const solving = since(memory, "solve", computing ? `${advice.hand_id}|${advice.street}|${advice.decision}` : null, now);
     view.tags = [view.street, yourTurn ? "轮到你" : null,
@@ -663,8 +684,14 @@
         if (num(advice.inferred_actions) > 0)
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
-        const tags = verdict.kind === "rough" ? [...view.tags, "粗略"] : view.tags;
-        return {...view, tags, tone: verdict.tone, verdict, basis};
+        const tags = verdict.kind === "rough" ? [...view.tags, "粗略"] : [...view.tags];
+        const change = changed(memory, stepKey(row, history), verdict.word, now);
+        if (change) {
+          tags.push(`已更新：刚才是${change.from}`);
+          basis.unshift(`刚才显示“${change.from}”，后面算得更准，改成“${verdict.word}”`);
+        }
+        return {...view, tags, tone: verdict.tone, verdict, basis,
+          changed: change ? {...change, flash: change.seconds < FLASH_SECONDS && Math.floor(change.seconds * 2) % 2 === 0} : null};
       }
     }
     if (computing) {

@@ -44,8 +44,9 @@
   }
 
   function renderSignal(view) {
-    el("signal").className = `signal tone-${view.tone}`;
-    el("tags").replaceChildren(...view.tags.map(tag => node("span", "tag", tag)));
+    el("signal").className = `signal tone-${view.tone}${view.changed?.flash ? " flash" : ""}`;
+    el("tags").replaceChildren(...view.tags.map(tag =>
+      node("span", tag.startsWith("已更新") ? "tag changed" : "tag", tag)));
     el("price").textContent = view.price || "";
     cards("hero-cards", view.cards.hero);
     cards("board-cards", view.cards.board);
