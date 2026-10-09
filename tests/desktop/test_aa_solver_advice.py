@@ -2,6 +2,7 @@
 and river decisions in the background, and the range rule's elsewhere."""
 
 from concurrent.futures import Future, ThreadPoolExecutor
+from decimal import Decimal
 import sys
 import threading
 import time
@@ -11,7 +12,8 @@ import pytest
 from poker_engine.core.enums import Position
 from poker_engine.desktop import aa_solver_advice
 from poker_engine.desktop.aa_session import frame_summary
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice, multiway_row
+from poker_engine.desktop.aa_solver_advice import (
+    AASolverAdvice, multiway_row, pot_on_screen)
 from poker_engine.scoreboard.multiway_bot import DEFAULTS
 from poker_engine.scoreboard.solver_bot import Fallback
 
@@ -32,7 +34,7 @@ BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "
 
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
-            turn=41, complete=True, stacks_read=True, priced=0):
+            turn=41, complete=True, stacks_read=True, priced=0, pot_gone=None):
     seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop]
     if frame < priced:              # the turn bet's chips not read yet
         seen = [a if a[0] != 40 else a[:4] + (None, "pending") for a in seen]
@@ -41,7 +43,9 @@ def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
     pot = 19 + (4 if frame > 12 else 0) + (10 if frame > 40 else 0) + extra_pot
     board = BOARD[street]
     return {
-        "scene_supported": True, "pot": {"value": str(pot)}, "dealer_seat": 5,
+        "scene_supported": True, "dealer_seat": 5,
+        "pot": {"value": None if pot_gone is not None and frame >= pot_gone
+                else str(pot)},
         "street_v1": {"street": street},
         "cards": {"hero": list(hero), "board_slots": board + [None] * (5 - len(board))},
         "seat_states_v1": {"seats": {
@@ -538,7 +542,7 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
     call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     answers = iter([None, call])
     monkeypatch.setattr(aa_solver_advice, "rough_advice",
-                        lambda fields, cards, street: next(answers))
+                        lambda fields, cards, street, pot=None: next(answers))
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                             rough_executor=Inline(), clock=still)
     results = run(advice, range(60))
@@ -553,11 +557,11 @@ def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
     call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     gate = threading.Event()
 
-    def answer(fields, cards, street):
+    def answer(fields, cards, street, pot=None):
         gate.wait(5)
         return call
 
-    def quick(fields, cards, street):
+    def quick(fields, cards, street, pot=None):
         time.sleep(0.03)                                 # well inside ROUGH_WAIT
         return call
 
@@ -592,6 +596,37 @@ def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",
               "hero_controls": {"visible": True, "button": button,
                                 "call_amount": price}, "stacks": {"4": stack}}
     return aa_solver_advice.rough_advice(fields, list(hero), street)
+
+
+def test_the_rough_rule_works_out_the_pot_when_it_is_not_read():
+    # 10/09 live: a player went all in before the flop and it came to you
+    # with the pot unread for 10 s; your turn got no advice at all.
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                            rough_executor=Inline(), clock=still)
+    rough = run(advice, range(60), pot_gone=42)[52]
+    assert (rough["status"], rough["kind"], rough["pot"], rough["pot_read"]) == (
+        "ready", "rough", "35", False)                   # the pot last read
+    read = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                          rough_executor=Inline(), clock=still)
+    assert run(read, range(60))[52]["pot_read"] is True
+
+
+def test_the_pot_is_worked_out_from_the_last_one_read_and_the_chips_in_front():
+    def row(street, pot, wagers):
+        return {"fields": {"street": street, "pot": pot, "street_wagers": wagers}}
+
+    # Before the flop the pot on screen is the chips in front plus 16.
+    blinds = row("preflop", "42", {"0": "2", "1": "4", "4": "20"})
+    shove = row("preflop", None, {"0": "2", "1": "4", "2": None, "4": "20",
+                                  "7": "206"})["fields"]
+    assert pot_on_screen(shove, [blinds, row("preflop", None, {})]) == Decimal(248)
+    assert pot_on_screen(shove, []) == Decimal(232)       # no pot read yet
+    assert pot_on_screen({**shove, "pot": "260"}, [blinds]) == Decimal(260)
+    # On a new street the last pot read carries over whole.
+    bet = row("turn", None, {"2": "30"})["fields"]
+    flop = row("flop", "100", {"2": "20", "4": "20"})
+    assert pot_on_screen(bet, [flop]) == Decimal(130)
+    assert pot_on_screen(bet, []) is None
 
 
 def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():

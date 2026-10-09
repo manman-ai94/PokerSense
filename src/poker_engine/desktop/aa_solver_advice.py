@@ -67,8 +67,10 @@ frame that asks waits up to ``ROUGH_WAIT`` for it (it takes under 0.1 s):
 two of those turns ended on the frame after a stall that made it due. Each
 opponent still in holds the top ``CALLER_SHARE`` of starting hands, the one
 with the most chips in on this street the top ``BETTOR_SHARE`` when that is
-a bet or raise to you; your share of the pot
-against them, against the price on your button, gives check when it is
+a bet or raise to you; your share of the pot against them (worked out
+from the pot last read and the chips in front when the screen's is not:
+``pot_on_screen``; on 10/09 a turn facing an all-in before the flop got
+nothing for that), against the price on your button, gives check when it is
 free, call when the share is at least what the call needs (``required``),
 fold otherwise. Before the flop only ``PREFLOP_REALIZE`` of the share counts
 (the betting still to come; ``aa_preflop`` counts out of position the same),
@@ -249,17 +251,50 @@ def open_level():
     return max(Decimal(rules["big_blind"]), Decimal(rules.get("straddle_amount") or 0))
 
 
-def rough_advice(fields, cards, street):
+def _bets(fields):
+    """The chips in front of the players on this street, as read."""
+    return sum((_decimal(value) or Decimal(0)
+                for value in (fields.get("street_wagers") or {}).values()), Decimal(0))
+
+
+def pot_on_screen(fields, rows=()):
+    """The pot on screen, worked out when it is not read (on 10/09 it was
+    unread for 10 seconds while a player went all in before the flop and it
+    came to you): the pot last read in this hand (``rows``, oldest first)
+    with the chips in front of the players then taken out on the same street,
+    plus the chips in front of them now. The pot on screen counts the chips
+    in front (before the flop it was those plus 16 in almost every frame).
+    Before the flop with no pot read yet, the chips in front alone. None
+    after the flop with no pot read in the hand."""
+    pot = _decimal(fields.get("pot"))
+    if pot is not None:
+        return pot
+    street = fields.get("street")
+    for row in reversed(rows):
+        seen = row["fields"]
+        read = _decimal(seen.get("pot"))
+        if read is None:
+            continue
+        if seen.get("street") == street:
+            read -= _bets(seen)
+        return read + _bets(fields)
+    return _bets(fields) if street == "preflop" else None
+
+
+def rough_advice(fields, cards, street, pot=None):
     """The rough rule's action for your turn, from the screen alone: your
     share of the pot against fixed ranges, against the price on your button.
-    None when the board, the players still in or the price are not read."""
+    ``pot`` is the pot worked out when the screen's is not read
+    (``pot_on_screen``). None when the board, the players still in or the
+    price are not read."""
     board = [card for card in fields.get("board") or () if card]
     if street not in BOARD_CARDS or len(board) != BOARD_CARDS[street]:
         return None
     seats = fields.get("participants") or {}
     opponents = sorted(seat for seat, state in seats.items()
                        if seat != str(HERO) and state in IN_HAND)
-    pot = _decimal(fields.get("pot"))
+    read = _decimal(fields.get("pot"))
+    pot = read if read is not None else pot
     if not opponents or pot is None:
         return None
     wagers = {seat: _decimal(value) or Decimal(0)
@@ -294,7 +329,7 @@ def rough_advice(fields, cards, street):
             "range_equity": {"value": round(value, 3), "opponents": len(opponents),
                              "hands": None, "hands_each": counts, "realize": realize},
             "required": round(float(required), 3), "pot": str(pot),
-            "to_call": str(to_call), "basis": ROUGH_BASIS}
+            "pot_read": read is not None, "to_call": str(to_call), "basis": ROUGH_BASIS}
 
 
 class AASolverAdvice:
@@ -592,7 +627,8 @@ class AASolverAdvice:
         job, asked = self._rough.get(key, (None, None))
         if job is None or (job.done() and self._rough_done(key) is None
                            and frame >= asked + RETRY):
-            job = self._submit_rough(rough_advice, fields, cards, street)
+            job = self._submit_rough(rough_advice, fields, cards, street,
+                                     pot_on_screen(fields, self._rows))
             self._rough[key] = job, frame
             wait([job], timeout=ROUGH_WAIT)
         rough = self._rough_done(key)

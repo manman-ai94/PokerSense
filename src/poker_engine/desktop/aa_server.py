@@ -21,7 +21,7 @@ from .aa_grading import AAGrades
 from .aa_solver_advice import AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
 from .aa_math import AATableMath
-from .aa_sources import CameraList, source_factory
+from .aa_sources import CameraList, late_card, source_factory
 from .aa_video_source import parse_windows
 from .aa_table_config import AATableConfigStore
 from .aa_issues import save_issue
@@ -440,6 +440,9 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                       table_rules=table_rules,
                       analysis=analysis_status,
                       strategy_scope="AA8_OBSERVATION_ONLY_NO_ADVICE")
+        # The card on the Mac but plugged in after the window opened: say so.
+        if result.get("error"):
+            result["error"] = late_card(result["error"], result["capture_devices"])
         # Recheck after other status services finish; never trust a deadline or
         # advice supplied in a reader payload or a custom session snapshot.
         result["realtime"] = observation_runtime_status(result, now=time.monotonic())

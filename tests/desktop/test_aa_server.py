@@ -83,6 +83,22 @@ def test_the_status_lists_the_cameras_only_with_the_capture_card(tmp_path):
         assert client.get("/api/status").json()["capture_devices"] is None
 
 
+def test_the_status_says_to_open_the_window_again_for_a_card_plugged_in_late(tmp_path):
+    from poker_engine.desktop.aa_sources import CAMERA_ONLY
+
+    class Failed(Session):
+        def snapshot(self):
+            return {**super().snapshot(), "status": "ERROR", "error": CAMERA_ONLY}
+
+    for names, start in ((["FaceTime高清相机", "UGREEN 25854"], "采集卡插好了"),
+                         (["FaceTime高清相机"], "Mac 只认到它自带的摄像头")):
+        cameras = SimpleNamespace(names=lambda names=names: names)
+        app = aa_server.create_app(tmp_path / "missing.json", session=Failed(),
+                                   allow_capture=True, camera_list=cameras)
+        with TestClient(app) as client:
+            assert client.get("/api/status").json()["error"].startswith(start)
+
+
 def test_missing_models_prevents_any_start(tmp_path):
     session = Session()
     app = aa_server.create_app(tmp_path / "missing.json", replay_pool=tmp_path,
