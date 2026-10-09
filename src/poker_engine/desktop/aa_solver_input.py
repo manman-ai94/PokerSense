@@ -558,6 +558,26 @@ def solver_observation(facts, seat, cards):
     return observation, None
 
 
+def table_observation(facts, seat):
+    """The table as ``seat`` sees it now, whoever's turn it is, or None.
+
+    The same replay and starting stacks as ``solver_observation``, without
+    its checks for your turn: the advice reads the opponents' ranges from it
+    while they act, so that at your turn only the last actions are left to
+    read (``AASolverAdvice``).
+    """
+    if facts.get("complete") is not True or seat not in facts["seats"]:
+        return None
+    first = replay_hand(facts)
+    if first["status"] != "ok" or first["arena"].terminal:
+        return None
+    stacks = starting_stacks(facts, first)
+    replay = replay_hand({**facts, "dealer": first["dealer"]}, stacks)
+    if replay["status"] != "ok" or replay["arena"].terminal:
+        return None
+    return replay["arena"].observe(seat)
+
+
 def _money(value):
     """Chips as the table writes them ("25", "0.5")."""
     return format(value.normalize(), "f") if value else "0"
@@ -630,4 +650,5 @@ def check_hand(rows):
 
 __all__ = ["BOMB_BIG_BLINDS", "board_history", "bomb_post", "check_hand",
            "fill_to_seat", "hand_facts", "own_post", "replay_hand",
-           "solver_observation", "starting_stacks", "with_post"]
+           "solver_observation", "starting_stacks", "table_observation",
+           "with_post"]

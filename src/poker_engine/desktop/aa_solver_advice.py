@@ -105,11 +105,17 @@ taken as bluffing (on the scoreboard, 2026-10-09: -406 bb/100 in bomb pots
 against such a table, with the reads against without them, before it keyed
 on them). The report's ``reads_hands`` is how many hands they come from;
 every report's ``seat_reads`` has each seat's numbers and word for the
-window. A bomb pot (暴击) is replayed as
-one (``aa_solver_input.bomb_post``) and advised like any other hand after
-the flop; the report's ``bomb_pot`` is each player's post. The advice
-comes from a model of how people play and is for study only; nothing here
-acts on the client.
+window. After the flop the ranges are read while the opponents act, on a
+worker of its own, one new action at a time (``_warm``): reading one action
+asks the model about every hand and takes up to a second, and on 10/09 the
+range rule at your turn took 1.9-2.5 s where several actions were left to
+read, so the rough answer showed first and changed (10/09 replayed with the
+work timed on the cloud: the range rule over 1.5 s at 13 of your turns, at
+1 reading ahead; at your turn it reads only what came since). A bomb pot
+(暴击) is replayed as one (``aa_solver_input.bomb_post``) and advised like
+any other hand after the flop; the report's ``bomb_pot`` is each player's
+post. The advice comes from a model of how people play and is for study
+only; nothing here acts on the client.
 """
 
 from __future__ import annotations
@@ -137,7 +143,8 @@ from poker_engine.solver.texassolver import amount_of, combo_key
 
 from .aa_reads import AAReads
 from .aa_session import frame_summary
-from .aa_solver_input import RULES_PATH, hand_facts, solver_observation
+from .aa_solver_input import (RULES_PATH, hand_facts, solver_observation,
+                              table_observation)
 
 HERO = 4                        # your seat: bottom centre
 SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
@@ -369,12 +376,17 @@ class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
     def __init__(self, bot=None, executor=None, preflop=None, model=None,
-                 rough_executor=None, clock=time.monotonic):
+                 rough_executor=None, clock=time.monotonic, warm_executor=None):
         self._bot = bot
         self._executor = executor
         # The rough rule's own worker; an executor given for the solve serves
         # it too unless one is given for it.
         self._rough_executor = rough_executor or executor
+        # Reading the ranges ahead runs on a worker of its own; with an
+        # executor given for the solve (a replay, a test) only on one given
+        # for it.
+        self._warm_executor = warm_executor
+        self._warm_off = executor is not None and warm_executor is None
         self._clock = clock
         self._preflop = preflop
         self._model = model
@@ -386,6 +398,7 @@ class AASolverAdvice:
         another table."""
         self._rows, self._hand_id, self._jobs, self._quick = [], None, {}, {}
         self._rough, self._turn_from = {}, None
+        self._warmed, self._warming = None, None
         self.reads = AAReads()
 
     def __call__(self, payload, frame):
@@ -416,6 +429,7 @@ class AASolverAdvice:
         del self._rows[:-MAX_ROWS]
         if not (fields.get("hero_controls") or {}).get("visible"):
             self._turn_from = None
+            self._warm(fields, history)
             return self._report("idle", "not_your_turn")
         street = fields.get("street")
         turn = (self._hand_id, street)
@@ -493,6 +507,41 @@ class AASolverAdvice:
                                                       thread_name_prefix="rough-advice")
         return self._rough_executor.submit(function, *args)
 
+    def _warm(self, fields, history):
+        """After the flop, read the opponents' ranges as they act: at your turn
+        only the actions since are left to read (``opponent_ranges`` keeps
+        each action's reading). One reading at a time; a new action waits
+        for the one running."""
+        if self._warm_off or fields.get("street") not in ("flop", *SOLVED):
+            return
+        mark = (self._hand_id, len(history.get("actions") or ()))
+        running = self._warming is not None and not self._warming[1].done()
+        if mark == self._warmed or running:
+            return
+        self._warmed = mark
+        if self._warm_executor is None:
+            _switch_quickly()
+            self._warm_executor = ThreadPoolExecutor(max_workers=1,
+                                                     thread_name_prefix="range-warm")
+        self._warming = (self._hand_id, self._warm_executor.submit(
+            self._warm_ranges, list(self._rows)))
+
+    def _warm_ranges(self, rows):
+        """``opponent_ranges`` on the table as it is now, for its cache."""
+        try:
+            observation = table_observation(hand_facts(rows), HERO)
+            if observation is None or HERO in observation["folded"]:
+                return False
+            opponent_ranges(self._with_reads(observation), self._range_model())
+            return True
+        except Exception:                  # only a head start is lost
+            return False
+
+    def _range_model(self):
+        if self._model is None:
+            self._model = PopulationBot(adjusted=self._preflop_policy().adjusted)
+        return self._model
+
     def _with_reads(self, observation):
         """``observation`` with each opponent's reads so far, when there are any."""
         reads = self.reads.snapshot()
@@ -500,9 +549,10 @@ class AASolverAdvice:
 
     def _ranges(self, observation):
         """Your share of the pot against every opponent's range, or None."""
-        if self._model is None:
-            self._model = PopulationBot(adjusted=self._preflop_policy().adjusted)
-        ranges = opponent_ranges(observation, self._model)
+        warming = self._warming
+        if warming is not None and warming[0] == self._hand_id:
+            wait([warming[1]])         # what it reads is read once, not twice
+        ranges = opponent_ranges(observation, self._range_model())
         value, counts = ranges_equity(observation["own_hole"], observation["board"],
                                       ranges)
         if value is None:

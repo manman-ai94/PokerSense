@@ -183,7 +183,9 @@ def flop_turn(advice, **options):
 
 def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch):
     bot = Bot({"CALL": 1.0})
-    report = flop_turn(AASolverAdvice(bot, Inline()))
+    # A clock that stands still: on a busy machine the reading here takes
+    # long enough for the rough rule.
+    report = flop_turn(AASolverAdvice(bot, Inline(), clock=still))
     assert (report["status"], report["kind"], report["heads_up"], report["street"]) == (
         "ready", "multiway", True, "flop")
     assert report["cuts"] == {"bet": DEFAULTS["hu_bet"]}
@@ -192,8 +194,7 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
     assert row["action"] == ("bet" if edge["value"] >= DEFAULTS["hu_bet"] else "check")
     assert bot.seen == [] and "heads-up cuts" in report["basis"]
     assert report["inferred_actions"] == 0
-    # Without your stack the share only; without the range nothing. A still
-    # clock: on a slow machine the range job alone outlasts the rough rule's wait.
+    # Without your stack the share only; without the range nothing.
     unread = flop_turn(AASolverAdvice(bot, Inline(), clock=still), stacks_read=False)
     assert (unread["status"], unread["reason"]) == ("idle", "heads_up_flop")
     assert 0 < unread["range_equity"]["value"] < 1
@@ -275,6 +276,45 @@ def test_more_than_one_opponent_gets_the_range_rules_action():
     waiting = AASolverAdvice(bot, Inline(finish=False))
     report = [waiting.observe(three_handed(frame), frame) for frame in range(50)][-1]
     assert report["status"] == "computing"
+
+
+def test_the_opponents_ranges_are_read_while_they_act(monkeypatch):
+    from poker_engine.scoreboard import ranges
+
+    def counted(advice, frames, fresh=True):
+        if fresh:                          # nothing read before
+            monkeypatch.setattr(ranges, "_KEPT", {})
+        calls = []
+        kept = ranges.kept
+        monkeypatch.setattr(ranges, "kept",
+                            lambda *a, **k: calls.append(1) or kept(*a, **k))
+        reports = [advice.observe(three_handed(frame), frame) for frame in frames]
+        return reports, len(calls)
+
+    warm = Inline()
+    ahead = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), warm_executor=warm)
+    _, before_turn = counted(ahead, range(42))
+    # From the flop on, once per new action: on the flop and the five
+    # actions after it (a reading kept from the one before covers the actions
+    # it read); every opponent action is read by then.
+    assert warm.submitted == 6 and before_turn == 11
+    reports, at_turn = counted(ahead, range(42, 50), fresh=False)
+    plain = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    alone, every = counted(plain, range(50))
+    # At your turn nothing is left to read, and the advice is the same.
+    assert (at_turn, every) == (0, 6)
+    assert reports[-1]["range_equity"] == alone[-1]["range_equity"]
+    assert reports[-1]["advice"] == alone[-1]["advice"]
+    # Given an executor for the solve and none for this, a replay reads
+    # nothing ahead; the live window reads on a worker of its own.
+    assert plain._warming is None
+    live = AASolverAdvice()
+    try:
+        live._hand_id = "hand_1"
+        live._warm({"street": "flop"}, {"actions": []})
+        assert live._warming[1].result(5) is False      # no hand to read yet
+    finally:
+        live._warm_executor.shutdown()
 
 
 def test_checked_to_in_a_multiway_pot_bets_or_checks_by_the_share():
