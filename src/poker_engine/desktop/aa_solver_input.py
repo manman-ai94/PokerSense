@@ -31,8 +31,9 @@ An action the reader missed can be filled in from the table, at most
 one action fits (``inferred``):
 
 - the next seat called or folded with nothing to call: the seat bet, as much
-  as that call (or the next call, or your price) says; the same seat's bet
-  read later on that street is that bet, read late;
+  as that call (or the next call, or your price, or its bet still on the
+  table) says; the same seat's bet read later on that street is that bet,
+  read late (10/07: a turn bet of 60 missed, the next seat folded to it);
 - otherwise, a seat whose turn it was and is folded on the table now folded,
   unless it acts again later on that street (it folded then; what it missed
   here can be a raise);
@@ -376,8 +377,13 @@ def _fill(arena, actions, at, table):
         elif table.get("price") is not None:
             amount_from = (HERO, table["price"])
         else:
+            amount_from = None
+        if amount_from is not None:
+            action = _missed(arena, seat, {**table, "states": {}}, amount_from)
+        elif late is None:
+            action = _from_wager(arena, seat, table)
+        else:
             return None
-        action = _missed(arena, seat, {**table, "states": {}}, amount_from)
         rest = [a for index, a in enumerate(actions) if index != late]
     elif table["states"].get(seat) == "folded" and not later:
         action = _missed(arena, seat, table, None)
