@@ -96,7 +96,7 @@ def decisions(rows, advice):
             current = None
             continue
         if current is None:
-            current = {"pts": round(row["pts_seconds"], 1),
+            current = {"pts": row["pts_seconds"],
                        "street": fields.get("street"), "reports": [],
                        "first_ready": None, "cards_read": False,
                        "frame": row["processed"]}
@@ -110,6 +110,7 @@ def decisions(rows, advice):
                                  (report.get("advice") or [])[:1]]
         current["seconds"] = round(row["pts_seconds"] - current["pts"], 1)
     for turn in result:
+        turn["pts"] = round(turn["pts"], 1)
         reports = turn.pop("reports")
         if turn["first_ready"] is None:
             causes = Counter(cause(r) for r in reports if r.get("status") != "ready")
@@ -148,8 +149,10 @@ def number(value):
 
 def stack(rows, seat=HERO):
     """The seat's stack at the start of these rows: the usual reading of
-    their first frames that read it."""
-    readings = [(row["fields"].get("stacks") or {}).get(seat) for row in rows]
+    their first frames that read it once the pot holds this hand's blinds
+    and antes (until then the last pot may still be on its way to you)."""
+    readings = [(row["fields"].get("stacks") or {}).get(seat) for row in rows
+                if (number(row["fields"].get("pot")) or 0) > 0]
     readings = [value for value in readings if value not in (None, "")][:FIRST]
     return number(Counter(readings).most_common(1)[0][0]) if readings else None
 
