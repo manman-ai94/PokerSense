@@ -105,10 +105,11 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_action_history.py --frames <测
     --recording 20261006-112110-spectate-table1
 # 每手牌能不能在模拟牌桌上按 AA 规则重放到底（求解器的输入），停下的原因
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测量目录>/frames.jsonl
-# 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒），不用再按真实速度回放；
-# 加 --streets 连街道也按现在的规则重算（改了 aa_street.py 时用）
+# 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒）；加 --streets 连街道也重算（改了 aa_street.py 时用）
 PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl \
     --out <新目录>/frames.jsonl [--streets]
+# 每场实战后必做（不去 AA 里截图，靠窗口录像时写在录像文件夹里的 frames.jsonl 和录像）：逐手报告建议覆盖、没建议的原因、认错和卡顿
+PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py --frames <录像文件夹>/frames.jsonl [...] --out <目录>/report.json
 ```
 
 浏览器会自动打开“信号灯”窗口，选好画面来源点“开始”；旧观察页（本桌设置、详细数据、复查）在右上角

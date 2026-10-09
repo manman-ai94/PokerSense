@@ -1,5 +1,6 @@
 """AA worker ownership and stale/late-result isolation, without real capture."""
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -157,8 +158,7 @@ def test_errors_and_exhaustion_clear_and_release(failure):
     assert session.preview() is None
 
 
-@pytest.mark.parametrize("expire", [False, True])
-def test_late_result_cannot_publish_after_stop_or_stale(expire):
+def test_late_result_cannot_publish_after_stop():
     source = Source()
     reader = Reader()
     entered = threading.Event()
@@ -177,11 +177,7 @@ def test_late_result_cannot_publish_after_stop_or_stale(expire):
     session.start({})
     try:
         assert entered.wait(1)
-        if expire:
-            time.sleep(.04)
-            assert session.snapshot()["status"] == "STALE"
-        else:
-            session.stop()
+        session.stop()
         assert session.snapshot()["payload"] is None
         assert session.preview() is None
         assert session.start({})["status"] == "STOPPING"
@@ -192,36 +188,93 @@ def test_late_result_cannot_publish_after_stop_or_stale(expire):
     assert session.snapshot()["status"] == "STOPPED"
 
 
-def test_late_first_recognition_cannot_relabel_old_source_as_fresh():
-    source = Source()
-    read = source.read
+class TimedSource(Source):
+    """Frames stamped when read; the first ``old`` ones as if read long ago."""
 
-    def timed_read():
-        stamp = time.monotonic()
-        return {**read(), "host_source_started_at": stamp,
+    def __init__(self, old=0):
+        super().__init__()
+        self.old = old
+
+    def read(self):
+        record = super().read()
+        stamp = time.monotonic() - (10 if self.old > 0 else 0)
+        self.old -= 1
+        return {**record, "host_source_started_at": stamp,
                 "host_source_received_at": stamp}
 
-    source.read = timed_read
+
+def test_a_stall_clears_the_table_and_the_next_frame_in_time_shows_again():
+    source = TimedSource()
     reader = Reader()
     entered, release = threading.Event(), threading.Event()
+    original = reader.read
 
-    def slow_read(image, sequence, sample):
-        entered.set()
-        release.wait(1)
-        return {"current_actor": 4}
+    def stall(image, sequence, sample):
+        if sequence == 1:        # e.g. the advice working out a big pot
+            entered.set()
+            release.wait(2)
+        return {**original(image, sequence, sample), "sequence": sequence}
 
-    reader.read = slow_read
+    reader.read = stall
+    session = AARecognitionSession(lambda _: source, lambda: reader,
+                                   stale_after=.03, interval_seconds=.005)
+    session.start({})
+    try:
+        assert entered.wait(1)
+        generation = session.snapshot()["generation"]
+        time.sleep(.04)
+        stale = session.snapshot()
+        assert stale["status"] == "STALE" and stale["error"] is None
+        assert stale["payload"] is None and session.preview() is None
+        assert stale["realtime"]["advice"] is None
+        # Still running: "start" does not open the source a second time.
+        assert session.start({})["status"] == "STALE"
+        release.set()
+        seen = []
+
+        def shown():
+            result = session.snapshot()
+            seen.append(result["payload"])
+            return result["status"] == "RUNNING" and result["payload"] is not None
+        wait_until(shown)
+        # The frame that came back late was never shown.
+        assert all(payload is None or payload["sequence"] >= 2 for payload in seen)
+        assert session.snapshot()["generation"] == generation
+        assert not source.closed.is_set()
+        assert session.preview().startswith(b"\xff\xd8")
+    finally:
+        release.set()
+        session.stop()
+    wait_until(lambda: source.closed.is_set())
+    assert session.snapshot()["status"] == "STOPPED"
+
+
+def test_a_late_first_result_is_never_shown_as_fresh():
+    source = TimedSource(old=2)
+    reader = Reader()
+    entered, release = threading.Event(), threading.Event()
+    original = reader.read
+
+    def second_waits(image, sequence, sample):
+        if sequence == 1:
+            entered.set()
+            release.wait(1)
+        return {**original(image, sequence, sample), "current_actor": 4}
+
+    reader.read = second_waits
     session = AARecognitionSession(lambda _: source, lambda: reader, stale_after=.03)
     session.start({})
     try:
         assert entered.wait(1)
-        time.sleep(.04)
-        release.set()
-        wait_until(lambda: source.closed.is_set())
+        # Frame 0 was read long ago: published and cleared at once.
         result = session.snapshot()
         assert result["status"] == "STALE"
         assert result["payload"] is None
         assert result["realtime"]["advice"] is None
+        release.set()
+        wait_until(lambda: session.snapshot()["status"] == "RUNNING")
+        result = session.snapshot()
+        assert result["sequence"] >= 2 and result["payload"]["current_actor"] == 4
     finally:
         release.set()
         session.stop()
@@ -391,6 +444,37 @@ def test_the_running_source_can_be_recorded_and_its_outcome_stays_after_stop():
             plain.record(True, Path("x"))             # a source with no recorder
     finally:
         plain.stop()
+
+
+def test_while_recording_the_window_logs_each_frame_next_to_the_video(tmp_path):
+    class Recorder:
+        def __init__(self, out):
+            out.mkdir()
+            self.out, self.begin, self.stopping = out, time.monotonic(), False
+
+    class Recording(TimedSource):
+        recorder = None
+
+    source = Recording()
+    session = AARecognitionSession(lambda _: source, Reader, interval_seconds=.005)
+    session.start({})
+    try:
+        wait_until(lambda: (session.snapshot()["sequence"] or 0) >= 2)
+        source.recorder = Recorder(tmp_path / "20261008-live")
+        log = source.recorder.out / "frames.jsonl"
+        wait_until(lambda: log.is_file() and len(log.read_text().splitlines()) >= 3)
+        source.recorder.stopping = True
+        time.sleep(.05)
+        count = len(log.read_text().splitlines())
+        time.sleep(.05)
+        assert len(log.read_text().splitlines()) == count   # stopped with it
+    finally:
+        session.stop()
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert rows[0]["processed"] >= 2 and "fields" in rows[0]
+    assert all(0 <= row["video_seconds"] < 2 for row in rows)
+    assert [row["video_seconds"] for row in rows] == sorted(
+        row["video_seconds"] for row in rows)
 
 
 def test_the_session_knows_when_it_last_saw_the_table():

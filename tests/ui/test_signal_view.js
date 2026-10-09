@@ -46,6 +46,7 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "还没开始");
 assert.equal(view.header.health.text, "还没开始");
 view = signalView({status: "STALE"}, 0, {});
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面断了");
+assert.equal(view.note, "画面卡住了，旧的牌面先清掉；画面一来就自己接上");
 // A start that failed (no card on the Mac): the red text above says why.
 view = signalView({status: "ERROR", source_kind: "capture-card", capture_available: true,
   capture_devices: ["FaceTime HD Camera"]}, 0, {});
@@ -216,7 +217,7 @@ const states = [
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
-  [{status: "abstain", reason: "players_5"}, "info", "这一手不给建议"],
+  [{status: "abstain", reason: "players_4"}, "info", "这一手不给建议"],
 ];
 for (const [advice, tone, title] of states) {
   const seen = {};
@@ -228,8 +229,8 @@ for (const [advice, tone, title] of states) {
   assert.equal(view.numbers[0].value, "25%", title);
   assert.equal(view.verdict, undefined, title);
 }
-view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_5"}})), 0, {});
-assert.equal(view.note, "5 人桌，现在只支持 6–8 人，这一步不给建议。");
+view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_4"}})), 0, {});
+assert.equal(view.note, "4 人桌，现在只支持 5–8 人，这一步不给建议。");
 const solving = {};
 signalView(running(base({solver_advice_v1: states[0][0]})), 0, solving);
 view = signalView(running(base({solver_advice_v1: states[0][0]})), 2100, solving);

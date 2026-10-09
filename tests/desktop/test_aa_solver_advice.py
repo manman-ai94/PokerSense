@@ -2,6 +2,7 @@
 and river decisions in the background, and the range rule's elsewhere."""
 
 from concurrent.futures import Future
+import sys
 
 import pytest
 
@@ -443,3 +444,15 @@ def test_a_bomb_pot_gets_advice_after_the_flop_like_any_other_hand():
     # A normal hand's report says it is not one.
     normal = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
     assert normal["bomb_pot"] is None
+
+
+def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
+    before = sys.getswitchinterval()
+    advice = AASolverAdvice()
+    try:
+        sys.setswitchinterval(0.005)          # Python's default
+        assert advice._submit(lambda: "done").result(5) == "done"
+        assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+    finally:
+        advice._executor.shutdown()
+        sys.setswitchinterval(before)
