@@ -30,8 +30,10 @@ BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "
 
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
-            turn=41, complete=True, stacks_read=True):
+            turn=41, complete=True, stacks_read=True, priced=0):
     seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop]
+    if frame < priced:              # the turn bet's chips not read yet
+        seen = [a if a[0] != 40 else a[:4] + (None, "pending") for a in seen]
     street = seen[-1][1] if seen else "preflop"
     street = "turn" if frame >= turn else "flop" if frame > 25 else street
     pot = 19 + (4 if frame > 12 else 0) + (10 if frame > 40 else 0) + extra_pot
@@ -125,6 +127,16 @@ def test_the_solve_runs_in_the_background_once_per_decision():
     assert results[-1]["status"] == "computing" and executor.submitted == 2
 
 
+def test_a_bet_whose_chips_are_read_late_is_worked_out_again():
+    # The pot was unread as seat 2 bet: its chips come in a few frames into
+    # your turn, and the advice with them.
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    results = run(advice, range(50), priced=46)
+    assert (results[44]["status"], results[44]["reason"]) == (
+        "abstain", "raise_without_amount")
+    assert results[-1]["status"] == "ready"
+
+
 class RuleOnly(Inline):
     """Runs the range rule at once; the solve never finishes."""
 
@@ -140,7 +152,7 @@ def test_until_the_solve_is_done_the_range_rule_gives_provisional_advice():
     assert shown == ("ready", "multiway", True, True)
     assert early["advice"][0]["action"] in ("call", "fold", "raise")
     assert "until the heads-up solve is done" in early["basis"]
-    assert advice.settled() == ("hand_1", {(9, "turn", "call:10"): None})
+    assert advice.settled() == ("hand_1", {(9, "turn", "call:10", 0): None})
     done = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), Inline())
     final = run(done, range(50))[-1]
     assert final["advice"][0]["action"] == "raise" and "provisional" not in final
@@ -426,11 +438,12 @@ def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     run(advice, range(50))
-    assert advice.settled() == ("hand_1", {(9, "turn", "call:10"): None})  # computing
+    computing = {(9, "turn", "call:10", 0): None}
+    assert advice.settled() == ("hand_1", computing)
     done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     run(done, range(50))
     hand, outcomes = done.settled()
-    assert hand == "hand_1" and outcomes[(9, "turn", "call:10")]["status"] == "ready"
+    assert hand == "hand_1" and outcomes[(9, "turn", "call:10", 0)]["status"] == "ready"
     done.reset()
     assert done.settled() == (None, {})
 

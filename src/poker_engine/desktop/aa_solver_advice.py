@@ -36,10 +36,13 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
 
 An action the history missed but the table shows (``aa_solver_input``) is
 filled in; the report's ``inferred_actions`` counts them. A decision is the
-actions read so far, the street and what your button shows
-(``decision_key``): when your action and a re-raise are both missed, the
-new price is still a new decision. Every frame reports where the current
-decision stands:
+actions read so far, the street, what your button shows and how many of the
+actions still wait for their chips (``decision_key``): when your action and
+a re-raise are both missed, the new price is still a new decision, and a
+bet whose chips are read once the pot shows again (on 10/08 the pot was
+unread for over 2 s twice right as your turn came) is worked out again
+instead of staying ``raise_without_amount``. Every frame reports where the
+current decision stands:
 
 - ``idle``: not a decision the solver covers (the reason says why);
 - ``computing``: being worked out;
@@ -130,10 +133,12 @@ def _decimal(value):
 
 
 def decision_key(fields, history):
-    """(actions read, street, your button): one of your decisions."""
+    """(actions read, street, your button, actions without chips yet): one of
+    your decisions."""
     controls = fields.get("hero_controls") or {}
+    waiting = sum(action[4] is None for action in history["actions"])
     return (len(history["actions"]), fields.get("street"),
-            f"{controls.get('button')}:{controls.get('call_amount')}")
+            f"{controls.get('button')}:{controls.get('call_amount')}", waiting)
 
 
 def advice_rows(strategy, observation):
