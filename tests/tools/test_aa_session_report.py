@@ -85,3 +85,20 @@ def test_what_you_did_your_chips_and_a_hand_split_in_two():
     assert summary["followed_advice"] == summary["advised_and_action_seen"] == 1
     assert summary["your_chips_by_advice"]["yes"] == {"hands": 1, "chips": 105.0}
     assert summary["by_players"][2]["advised"] == 1
+
+
+def test_buttons_read_while_your_seat_sits_out_are_not_a_turn():
+    sitting = row(3, 0.3, turn=True, cards=None,
+                  advice={"status": "idle", "reason": "your_cards_not_read"})
+    sitting["fields"]["participants"] = {"4": "waiting", "5": "active"}
+    rows = [row(f, f * 0.1) for f in range(3)] + [sitting, row(4, 0.4)]
+    assert session_report([("log", rows)])["summary"]["your_decisions"] == 0
+    # Dealt in a frame later, cards read: still not a turn.
+    dealt = row(4, 0.4, turn=True)
+    rows = [row(f, f * 0.1) for f in range(3)] + [sitting, dealt, row(5, 0.5)]
+    assert session_report([("log", rows)])["summary"]["your_decisions"] == 0
+    # Seated, cards unread: a turn without advice.
+    seated = {**sitting, "fields": {**sitting["fields"],
+                                    "participants": {"4": "active", "5": "active"}}}
+    rows = [row(f, f * 0.1) for f in range(3)] + [seated, row(4, 0.4)]
+    assert session_report([("log", rows)])["summary"]["your_decisions"] == 1
