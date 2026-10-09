@@ -495,6 +495,18 @@ def test_a_moment_into_your_turn_without_advice_the_rough_rule_answers():
     assert logged["kind"] == "rough"
 
 
+def test_the_rough_rule_counts_your_turn_from_the_start_of_the_street():
+    # 10/09 live: your buttons showed while the board still read as the last
+    # street, and the rough rule answered the moment the flop was read, then
+    # the range rule changed it.
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
+    results = [advice.observe(heads_up(payload(frame, complete=False, shown=30)), frame)
+               for frame in range(60)]
+    assert results[40]["kind"] == "rough" and results[40]["street"] == "flop"
+    assert [r.get("kind") for r in results[41:51]] == [None] * 10
+    assert (results[51]["kind"], results[51]["street"]) == ("rough", "turn")
+
+
 def test_the_rough_rule_waits_while_the_proper_advice_is_coming():
     # Work that is still running past ROUGH_FRAMES gets the rough rule next to it.
     executor = Inline(finish=False)
@@ -513,8 +525,11 @@ def test_the_rough_rule_does_not_wait_behind_the_solve():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), busy, rough_executor=own, clock=still)
     results = run(advice, range(60))
     assert busy.submitted == 2 and own.submitted == 1     # the solve, the range rule
-    assert [r["status"] for r in results[42:52]] == ["computing"] * 10
-    rough = results[52]
+    # While the proper advice is being worked out the rough rule holds back
+    # longer (HOLD_FRAMES): on 10/09 it showed first and the range rule
+    # changed it a second later, after you had acted on it.
+    assert [r["status"] for r in results[42:57]] == ["computing"] * 15
+    rough = results[57]
     assert (rough["status"], rough["kind"], rough["rough_for"]) == (
         "ready", "rough", "computing")
     # On its own the advice starts a worker for the rough rule apart from the
@@ -532,7 +547,7 @@ def test_a_stall_counts_toward_the_rough_rule():
                             rough_executor=Inline(), clock=lambda: now[0])
     results = []
     for frame in range(42, 46):
-        now[0] = {44: 1.1, 45: 1.2}.get(frame, 0.0)        # 1.1 s between 43 and 44
+        now[0] = {44: 1.6, 45: 1.7}.get(frame, 0.0)        # 1.6 s between 43 and 44
         results.append(advice.observe(payload(frame), frame))
     assert [r["status"] for r in results] == ["computing"] * 2 + ["ready"] * 2
     assert results[2]["kind"] == "rough"
@@ -545,10 +560,10 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
                         lambda fields, cards, street, pot=None: next(answers))
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                             rough_executor=Inline(), clock=still)
-    results = run(advice, range(60))
-    # No price on the first ask (52): asked again RETRY frames on.
-    assert [r["status"] for r in results[52:55]] == ["computing"] * 3
-    assert (results[55]["status"], results[55]["kind"]) == ("ready", "rough")
+    results = run(advice, range(65))
+    # No price on the first ask (57): asked again RETRY frames on.
+    assert [r["status"] for r in results[57:60]] == ["computing"] * 3
+    assert (results[60]["status"], results[60]["kind"]) == ("ready", "rough")
 
 
 def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
@@ -569,21 +584,21 @@ def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
     with ThreadPoolExecutor(max_workers=1) as own:
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                                 rough_executor=own, clock=still)
-        results = run(advice, range(53))
-        assert results[51]["status"] == "computing"
-        assert (results[52]["status"], results[52]["kind"]) == ("ready", "rough")
+        results = run(advice, range(58))
+        assert results[56]["status"] == "computing"
+        assert (results[57]["status"], results[57]["kind"]) == ("ready", "rough")
     # Longer than that the frame goes on without it, and a later frame shows it.
     monkeypatch.setattr(aa_solver_advice, "rough_advice", answer)
     with ThreadPoolExecutor(max_workers=1) as own:
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                                 rough_executor=own, clock=still)
         started = time.monotonic()
-        results = run(advice, range(53))
+        results = run(advice, range(58))
         assert time.monotonic() - started < 2
-        assert results[52]["status"] == "computing"
+        assert results[57]["status"] == "computing"
         gate.set()
         own.submit(lambda: None).result(timeout=5)       # the rough job is done
-        later = advice.observe(payload(53), 53)
+        later = advice.observe(payload(58), 58)
         assert (later["status"], later["kind"]) == ("ready", "rough")
 
 
@@ -603,12 +618,12 @@ def test_the_rough_rule_works_out_the_pot_when_it_is_not_read():
     # with the pot unread for 10 s; your turn got no advice at all.
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                             rough_executor=Inline(), clock=still)
-    rough = run(advice, range(60), pot_gone=42)[52]
+    rough = run(advice, range(60), pot_gone=42)[57]
     assert (rough["status"], rough["kind"], rough["pot"], rough["pot_read"]) == (
         "ready", "rough", "35", False)                   # the pot last read
     read = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                           rough_executor=Inline(), clock=still)
-    assert run(read, range(60))[52]["pot_read"] is True
+    assert run(read, range(60))[57]["pot_read"] is True
 
 
 def test_the_pot_is_worked_out_from_the_last_one_read_and_the_chips_in_front():
@@ -627,6 +642,31 @@ def test_the_pot_is_worked_out_from_the_last_one_read_and_the_chips_in_front():
     flop = row("flop", "100", {"2": "20", "4": "20"})
     assert pot_on_screen(bet, [flop]) == Decimal(130)
     assert pot_on_screen(bet, []) is None
+
+
+def test_the_rough_rule_takes_the_price_from_the_history_when_it_is_not_read():
+    # 10/09 live: a turn bet of 65 was in the history from the pot rise, the
+    # price on your button and the chips in front both unread for 9 seconds.
+    history = {"actions": [[1, "flop", 2, "check", "0", "no_chips"],
+                           [2, "turn", 2, "raise", "65", "pot_rise"]]}
+    fields = {"board": BOARD["turn"] + [None], "pot": "163",
+              "participants": {"2": "active", "4": "active"},
+              "street_wagers": {"2": None, "4": None}, "actions_v1": history,
+              "hero_controls": {"visible": True, "button": "call",
+                                "call_amount": None},
+              "stacks": {"4": "300"}}
+    rough = aa_solver_advice.rough_advice(fields, ["Qs", "Qh"], "turn")
+    assert (rough["to_call"], rough["required"]) == ("65", 0.285)
+    # Seat 2 bet: it holds the top 20% of hands, not 40%.
+    assert rough["range_equity"]["value"] < aa_solver_advice.rough_advice(
+        {**fields, "hero_controls": {**fields["hero_controls"], "call_amount": "65"},
+         "actions_v1": None}, ["Qs", "Qh"], "turn")["range_equity"]["value"]
+    # An action still waiting for its chips gives nothing to go on.
+    pending = [3, "turn", 3, "call", None, "pending"]
+    waiting = {"actions": history["actions"] + [pending]}
+    assert aa_solver_advice.rough_advice({**fields, "actions_v1": waiting},
+                                         ["Qs", "Qh"], "turn") is None
+    assert aa_solver_advice.put_in({**fields, "street": "preflop"}, "preflop") == {}
 
 
 def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():

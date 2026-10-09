@@ -386,6 +386,22 @@ view = signalView(running({...rough({action: "check", frequency: 1.0}, {rough_fo
   required: 0}), hero_controls_v1: {visible: true, button: "check"}}), 0, {});
 assert.deepEqual([view.verdict.word, view.verdict.note, view.basis[1]],
   ["过牌", "粗略：你大概能赢 31%，不花钱就过牌", "建议还在算，先按价格粗略给一个"]);
+// An answer that changes during your turn says so and blinks a moment (10/09 live: the rough
+// answer showed first, the range rule changed it a second later, after you had acted on it).
+const shown = {};
+view = signalView(running(rough({action: "call", frequency: 1.0}, {rough_for: "computing"})), 0, shown);
+assert.ok(!view.tags.some(tag => tag.startsWith("已更新")) && view.changed === null);
+const better = multiway({action: "raise", frequency: 1.0, chips: "90", to: "90"});
+view = signalView(running(better), 1000, shown);
+assert.ok(view.tags.includes("已更新：刚才是跟注") && view.changed.flash === true);
+assert.equal(view.basis[0], `刚才显示“跟注”，后面算得更准，改成“${view.verdict.word}”`);
+assert.equal(signalView(running(better), 1600, shown).changed.flash, false);
+view = signalView(running(better), 4100, shown);
+assert.ok(view.tags.includes("已更新：刚才是跟注") && view.changed.flash === false);
+// The same answer again is no change; your next turn starts afresh.
+assert.equal(signalView(running(multiway({action: "call", frequency: 1.0})), 0, {}).changed, null);
+signalView(running(base({hero_controls_v1: {visible: false}})), 5000, shown);
+assert.equal(signalView(running(better), 6000, shown).changed, null);
 // A bomb pot says so in the basis.
 view = signalView(running(multiway({action: "call", frequency: 1.0}, {bomb_pot: "14"})), 0, {});
 assert.ok(view.basis.includes("暴击局：每人先投 14，直接发翻牌"));

@@ -59,7 +59,13 @@ are read: when none has come ``ROUGH_SECONDS`` into your turn (or
 ``ROUGH_FRAMES`` frames, whichever is first; the hand cannot be replayed on
 the table, say joined midway, an action missed or four players; the history
 still waits for an action; or the work takes longer), a rough rule answers
-from the screen alone (``kind`` ``rough``). It runs on a worker of its own:
+from the screen alone (``kind`` ``rough``). Your turn counts from when it
+began on this street, and while the proper advice is still being worked
+out the rough rule waits ``HOLD_SECONDS`` (``HOLD_FRAMES``) instead: on
+10/09 your buttons showed while the board still read as the last street,
+the rough answer came the moment the street changed, and the range rule
+changed it a second later, after you had acted on the first (10 of your
+turns changed like that; the window now marks a change). It runs on a worker of its own:
 in the solve's two it waited behind a heads-up solve and its range rule,
 and the clock counts a stall the frames do not (10/08 and 10/07 measured at
 real pace: four of your turns, most over a second long, got nothing). The
@@ -70,7 +76,9 @@ with the most chips in on this street the top ``BETTOR_SHARE`` when that is
 a bet or raise to you; your share of the pot against them (worked out
 from the pot last read and the chips in front when the screen's is not:
 ``pot_on_screen``; on 10/09 a turn facing an all-in before the flop got
-nothing for that), against the price on your button, gives check when it is
+nothing for that), against the price on your button (after the flop, when
+neither it nor the chips in front are read, from the action history:
+``put_in``), gives check when it is
 free, call when the share is at least what the call needs (``required``),
 fold otherwise. Before the flop only ``PREFLOP_REALIZE`` of the share counts
 (the betting still to come; ``aa_preflop`` counts out of position the same),
@@ -157,6 +165,8 @@ PROVISIONAL_BASIS = ("equity against the opponent's range (a population model fi
 WORKERS = 2                     # the solve and the range rule next to it
 ROUGH_SECONDS = 0.6             # of your turn without advice
 ROUGH_FRAMES = 10               # or frames, where nothing gives the time
+HOLD_SECONDS = 1.5              # while the proper advice is being worked out
+HOLD_FRAMES = 15
 ROUGH_WAIT = 0.15               # the frame that asks waits this long for it
 CALLER_SHARE = 0.4              # rough rule: each opponent's top 40% of hands
 BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised to you
@@ -281,12 +291,33 @@ def pot_on_screen(fields, rows=()):
     return _bets(fields) if street == "preflop" else None
 
 
+def put_in(fields, street):
+    """The chips each seat put in on this street after the flop by the action
+    history ({seat: chips}), for when the chips in front and the price on
+    your button are not read (on 10/09 a turn bet of 65 was in the history
+    from the pot rise, and both unread for 9 seconds: no advice). Empty
+    before the flop (the blinds are not actions) or while an action there
+    still waits for its chips."""
+    if street == "preflop":
+        return {}
+    put = {}
+    for action in (fields.get("actions_v1") or {}).get("actions") or ():
+        if action[1] != street:
+            continue
+        chips = _decimal(action[4]) if action[4] is not None else None
+        if chips is None:
+            return {}
+        put[str(action[2])] = put.get(str(action[2]), Decimal(0)) + chips
+    return put
+
+
 def rough_advice(fields, cards, street, pot=None):
     """The rough rule's action for your turn, from the screen alone: your
     share of the pot against fixed ranges, against the price on your button.
     ``pot`` is the pot worked out when the screen's is not read
-    (``pot_on_screen``). None when the board, the players still in or the
-    price are not read."""
+    (``pot_on_screen``); the chips in front not read are taken from the
+    action history (``put_in``). None when the board, the players still in
+    or the price are not read."""
     board = [card for card in fields.get("board") or () if card]
     if street not in BOARD_CARDS or len(board) != BOARD_CARDS[street]:
         return None
@@ -299,6 +330,8 @@ def rough_advice(fields, cards, street, pot=None):
         return None
     wagers = {seat: _decimal(value) or Decimal(0)
               for seat, value in (fields.get("street_wagers") or {}).items()}
+    for seat, chips in put_in(fields, street).items():
+        wagers[seat] = max(wagers.get(seat, Decimal(0)), chips)
     mine = wagers.get(str(HERO), Decimal(0))
     top = max(wagers.get(seat, Decimal(0)) for seat in opponents)
     controls = fields.get("hero_controls") or {}
@@ -384,9 +417,10 @@ class AASolverAdvice:
         if not (fields.get("hero_controls") or {}).get("visible"):
             self._turn_from = None
             return self._report("idle", "not_your_turn")
-        if self._turn_from is None:
-            self._turn_from = (frame, self._clock())
         street = fields.get("street")
+        turn = (self._hand_id, street)
+        if self._turn_from is None or self._turn_from[0] != turn:
+            self._turn_from = (turn, frame, self._clock())
         if street not in ("preflop", "flop", *SOLVED):
             return self._report("idle", "street_not_covered", street=street)
         cards = [card for card in fields.get("hero") or () if card]
@@ -398,14 +432,18 @@ class AASolverAdvice:
         if job is None or retry:
             self._jobs[key] = self._start(fields, cards, frame, key)
         report = self._outcome(key, street)
-        if report["status"] == "ready" or not self._rough_due(frame):
+        if report["status"] == "ready" or not self._rough_due(frame, report):
             return report
         return self._rough_outcome(key, fields, cards, street, frame, report) or report
 
-    def _rough_due(self, frame):
-        """Long enough into your turn for the rough rule."""
-        first, since = self._turn_from
-        return frame - first >= ROUGH_FRAMES or self._clock() - since >= ROUGH_SECONDS
+    def _rough_due(self, frame, report):
+        """Long enough into your turn on this street for the rough rule; longer
+        while the proper advice is being worked out, which then replaces it."""
+        _, first, since = self._turn_from
+        computing = report["status"] == "computing"
+        frames, seconds = ((HOLD_FRAMES, HOLD_SECONDS) if computing
+                           else (ROUGH_FRAMES, ROUGH_SECONDS))
+        return frame - first >= frames or self._clock() - since >= seconds
 
     # -- jobs -------------------------------------------------------------------
 

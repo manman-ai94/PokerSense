@@ -48,6 +48,8 @@ a { color: #9CC2FF; }
 .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 34px; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 10px; }
 .tag { display: inline-flex; align-items: center; height: 34px; padding: 0 14px; border-radius: 17px; border: 2px solid currentColor; font-size: 16px; font-weight: 700; white-space: nowrap; }
+.tag.changed { background: #F5C542; border-color: #F5C542; color: #0A0C0D; }
+.signal.flash { outline: 6px solid #F5C542; outline-offset: -6px; }
 .price { font-size: 18px; font-weight: 700; }
 
 .cards-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 28px; }
