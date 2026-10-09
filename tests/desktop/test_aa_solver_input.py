@@ -181,6 +181,20 @@ def test_stacks_that_do_not_fit_the_betting_give_no_observation():
     assert solver_observation(hand, 2, ["Qs", "Qh"]) == (None, "stacks_do_not_fit")
 
 
+def test_a_stack_the_table_cannot_start_with_is_taken_as_unknown():
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    # 10/09: seat 3's stack read 0 after its ante of 2 went in. Starting the
+    # table with 2 chips is refused, and the error stopped the window; the
+    # seat is now replayed as deep, like a seat without a reading.
+    stacks = {seat: Decimal(100) for seat in range(6)}
+    hand = {**facts(stacks={**stacks, 3: Decimal(0)}), "board": BOARD + ["2s"]}
+    assert 3 not in starting_stacks(hand, replay_hand(hand))
+    observation, reason = solver_observation(hand, 2, ["Qs", "Qh"])
+    assert reason is None and observation["stacks_unknown"] == [3]
+    # Stacks the table refuses outright stop the replay instead of raising.
+    assert replay_hand(hand, {**stacks, 3: Decimal(2)})["reason"] == "stacks_do_not_fit"
+
+
 def test_a_fold_read_again_for_a_folded_seat_is_skipped():
     repeated = ACTIONS[:4] + [(15, "preflop", 3, "fold", "0")] + ACTIONS[4:]
     assert replay_hand(facts(repeated))["status"] == "ok"
