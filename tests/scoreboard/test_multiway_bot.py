@@ -68,7 +68,9 @@ def test_bet_when_ahead_of_the_field_else_check(monkeypatch, table):
     spot = table["checked_to"]
     assert bot_with(monkeypatch, 0.45).decide(spot, random.Random(0)).startswith(
         "raise_to")
-    assert bot_with(monkeypatch, 0.35).decide(spot, random.Random(0)) == "check_call"
+    assert bot_with(monkeypatch, 0.35).decide(spot, random.Random(0)).startswith(
+        "raise_to")                             # the line is 0.3 since 2026-10-09
+    assert bot_with(monkeypatch, 0.25).decide(spot, random.Random(0)) == "check_call"
 
 
 def test_facing_a_bet_raise_call_or_fold_by_the_price(monkeypatch, table):
@@ -106,7 +108,7 @@ def test_with_hu_the_heads_up_flop_is_played_with_its_own_cuts(monkeypatch, tabl
     assert bot_with(monkeypatch, 0.6, hu=1).decide(spot, random.Random(0)).startswith(
         "raise_to")
     assert bot_with(monkeypatch, 0.5, hu=1).decide(spot, random.Random(0)) == (
-        "check_call")                          # a multiway pot bets from 0.4
+        "check_call")                          # a multiway pot bets from 0.3
     turn = {**spot, "street": "turn"}           # the solver plays heads-up turns
     assert bot_with(monkeypatch, 0.9, hu=1).decide(turn, random.Random(0)) == "base"
     assert multiway_bot.street_params(spot, multiway_bot.DEFAULTS)["bet"] == 0.55

@@ -17,6 +17,11 @@ third or less): the live window has no solver for that street (a flop solve
 takes about a minute) and plays it so. 0.55 and 0.7 won the most of the cuts
 tried on the scoreboard (2026-10-08, AA pool with the mushroom pool).
 
+``bet`` was 0.4 until 2026-10-09: with seven opponents that bet only with
+twice a fair share, and the 10/09 session showed checks with strong hands in
+big multiway pots. 0.3 beat 0.4 on the AA real-player table (mushroom pool,
+bomb pots, reads) on two batches of deals.
+
 Parameters can follow the name, for example
 ``range_multiway@bet=0.55:raise=0.7:margin=0.05+aa_preflop`` (":" between
 them: "," separates strategies on the command line).
@@ -30,7 +35,7 @@ from .bots import _Policy, opponents_in_hand, raise_toward
 from .population import PopulationBot
 from .ranges import opponent_ranges, ranges_equity
 
-DEFAULTS = {"bet": 0.4, "raise": 0.6, "margin": 0.0, "trials": 600,
+DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
             "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7}
 
 
