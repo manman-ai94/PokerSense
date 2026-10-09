@@ -24,13 +24,16 @@ the reads show, not the average one, in two ways:
   and call shares scaled by the reads (``read_factors``), as ``aa_preflop``
   expects it to, so a seat that raises twice as often raises with a range
   twice as wide;
-* after the flop a seat that raises clearly more often than the model keeps,
-  at each action, ``FLOOR_SLOPE`` x (its raise factor - ``FLOOR_FROM``), at
-  most ``MAX_FLOOR``, of the weight of the hands the model would not have
-  played that way: such players bet more than the population's thresholds
-  say. Below ``FLOOR_FROM`` the difference can be the noise of a short
-  session (on an AA table, reads from 100 hands put a fifth of the seats
-  above 1.2 by chance), and the AA tables lost by it.
+* after the flop a seat whose read shows it bets or raises clearly more often
+  than the model there (``reads.aggression_factor``) keeps, at each action,
+  ``FLOOR_SLOPE`` x (that factor - ``FLOOR_FROM``), at most ``MAX_FLOOR``, of
+  the weight of the hands the model would not have played that way: such
+  players bet with more than the population's thresholds say. Below
+  ``FLOOR_FROM`` the difference can be the noise of a short session. Raising
+  more before the flop is not taken as betting more after it: a tight
+  aggressive player who bets honestly was read as a maniac that way and
+  called down far too lightly in bomb pots. A read with no postflop numbers
+  keeps no extra hands.
 
 Without reads, or for a seat that plays like the model, nothing changes.
 Against reg and maniac tables the AI folded to flop bets with hands that had
@@ -47,32 +50,43 @@ import random
 from poker_engine.solver.texassolver import all_combos
 
 from .bots import _rng
-from .reads import MODEL, factors
+from .reads import MODEL, aggression_factor, factors
 from .replay import public_replay
 from .solver_bot import MODEL_SALT, kept
 from .strength import CARD_ID, DECK, _EVALUATE_7
 
 TRIALS = 4000
 CACHE_SIZE = 1000               # actions whose resulting range is kept
-FLOOR_FROM = 1.2     # raise factors up to this are within the noise of 100 hands
-FLOOR_SLOPE = 1.5
+FLOOR_FROM = 1.3     # aggression factors up to this are within a short session's noise
+FLOOR_SLOPE = 3.0
 MAX_FLOOR = 0.5
 _KEPT = {}
 MAX_DRAWS = 50                  # tries for one deal of hands that do not collide
 
 
+def _shares(model):
+    return MODEL["aa_population" if getattr(model, "adjusted", False) else "population"]
+
+
 def read_factors(observation, model, seats):
     """{seat: (raise factor, call factor)} from the reads on each seat."""
     reads = observation.get("reads") or {}
-    shares = MODEL["aa_population" if getattr(model, "adjusted", False)
-                   else "population"]
-    return {seat: factors(reads.get(str(seat)), shares) for seat in seats}
+    return {seat: factors(reads.get(str(seat)), _shares(model)) for seat in seats}
 
 
-def floor(read):
+def floor(aggression):
     """Share of the hands the model would not play that way that a seat
-    with these read factors keeps after the flop."""
-    return min(MAX_FLOOR, max(0.0, FLOOR_SLOPE * (read[0] - FLOOR_FROM)))
+    betting ``aggression`` times as often as the model keeps after the flop."""
+    if aggression is None:
+        return 0.0
+    return min(MAX_FLOOR, max(0.0, FLOOR_SLOPE * (aggression - FLOOR_FROM)))
+
+
+def read_floors(observation, model, seats):
+    """{seat: ``floor``} from the postflop part of the reads on each seat."""
+    reads = observation.get("reads") or {}
+    return {seat: floor(aggression_factor(reads.get(str(seat)), _shares(model)))
+            for seat in seats}
 
 
 def opponent_ranges(observation, model):
@@ -84,6 +98,7 @@ def opponent_ranges(observation, model):
     ranges = {seat: {key: 1.0 for key in all_combos(board)} for seat in seats}
     dealt = set(board)
     reads = read_factors(observation, model, seats)
+    floors = read_floors(observation, model, seats)
     table = (type(model).__name__, getattr(model, "adjusted", None),
              observation.get("rules_fingerprint"), tuple(observation["occupied_seats"]),
              observation["dealer_seat"], observation.get("bomb_pot"),
@@ -92,7 +107,7 @@ def opponent_ranges(observation, model):
         if decision.seat not in ranges:
             continue
         read = reads[decision.seat]
-        key = (table, read, tuple(decision.observation["board"]),
+        key = (table, read, floors[decision.seat], tuple(decision.observation["board"]),
                tuple(row["id"] for row in observation["public_history"][:index + 1]))
         if key in _KEPT:
             ranges[decision.seat] = {
@@ -105,7 +120,7 @@ def opponent_ranges(observation, model):
                 **decision.observation, "read_factors": read})
         after = kept(before, decision, lambda obs: model.decide(
             obs, _rng(MODEL_SALT, obs))) or before
-        kept_share = floor(read) if decision.street != "preflop" else 0.0
+        kept_share = floors[decision.seat] if decision.street != "preflop" else 0.0
         if kept_share:
             after = {combo: max(after.get(combo, 0.0), kept_share * weight)
                      for combo, weight in before.items()}
