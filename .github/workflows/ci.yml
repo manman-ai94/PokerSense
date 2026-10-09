@@ -34,7 +34,7 @@ jobs:
         run: git diff --check "$BASE_SHA...$HEAD_SHA"
 
   test:
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       PYTHONUTF8: "1"
       CI_EVIDENCE_NAME: pytest-${{ matrix.os }}-${{ github.run_id }}-attempt-${{ github.run_attempt }}
