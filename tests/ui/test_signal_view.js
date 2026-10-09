@@ -46,6 +46,7 @@ assert.equal(view.tone, "wait"); assert.equal(view.title, "还没开始");
 assert.equal(view.header.health.text, "还没开始");
 view = signalView({status: "STALE"}, 0, {});
 assert.equal(view.tone, "warn"); assert.equal(view.title, "画面断了");
+assert.equal(view.note, "画面卡住了，旧的牌面先清掉；画面一来就自己接上");
 // A start that failed (no card on the Mac): the red text above says why.
 view = signalView({status: "ERROR", source_kind: "capture-card", capture_available: true,
   capture_devices: ["FaceTime HD Camera"]}, 0, {});
@@ -216,7 +217,7 @@ const states = [
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
-  [{status: "abstain", reason: "players_5"}, "info", "这一手不给建议"],
+  [{status: "abstain", reason: "players_4"}, "info", "这一手不给建议"],
 ];
 for (const [advice, tone, title] of states) {
   const seen = {};
@@ -228,8 +229,8 @@ for (const [advice, tone, title] of states) {
   assert.equal(view.numbers[0].value, "25%", title);
   assert.equal(view.verdict, undefined, title);
 }
-view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_5"}})), 0, {});
-assert.equal(view.note, "5 人桌，现在只支持 6–8 人，这一步不给建议。");
+view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_4"}})), 0, {});
+assert.equal(view.note, "4 人桌，现在只支持 5–8 人，这一步不给建议。");
 const solving = {};
 signalView(running(base({solver_advice_v1: states[0][0]})), 0, solving);
 view = signalView(running(base({solver_advice_v1: states[0][0]})), 2100, solving);
@@ -348,6 +349,43 @@ view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: 
 assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算",
   "有 1 个动作没读到，按牌桌补上", "只显示建议，不替你点"]);
 assert.equal(view.numbers[1].label, "你对他的范围能赢");
+// While the heads-up solve is still running, the range rule's action comes first and says so.
+view = signalView(running(multiway({action: "raise", frequency: 1.0, size: "60"}, {heads_up: true, provisional: true,
+  range_equity: {value: 0.62, opponents: 1, hands: 240}})), 0, {});
+assert.equal(view.verdict.kind, "multiway");
+assert.deepEqual(view.basis.slice(0, 2), ["按胜率和价格先给 · 0.4 秒算完",
+  "单挑求解器还在算，算完换成求解器的打法；对手范围按 AA 真人打法推算"]);
+// When the heads-up solve cannot answer, the range rule's action stays and says why.
+view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: true,
+  solver_gave_up: "multiway_at_street_start", range_equity: {value: 0.31, opponents: 1, hands: 240}})), 0, {});
+assert.deepEqual([view.verdict.kind, view.verdict.word], ["multiway", "跟注"]);
+assert.deepEqual(view.basis.slice(0, 2), ["按胜率和价格定 · 0.4 秒算完",
+  "单挑求解器算不了这一步（这条街开始时不止两人）；对手范围按 AA 真人打法推算"]);
+// Nothing else a second into your turn: the rough rule's action, marked rough.
+const rough = (row, extra = {}) => base({solver_advice_v1: {status: "ready", kind: "rough", advice: [row],
+  rough_for: "hand_incomplete", to_call: "28", pot: "85", required: 0.248,
+  range_equity: {value: 0.31, opponents: 1, hands: null}, ...extra}});
+view = signalView(running(rough({action: "call", frequency: 1.0})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.size, view.verdict.kind],
+  ["call", "跟注", "28", "rough"]);
+assert.equal(view.verdict.note, "粗略：你大概能赢 31%，跟注只要 25% 就够");
+assert.ok(view.tags.includes("粗略") && view.tags.includes("轮到你"));
+assert.deepEqual(view.basis, ["粗略建议：只看价格和大概的胜率",
+  "这手牌是中途接上的，前面的动作不知道，先按价格粗略给一个",
+  "对手的牌按 AA 真人常玩的前 40% 算，下注、加注给你的人按前 20%", "只显示建议，不替你点"]);
+assert.deepEqual([view.numbers[1].label, view.numbers[1].value, view.numbers[1].note],
+  ["你大概能赢", "31%", "1 个对手，按 AA 真人常玩的牌粗算"]);
+view = signalView(running(rough({action: "call", frequency: 1.0},
+  {range_equity: {value: 0.22, opponents: 2, realize: 0.8}})), 0, {});
+assert.equal(view.numbers[1].note, "2 个对手，按 AA 真人常玩的牌粗算；翻前后面还要下注，只算 80%");
+view = signalView(running(rough({action: "fold", frequency: 1.0},
+  {rough_for: "players_4", range_equity: {value: 0.12, opponents: 3}})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "粗略：你大概能赢 12%，跟注要 25% 才够，不跟"]);
+assert.equal(view.basis[1], "4 人桌，现在只支持 5–8 人，先按价格粗略给一个");
+view = signalView(running({...rough({action: "check", frequency: 1.0}, {rough_for: "computing", to_call: "0",
+  required: 0}), hero_controls_v1: {visible: true, button: "check"}}), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.note, view.basis[1]],
+  ["过牌", "粗略：你大概能赢 31%，不花钱就过牌", "建议还在算，先按价格粗略给一个"]);
 // A bomb pot says so in the basis.
 view = signalView(running(multiway({action: "call", frequency: 1.0}, {bomb_pot: "14"})), 0, {});
 assert.ok(view.basis.includes("暴击局：每人先投 14，直接发翻牌"));

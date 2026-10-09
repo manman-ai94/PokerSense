@@ -48,6 +48,10 @@
     all_in: "已经全下，没有可选的动作",
     raise_not_in_solution: "对手的下注额不在求解树里",
     action_not_in_solution: "对手的动作不在求解树里",
+    waiting_for_last_action: "对手刚才的动作还没读出来",
+    computing: "建议还在算",
+    heads_up_flop: "你的筹码或对手的范围没读出来",
+    more_than_one_opponent: "你的筹码或对手的范围没读出来",
   };
 
   const isNumber = value => value !== null && value !== undefined && value !== "" &&
@@ -73,7 +77,7 @@
 
   function reasonText(reason) {
     if (typeof reason === "string" && reason.startsWith("players_"))
-      return `${reason.slice(8)} 人桌，现在只支持 6–8 人`;
+      return `${reason.slice(8)} 人桌，现在只支持 5–8 人`;
     return REASONS[reason] || "这一步的条件不够";
   }
 
@@ -239,7 +243,21 @@
       note: multiwayReason(row.action, advice.range_equity?.value, advice.cuts)};
   }
 
+  // The rough rule: your share against fixed ranges, against the price on your button.
+  function roughVerdict(advice, controls, stack) {
+    const row = (advice.advice || [])[0];
+    if (!row) return null;
+    const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
+    const share = isNumber(advice.range_equity?.value) ? pct(Number(advice.range_equity.value)) : "—";
+    const need = isNumber(advice.required) ? pct(Number(advice.required)) : "—";
+    const note = row.action === "check" ? `粗略：你大概能赢 ${share}，不花钱就过牌`
+      : row.action === "call" ? `粗略：你大概能赢 ${share}，跟注只要 ${need} 就够`
+        : `粗略：你大概能赢 ${share}，跟注要 ${need} 才够，不跟`;
+    return {...label, kind: "rough", note};
+  }
+
   function readyVerdict(advice, controls, stack) {
+    if (advice.kind === "rough") return roughVerdict(advice, controls, stack);
     if (advice.kind === "multiway") return multiwayVerdict(advice, controls, stack);
     if (Array.isArray(advice.options) && advice.options.length) {
       const options = advice.options.map(item => ({...item, label: preflopLabel(item, stack)}));
@@ -436,7 +454,11 @@
     }
     const range = advice?.range_equity;
     const equity = math?.equity;
-    if (range && isNumber(range.value) && num(range.opponents) > 1) {
+    if (advice?.kind === "rough" && range && isNumber(range.value)) {
+      list.push({label: "你大概能赢", value: pct(range.value),
+        note: `${range.opponents} 个对手，按 AA 真人常玩的牌粗算${isNumber(range.realize) && Number(range.realize) < 1
+          ? `；翻前后面还要下注，只算 ${pct(Number(range.realize))}` : ""}`});
+    } else if (range && isNumber(range.value) && num(range.opponents) > 1) {
       list.push({label: "你对他们的牌能赢", value: pct(range.value),
         note: `按 AA 真人打法推算 ${range.opponents} 个对手可能拿的牌`});
     } else if (range && isNumber(range.value)) {
@@ -545,7 +567,7 @@
       const failed = String(state?.status).toUpperCase() === "ERROR";
       return {...base, tone: stale || failed ? "warn" : "wait",
         title: stale ? "画面断了" : top.active ? "等画面" : failed ? "没开起来" : "还没开始",
-        note: stale ? "超过 3 秒没有新画面，旧的牌面已经清掉" : top.active ? "第一帧马上就到"
+        note: stale ? "画面卡住了，旧的牌面先清掉；画面一来就自己接上" : top.active ? "第一帧马上就到"
           : failed ? `原因写在上面红字里，弄好后再点“开始”${cameras(state, "。")}`
             : `选好来源，点“开始”${cameras(state, "。")}`};
     }
@@ -612,7 +634,14 @@
     if (advice?.status === "ready") {
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
-        const basis = verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
+        const basis = verdict.kind === "rough" ? ["粗略建议：只看价格和大概的胜率",
+          `${reasonText(advice.rough_for)}，先按价格粗略给一个`,
+          "对手的牌按 AA 真人常玩的前 40% 算，下注、加注给你的人按前 20%"]
+          : verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
+          : verdict.kind === "multiway" && advice.solver_gave_up
+            ? ["按胜率和价格定", `单挑求解器算不了这一步（${reasonText(advice.solver_gave_up)}）；对手范围按 AA 真人打法推算`]
+          : verdict.kind === "multiway" && advice.provisional
+            ? ["按胜率和价格先给", "单挑求解器还在算，算完换成求解器的打法；对手范围按 AA 真人打法推算"]
           : verdict.kind === "multiway" ? ["按胜率和价格定", advice.heads_up
             ? "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算"
             : "没有多人求解器，对手范围按 AA 真人打法推算"]
@@ -634,7 +663,8 @@
         if (num(advice.inferred_actions) > 0)
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
-        return {...view, tone: verdict.tone, verdict, basis};
+        const tags = verdict.kind === "rough" ? [...view.tags, "粗略"] : view.tags;
+        return {...view, tags, tone: verdict.tone, verdict, basis};
       }
     }
     if (computing) {

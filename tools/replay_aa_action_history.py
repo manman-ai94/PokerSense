@@ -3,9 +3,9 @@
 A real-time measurement (``tools/measure_aa_realtime.py``) takes as long as
 the recording. The log keeps, per processed frame, what the history layer
 reads: pot, board-card street, dealer, board and hero cards, seat states,
-stacks and the latest reader actions. This feeds those fields through
-``AAActionHistory`` again, so a change to the layer can be checked on whole
-recordings in seconds:
+stacks, bets on the table and the latest reader actions. This feeds those
+fields through ``AAActionHistory`` again, so a change to the layer can be
+checked on whole recordings in seconds:
 
     python tools/replay_aa_action_history.py --frames <log>/frames.jsonl \\
         --out <new>/frames.jsonl
@@ -14,7 +14,8 @@ recordings in seconds:
 With ``--streets`` the board-card street is rebuilt too (``AAStreet`` on the
 logged board, cards, seat states and pot), for checking a change there; the
 log has no insurance or other overlay flags, so frames the live run skipped
-for those count as readable here.
+for those count as readable here. A log made before the reader kept the
+hand through a stall needs it: its street was cleared at each stall.
 
 The rebuilt history replaces ``actions_v1`` in each row; everything else is
 copied. It matches the live run except when one frame added more than three
@@ -32,10 +33,10 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from poker_engine.desktop.aa_action_history import AAActionHistory  # noqa: E402
+from poker_engine.desktop.aa_reader import (  # noqa: E402
+    GAP_SECONDS, HAND_GAP_SECONDS)
 from poker_engine.desktop.aa_session import _actions_v1  # noqa: E402
 from poker_engine.desktop.aa_street import AAStreet  # noqa: E402
-
-GAP_SECONDS = 1.0           # the reader starts over after a longer gap
 
 
 def payload(fields, actions):
@@ -50,6 +51,7 @@ def payload(fields, actions):
                 for slot, state in (fields.get("participants") or {}).items()}},
             "stacks": {slot: {"value": value}
                        for slot, value in (fields.get("stacks") or {}).items()},
+            "street_wagers": fields.get("street_wagers"),
             "action_history_candidate": actions}
 
 
@@ -57,16 +59,21 @@ def replay(rows, *, streets=False):
     """The log rows with ``actions_v1`` rebuilt by the current history layer
     (and the street by the current street rule, with ``streets``)."""
     history, actions, seen, last = AAActionHistory(), [], set(), None
-    street = AAStreet()
+    street, gaps = AAStreet(), 0.0
     result = []
     for row in rows:
         fields = row.get("fields") or {}
         processed, pts = row.get("processed"), row.get("pts_seconds")
         if last is not None and (processed != last[0] + 1
                                  or pts - last[1] > GAP_SECONDS):
-            history.reset()
-            street.reset()
+            # As the reader: a stall keeps the street and the hand.
             actions, seen = [], set()
+            if processed == last[0] + 1 and pts - last[1] <= HAND_GAP_SECONDS:
+                gaps += pts - last[1]
+            else:
+                history.reset()
+                street.reset()
+                gaps = 0.0
         last = (processed, pts)
         for action in fields.get("actions_tail") or ():
             key = (action.get("frame"), action.get("slot"), action.get("kind"),
@@ -76,7 +83,7 @@ def replay(rows, *, streets=False):
                 actions.append(action)
         rebuilt = payload(fields, actions[-256:])
         if streets:
-            rebuilt["street_v1"] = street.observe(rebuilt, pts)
+            rebuilt["street_v1"] = street.observe(rebuilt, pts - gaps)
             fields = {**fields, "street": rebuilt["street_v1"]["street"]}
         history_v1 = _actions_v1(history.observe(rebuilt, processed))
         result.append({**row, "fields": {**fields, "actions_v1": history_v1}})

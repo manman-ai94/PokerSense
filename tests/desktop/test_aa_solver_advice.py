@@ -2,6 +2,7 @@
 and river decisions in the background, and the range rule's elsewhere."""
 
 from concurrent.futures import Future
+import sys
 
 import pytest
 
@@ -29,8 +30,10 @@ BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "
 
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
-            turn=41, complete=True, stacks_read=True):
+            turn=41, complete=True, stacks_read=True, priced=0):
     seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop]
+    if frame < priced:              # the turn bet's chips not read yet
+        seen = [a if a[0] != 40 else a[:4] + (None, "pending") for a in seen]
     street = seen[-1][1] if seen else "preflop"
     street = "turn" if frame >= turn else "flop" if frame > 25 else street
     pot = 19 + (4 if frame > 12 else 0) + (10 if frame > 40 else 0) + extra_pot
@@ -120,7 +123,39 @@ def test_the_solve_runs_in_the_background_once_per_decision():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     results = run(advice, range(50))
-    assert results[-1]["status"] == "computing" and executor.submitted == 1
+    # The solve and the range rule next to it, once.
+    assert results[-1]["status"] == "computing" and executor.submitted == 2
+
+
+def test_a_bet_whose_chips_are_read_late_is_worked_out_again():
+    # The pot was unread as seat 2 bet: its chips come in a few frames into
+    # your turn, and the advice with them.
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    results = run(advice, range(50), priced=46)
+    assert (results[44]["status"], results[44]["reason"]) == (
+        "abstain", "raise_without_amount")
+    assert results[-1]["status"] == "ready"
+
+
+class RuleOnly(Inline):
+    """Runs the range rule at once; the solve never finishes."""
+
+    def submit(self, function, *args):
+        self.finish = function.__name__ == "_quick_rule"
+        return super().submit(function, *args)
+
+
+def test_until_the_solve_is_done_the_range_rule_gives_provisional_advice():
+    advice = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), RuleOnly())
+    early = run(advice, range(50))[-1]
+    shown = (early["status"], early["kind"], early["heads_up"], early["provisional"])
+    assert shown == ("ready", "multiway", True, True)
+    assert early["advice"][0]["action"] in ("call", "fold", "raise")
+    assert "until the heads-up solve is done" in early["basis"]
+    assert advice.settled() == ("hand_1", {(9, "turn", "call:10", 0): None})
+    done = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), Inline())
+    final = run(done, range(50))[-1]
+    assert final["advice"][0]["action"] == "raise" and "provisional" not in final
 
 
 def test_without_your_cards_there_is_no_advice():
@@ -156,22 +191,22 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
     assert (report["reason"], "range_equity" in report) == ("heads_up_flop", False)
 
 
-def test_the_opponents_reads_go_to_the_range_reading_after_the_flop(monkeypatch):
+def test_the_opponents_reads_stay_out_of_the_range_reading_after_the_flop(
+        monkeypatch):
+    # Read by the preflop raise rate, a tight-aggressive player who bets
+    # honestly after the flop is taken as bluffing: left out for now.
     seen, real = [], aa_solver_advice.opponent_ranges
     monkeypatch.setattr(aa_solver_advice, "opponent_ranges",
                         lambda observation, model: seen.append(observation)
                         or real(observation, model))
     plain = flop_turn(AASolverAdvice(Bot({"CALL": 1.0}), Inline()))
-    assert "reads" not in seen[-1] and plain["reads_hands"] == 0
-    # Seat 2 has raised two hands in five over 30 hands: a maniac's bet keeps
-    # more of the hands the model would not bet with.
     reads = {"2": {"hands": 30, "vpip": 0.6, "pfr": 0.4}}
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     monkeypatch.setattr(advice.reads, "snapshot", lambda: reads)
     report = flop_turn(advice)
-    assert seen[-1]["reads"] == reads
-    assert report["status"] == "ready" and report["reads_hands"] == 30
-    assert report["range_equity"]["hands"] != plain["range_equity"]["hands"]
+    assert "reads" not in seen[-1] and report["status"] == "ready"
+    assert report["reads_hands"] == 0
+    assert report["range_equity"] == plain["range_equity"]
 
 
 # The same hand three-handed: seat 1 completes its big blind and checks along.
@@ -355,9 +390,20 @@ def test_the_opponents_reads_from_finished_hands_go_to_the_preflop_policy():
     assert advice.reads.snapshot() == {}
 
 
-def test_a_solver_fallback_abstains_with_its_reason():
+def test_when_the_solve_cannot_answer_the_range_rule_does(monkeypatch):
     advice = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
     result = run(advice, range(50))[-1]
+    shown = (result["status"], result["kind"], result["solver_gave_up"])
+    assert shown == ("ready", "multiway", "own_hand_not_in_range")
+    assert "provisional" not in result and "heads-up cuts" in result["basis"]
+    # Grading goes by the action shown.
+    graded = advice.settled()[1][(9, "turn", "call:10", 0)]
+    assert (graded["kind"], graded["solver_gave_up"]) == ("multiway",
+                                                          "own_hand_not_in_range")
+    # Without the range rule's action the reason shows until the rough rule.
+    blind = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
+    monkeypatch.setattr(blind, "_ranges", lambda observation: None)
+    result = run(blind, range(50))[-1]
     assert (result["status"], result["reason"]) == ("abstain", "own_hand_not_in_range")
 
 
@@ -399,15 +445,105 @@ def test_a_hand_joined_midway_gets_no_advice():
     assert (result["status"], result["reason"]) == ("abstain", "hand_incomplete")
 
 
+def heads_up(row, wagers=None):
+    """``row`` with only you and seat 2 in, and the chips in front on this street."""
+    row["seat_states_v1"] = {"seats": {str(s): {"state": "active" if s in (2, 4) else
+                                                "folded" if s < 6 else "empty"}
+                                       for s in range(8)}}
+    row["street_wagers"] = wagers or {}
+    return row
+
+
+def test_a_second_into_your_turn_without_advice_the_rough_rule_answers():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    results = [advice.observe(heads_up(payload(frame, complete=False)), frame)
+               for frame in range(60)]
+    # Your turn shows at 42; for ROUGH_FRAMES frames the reason, then an action.
+    assert {r["reason"] for r in results[42:52]} == {"hand_incomplete"}
+    rough = results[52]
+    assert (rough["status"], rough["kind"], rough["rough_for"]) == (
+        "ready", "rough", "hand_incomplete")
+    # Seat 2's bet of 10 into 35: the call needs 10 of 45.
+    assert (rough["to_call"], rough["pot"], rough["required"]) == ("10", "35", 0.222)
+    edge = rough["range_equity"]
+    assert edge["opponents"] == 1 and 0 < edge["value"] < 1
+    assert rough["advice"] == [{"action": "call" if edge["value"] >= 0.222 else "fold",
+                                "frequency": 1.0}]
+    assert "rough rule" in rough["basis"] and rough["advice_emitted"] is True
+    logged = frame_summary({"solver_advice_v1": rough})["solver_advice"]
+    assert logged["kind"] == "rough"
+
+
+def test_the_rough_rule_waits_while_the_proper_advice_is_coming():
+    # Work that is still running past ROUGH_FRAMES gets the rough rule next to it.
+    executor = Inline(finish=False)
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
+    results = run(advice, range(60))
+    assert executor.submitted == 3 and results[-1]["status"] == "computing"
+    # Advice that comes in time is never replaced.
+    done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    assert {r.get("kind", "solver") for r in run(done, range(60))[42:]} == {"solver"}
+
+
+def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",
+          wagers=None, board=None, stack="200"):
+    fields = {"board": board if board is not None else
+              BOARD.get(street, ["Ah", "Kd", "7c", "2s", "9h"]) + [None] * 5,
+              "participants": {"2": "active", "3": "folded", "4": "active"},
+              "pot": pot, "street_wagers": wagers or {},
+              "hero_controls": {"visible": True, "button": button,
+                                "call_amount": price}, "stacks": {"4": stack}}
+    return aa_solver_advice.rough_advice(fields, list(hero), street)
+
+
+def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():
+    free = rough(button="check", price=None)
+    assert (free["advice"][0]["action"], free["to_call"], free["required"]) == (
+        "check", "0", 0.0)
+    # 72 offsuit against a raise to 40 before the flop: 40 of 87 is too much.
+    junk = rough("preflop", hero=("7c", "2d"), price="40", pot="47",
+                 wagers={"2": "40", "4": "0"})
+    assert junk["advice"][0]["action"] == "fold" and junk["required"] == 0.46
+    aces = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
+                 wagers={"2": "40", "4": "0"})
+    assert aces["advice"][0]["action"] == "call"
+    # Before the flop 80% of the share counts (the betting still to come),
+    # all of it when the call puts you all in, for what you have.
+    assert aces["range_equity"]["realize"] == 0.8
+    short = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
+                  wagers={"2": "40", "4": "0"}, stack="30")
+    assert (short["to_call"], short["range_equity"]["realize"]) == ("30", 1.0)
+    assert short["range_equity"]["value"] > aces["range_equity"]["value"]
+    assert rough()["range_equity"]["realize"] == 1.0
+
+
+def test_the_one_who_bet_or_raised_to_you_holds_a_stronger_range():
+    plain = rough()["range_equity"]["value"]
+    bet = rough(wagers={"2": "10"})["range_equity"]["value"]
+    assert bet < plain
+    # Before the flop the straddle (4) is not a raise; more is.
+    limp = rough("preflop", price="2", pot="17", wagers={"2": "4", "4": "2"})
+    raise_ = rough("preflop", price="2", pot="17", wagers={"2": "5", "4": "3"})
+    assert raise_["range_equity"]["value"] < limp["range_equity"]["value"]
+
+
+def test_the_rough_rule_needs_the_board_and_a_price():
+    assert rough(board=["Ah", "Kd", "7c", None, None]) is None    # turn card unread
+    assert rough(price=None) is None                               # nothing to price
+    # The price from the chips in front when the button's is not read.
+    assert rough(price=None, wagers={"2": "10", "4": "0"})["to_call"] == "10"
+
+
 def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     run(advice, range(50))
-    assert advice.settled() == ("hand_1", {(9, "turn", "call:10"): None})  # computing
+    computing = {(9, "turn", "call:10", 0): None}
+    assert advice.settled() == ("hand_1", computing)
     done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     run(done, range(50))
     hand, outcomes = done.settled()
-    assert hand == "hand_1" and outcomes[(9, "turn", "call:10")]["status"] == "ready"
+    assert hand == "hand_1" and outcomes[(9, "turn", "call:10", 0)]["status"] == "ready"
     done.reset()
     assert done.settled() == (None, {})
 
@@ -443,3 +579,15 @@ def test_a_bomb_pot_gets_advice_after_the_flop_like_any_other_hand():
     # A normal hand's report says it is not one.
     normal = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
     assert normal["bomb_pot"] is None
+
+
+def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
+    before = sys.getswitchinterval()
+    advice = AASolverAdvice()
+    try:
+        sys.setswitchinterval(0.005)          # Python's default
+        assert advice._submit(lambda: "done").result(5) == "done"
+        assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+    finally:
+        advice._executor.shutdown()
+        sys.setswitchinterval(before)

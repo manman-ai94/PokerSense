@@ -57,11 +57,12 @@ def preflop_acted(kind, amount, hero):
     return row
 
 
-def turn_decision(kind, amount, bot=None, executor=None):
+def turn_decision(kind, amount, bot=None, executor=None, frames=50, **options):
     advice = AASolverAdvice(bot or Bot(MIX), executor or Inline())
     grades = AAGrades(advice, clock=lambda: 1000.0)
-    rows = [(frame, payload(frame)) for frame in range(50)]
-    return advice, grades, feed(advice, grades, rows + [(50, acted(50, kind, amount))])
+    rows = [(frame, payload(frame, **options)) for frame in range(frames)]
+    return advice, grades, feed(advice, grades, rows + [
+        (frames, acted(frames, kind, amount, **options))])
 
 
 def test_your_turn_action_is_graded_by_how_often_the_solver_takes_it():
@@ -99,8 +100,8 @@ def test_a_solve_finishing_after_you_acted_still_grades_the_action():
 
 
 def test_no_advice_or_an_impossible_action_gives_no_grade():
-    assert turn_decision("call", "10", bot=Bot(error="own_hand_not_in_range"))[2][
-        "graded"] == 0
+    # Seat 3's fold was missed: the hand does not replay.
+    assert turn_decision("call", "10", drop=(0,))[2]["graded"] == 0
     # Checking while facing a bet cannot be matched to the solver's options.
     assert turn_decision("check", "0")[2]["graded"] == 0
     # An action whose amount is still being read waits for it.
@@ -249,8 +250,15 @@ def test_the_session_counts_your_actions_the_advice_and_each_grade():
     report = turn_decision("call", "10")[2]
     assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 1)
     assert report["grades"] == {"best": 1, "fine": 0, "slip": 0, "mistake": 0}
-    report = turn_decision("call", "10", bot=Bot(error="own_hand_not_in_range"))[2]
+    report = turn_decision("call", "10", drop=(0,))[2]
     assert (report["decisions"], report["advised"], report["graded"]) == (3, 0, 0)
+    # The range rule's action where the solve cannot answer: advised and graded.
+    report = turn_decision("call", "10", bot=Bot(error="own_hand_not_in_range"))[2]
+    assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 1)
+    assert report["last"]["kind"] == "multiway"
+    # The rough rule's action a second into your turn: advised, too rough to grade.
+    report = turn_decision("call", "10", frames=60, drop=(0,))[2]
+    assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 0)
     # Advice that cannot be matched to what you did: advised, not graded.
     report = turn_decision("check", "0")[2]
     assert (report["decisions"], report["advised"], report["graded"]) == (3, 1, 0)

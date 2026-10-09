@@ -27,6 +27,8 @@ _POOLS = ("source", "context_source", "late_source", "bomb_pool")
 _FILES = ("bank_path", "profile_path", "heads_path", "reservations")
 _REQUIRED = set(_POOLS + _FILES + ("audit",))
 _HASH = re.compile(r"[0-9a-f]{64}")
+GAP_SECONDS = 1.0               # a longer gap starts the frame reading over
+HAND_GAP_SECONDS = 3.0          # and a longer one the street and the hand too
 
 
 def _path(value, root):
@@ -184,6 +186,15 @@ class AA8Reader:
     source changes and time gaps reset all temporal state without reloading
     training images. Source elapsed seconds must increase; sampling does not
     establish complete action coverage.
+
+    A gap of up to ``HAND_GAP_SECONDS`` between consecutive frames of one
+    source (a stall: on 10/07 and 10/08 a frame took 1.1 to 1.5 s four
+    times, each while the advice was being worked out on your turn) starts
+    the frame reading over but keeps the street and the hand's history, with
+    the gap left out of the street's clock. Before, the hand then counted as
+    joined in the middle and got no advice to its end; the cards and badges
+    are read again within a few frames, and a badge read again is left out
+    (``aa_action_history``).
     """
 
     def __init__(self, profile_path, *, factory=None, bundle_sha256=None,
@@ -221,6 +232,7 @@ class AA8Reader:
         self._seat_states = AASeatStates()
         self._street = AAStreet()
         self._actions = AAActionHistory()
+        self._gaps = 0.0            # seconds of stalls left out of the street
         from .aa_critical_perception import CriticalPerceptionBoundary
         self._critical = CriticalPerceptionBoundary()
 
@@ -244,14 +256,21 @@ class AA8Reader:
                 raise ValueError("duplicate_or_backwards_observation")
             reset = bool(self._invalidated or previous and (
                 source != previous[2] or frame != previous[0] + 1
-                or pts - previous[1] > 1.0))
+                or pts - previous[1] > GAP_SECONDS))
+            stall = bool(reset and not self._invalidated
+                         and source == previous[2] and frame == previous[0] + 1
+                         and pts - previous[1] <= HAND_GAP_SECONDS)
             if reset:
                 self._state = _copy_candidate(self._initial)
                 self._semantics.reset()
                 self._critical.reset()
                 self._seat_states.reset()
+            if stall:
+                self._gaps += pts - previous[1]
+            elif reset:
                 self._street.reset()
                 self._actions.reset()
+                self._gaps = 0.0
             self._state.audit = source
             current_hash = hashlib.sha256(image.tobytes()).hexdigest()
             seats = getattr(self._state, "seats", None)
@@ -262,7 +281,7 @@ class AA8Reader:
             row["seat_cues_v1"] = (seats.last if isinstance(seats, SeatCueRecorder)
                                    else None)
             row["seat_states_v1"] = self._seat_states.observe(row, pts)
-            row["street_v1"] = self._street.observe(row, pts)
+            row["street_v1"] = self._street.observe(row, pts - self._gaps)
             row.update(
                 source_id=source, training_audit_sha256=self._initial.audit,
                 observation_sequence=frame, reader_gap_reset=reset,

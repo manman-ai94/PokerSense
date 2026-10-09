@@ -5,7 +5,8 @@ already captures are written to the layout ``tools/record_aa_capture.py``
 makes: 60-second H.264 segments on a fixed 30 fps clock aligned to wall time
 (a late frame is repeated, an early one dropped), with ``segments.csv`` and
 ``recording.json``. Such a folder plays back with ``--replay-video`` and
-``tools/measure_aa_realtime.py``.
+``tools/measure_aa_realtime.py``. The service also logs what it read and
+advised from each frame to ``frames.jsonl`` there (``aa_session``).
 
 The service keeps only the phone strip of each frame (the normalized crop),
 so the strip goes back to its place in a black 1920x1080 frame: replaying the

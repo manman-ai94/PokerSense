@@ -364,3 +364,33 @@ def test_only_a_flop_start_with_every_seat_posting_seven_big_blinds_is_a_bomb_po
     assert bomb_post(bomb_hand(pot=None)) is None
     stopped = replay_hand(bomb_hand(pot=Decimal(85)))
     assert (stopped["status"], stopped["reason"]) == ("stopped", "starts_after_preflop")
+
+
+def with_sources(actions, sources):
+    hand = facts(actions)
+    for action, source in zip(hand["actions"], sources):
+        action["source"] = source
+    return hand
+
+
+def test_a_call_or_raise_seen_from_a_stack_drop_goes_by_its_chips():
+    # Seat 5's flop bet of 10 and seat 2's call, both seen only from the stacks
+    # and named the other way round.
+    named_wrong = ACTIONS[:7] + [(32, "flop", 5, "call", "10"),
+                                 (34, "flop", 2, "raise", "10")]
+    sources = [None] * 7 + ["stack_drop", "stack_drop"]
+    assert replay_hand(with_sources(named_wrong, sources))["status"] == "ok"
+    short = ACTIONS[:8] + [(34, "flop", 2, "call", "5")]
+    result = replay_hand(with_sources(short, [None] * 8 + ["stack_drop"]))
+    assert (result["status"], result["reason"]) == ("stopped", "raise_without_amount")
+
+
+def test_a_seat_all_in_without_a_stack_reading_is_not_asked_to_act_again():
+    # Dealer 5: seat 3 goes all in for 10 more, seat 4 raises to 40, seat 5 calls.
+    actions = [(10, "preflop", 3, "all_in", "10"), (12, "preflop", 4, "raise", "40"),
+               (14, "preflop", 5, "call", "40"), (16, "preflop", 0, "fold", "0"),
+               (18, "preflop", 1, "fold", "0"), (20, "preflop", 2, "fold", "0"),
+               (30, "flop", 4, "check", "0"), (32, "flop", 5, "check", "0")]
+    result = replay_hand(facts(actions))
+    assert (result["status"], result["replayed"]) == ("ok", len(actions))
+    assert result["arena"].street == "turn" and result["arena"].actor == 4

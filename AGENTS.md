@@ -105,10 +105,11 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_action_history.py --frames <测
     --recording 20261006-112110-spectate-table1
 # 每手牌能不能在模拟牌桌上按 AA 规则重放到底（求解器的输入），停下的原因
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测量目录>/frames.jsonl
-# 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒），不用再按真实速度回放；
-# 加 --streets 连街道也按现在的规则重算（改了 aa_street.py 时用）
+# 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒）；加 --streets 连街道也重算（改了 aa_street.py 时用）
 PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl \
     --out <新目录>/frames.jsonl [--streets]
+# 每场实战后必做（不去 AA 里截图，靠窗口录像时写在录像文件夹里的 frames.jsonl 和录像）：逐手报告建议覆盖、没建议的原因、认错和卡顿
+PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py --frames <录像文件夹>/frames.jsonl [...] --out <目录>/report.json
 ```
 
 浏览器会自动打开“信号灯”窗口，选好画面来源点“开始”；旧观察页（本桌设置、详细数据、复查）在右上角
@@ -124,7 +125,7 @@ PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <�
 | `src/poker_engine/equity/` | 胜率计算：枚举、蒙特卡洛、范围对范围 |
 | `src/poker_engine/strategy/` | 通用策略路由/Provider/建议；AA 规则、研究用 MCCFR；`frozen_postflop.py` 查询已保存的翻后求解结果；`aa_insurance.py` 按 AA 赔率表算全下后的保险值多少 |
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
-| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、观察时直接录采集卡画面 `aa_recorder.py`、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、屏幕左上角的蘑菇池金额 `aa_mushroom.py`、当前这手牌的行动记录 `aa_action_history.py`（动作、金额、街道；全下从筹码变化推断）、把这手牌接成求解器输入（在模拟牌桌上重放）`aa_solver_input.py`（行动记录漏读的动作按牌桌推断补上）、轮到你时的策略建议 `aa_solver_advice.py`（翻前用 `aa_preflop` 当场算各选择值多少，带上 `aa_reads.py` 记的本场每个对手入池率、加注率；单挑转牌/河牌在后台用求解器；单挑翻牌和多人底池在后台算你对各对手范围的胜率，再按 `range_multiway` 的规则给建议）、你行动后给这一步打分和本场记录 `aa_grading.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
+| `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、观察时直接录采集卡画面 `aa_recorder.py`、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、屏幕左上角的蘑菇池金额 `aa_mushroom.py`、当前这手牌的行动记录 `aa_action_history.py`（动作、金额、街道；全下从筹码变化推断）、把这手牌接成求解器输入（在模拟牌桌上重放）`aa_solver_input.py`（行动记录漏读的动作按牌桌推断补上）、轮到你时的策略建议 `aa_solver_advice.py`（翻前用 `aa_preflop` 当场算各选择值多少，带上 `aa_reads.py` 记的本场每个对手入池率、加注率；单挑转牌/河牌在后台用求解器；单挑翻牌和多人底池在后台算你对各对手范围的胜率，再按 `range_multiway` 的规则给建议；求解器算不了时也用这个规则；轮到你 1 秒还没有建议就只看屏幕给标“粗略”的建议）、你行动后给这一步打分和本场记录 `aa_grading.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 前端（原生 HTML/JS，无构建步骤）：首页是“信号灯”窗口 `signal.html`（`signal_view.js` 算出要显示什么，`signal.js` 画出来，见 [设计说明](docs/design/signal-window.md)）；旧观察页 `index.html` 在 `/classic` |
 | `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围；`ranges.py` 推算每个对手的范围和你对他们的胜率，`multiway_bot.py` 的 `range_multiway` 用它打多人底池（`hu=1` 时也打单挑翻牌）；蘑菇池 `mushroom.py`）；翻前策略 `preflop_policy.py`（`aa_preflop`：按当前底池、价格、筹码和后面的人怎么应对算每个选择值多少筹码，随盲注结构、人数、蘑菇池自动变化；用 169 类起手牌对战胜率表 `preflop_equity_v1.json`）；`population.py` 里的 `aa_population` 按 `aa_preflop_stats_v1.json`（AA 真人翻前频率）调松；更难缠的对手 `opponents.py`（reg / maniac / nit），AA 真人桌 `aa_real.py`（`aa_real_stats_v1.json`）；对手读数 `reads.py`（入池率、加注率，`aa_preflop` 按它调整每个对手的翻前范围）；暴击局 `bomb.py`（牌桌 `reset(seed, bomb=筹码)`） |
 | `src/poker_engine/solver/` | 调用本机编译的 TexasSolver（常驻后台，一次算一条街）；求解器本身不在仓库里，用 `tools/setup_texassolver.sh` 安装 |
