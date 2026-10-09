@@ -44,6 +44,7 @@ from tools.check_aa_action_history import (  # noqa: E402
     skipped_seats, unexplained_rises, unrecorded_folds)
 
 HERO = "4"
+FLASH = 0.5             # seconds: your buttons this briefly while sitting out
 IN_HAND = ("active", "all_in")
 STALL = 1.0          # seconds between two shown frames that count as a stall
 STALE = 2.0          # the live window clears the table after this long
@@ -97,7 +98,10 @@ def cause(report):
 
 
 def decisions(rows, advice):
-    """Your turns: consecutive rows with your buttons on screen."""
+    """Your turns: consecutive rows with your buttons on screen. Buttons that
+    show up while your seat still sits out (waiting) and are gone within
+    ``FLASH`` seconds are not a turn: you were not dealt in yet (10/07: two
+    or three frames at a hand's start, twice; your real turn came later)."""
     result, current = [], None
     for row, report in zip(rows, advice):
         fields = row["fields"]
@@ -108,7 +112,9 @@ def decisions(rows, advice):
             current = {"pts": row["pts_seconds"],
                        "street": fields.get("street"), "reports": [],
                        "first_ready": None, "cards_read": False,
-                       "frame": row["processed"]}
+                       "frame": row["processed"],
+                       "seated": (fields.get("participants") or {}).get(HERO)
+                       != "waiting"}
             result.append(current)
         current["reports"].append(report)
         current["cards_read"] |= len([c for c in fields.get("hero") or () if c]) == 2
@@ -119,6 +125,8 @@ def decisions(rows, advice):
             current["advice"] = [option.get("action") for option in
                                  (report.get("advice") or [])[:1]]
         current["seconds"] = round(row["pts_seconds"] - current["pts"], 1)
+    result = [turn for turn in result
+              if turn.pop("seated") or turn.get("seconds", 0) >= FLASH]
     for turn in result:
         turn["pts"] = round(turn["pts"], 1)
         reports = turn.pop("reports")
