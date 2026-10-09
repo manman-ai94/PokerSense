@@ -490,3 +490,15 @@ def test_the_bets_before_the_first_action_skip_the_antes_and_a_missed_badge():
         row["fields"] = {**row["fields"], "street_wagers": wagers}
     assert hand_facts(found)["opening_wagers"] == {
         0: Decimal(1), 1: Decimal(2), 2: Decimal(4), 3: Decimal(2)}
+
+
+def test_a_bet_missed_before_a_fold_comes_from_the_seats_bet_on_the_table():
+    # Seat 5's flop bet of 10 is not read; seat 2 folds to it.
+    missed = ACTIONS[:7] + [(36, "flop", 2, "fold", "0")]
+    hand = {**facts(missed), "states": {2: "folded", 5: "active"}, "price": None,
+            "wagers": {5: Decimal(10)}}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(missed) + 1)
+    assert [(a["slot"], a["kind"], a["amount"]) for a in result["inferred"]] == [
+        (5, "raise", "10")]
+    assert replay_hand({**hand, "wagers": {}})["status"] == "stopped"
