@@ -100,6 +100,28 @@ def test_hand_facts_come_from_the_frame_log():
     assert found["opening_pot"] == Decimal(19)
 
 
+def test_an_unread_dealer_comes_from_the_blinds_on_the_table():
+    from poker_engine.desktop.aa_solver_input import blind_dealer
+    # Dealer 5: small blind 1 on seat 0, big blind 2 on seat 1, straddle 4.
+    found = rows()
+    for row in found:
+        row["fields"]["actions_v1"] = {**row["fields"]["actions_v1"], "dealer": None}
+        if row["processed"] >= 3:
+            row["fields"]["street_wagers"] = {"0": "1", "1": "2", "2": "4"}
+    facts = hand_facts(found)
+    assert facts["blind_dealer"] == 5
+    result = replay_hand(facts)
+    assert (result["status"], result["dealer"], result["dealer_source"]) == (
+        "ok", 5, "blinds")
+    # Two seats with a big blind in front (one posting on coming back), or a
+    # big blind not next to the small one: no dealer from the blinds.
+    seats = [0, 1, 2, 3, 4, 5]
+    two_bigs = {"street_wagers": {"0": "1", "1": "2", "3": "2"}}
+    assert blind_dealer([two_bigs], seats) is None
+    assert blind_dealer([{"street_wagers": {"0": "1", "2": "2"}}], seats) is None
+    assert blind_dealer([{"street_wagers": {"3": "1", "4": "2"}}], [0, 2, 3, 4]) == 2
+
+
 def test_the_last_hands_board_still_on_screen_is_not_this_hands_board():
     found = rows()
     for row in found[3:6]:                  # the last hand's cards, not cleared yet
@@ -208,6 +230,23 @@ def test_a_missed_fold_is_filled_in_from_the_table():
     assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
     assert [(a["slot"], a["kind"], a["source"]) for a in result["inferred"]] == [
         (4, "fold", "inferred")]
+
+
+def test_a_check_missed_before_the_next_seats_bet_is_filled_in():
+    # Seat 2's flop check is not read; seat 5 bets 10 and seat 2 calls.
+    call = (40, "flop", 2, "call", "10")
+    missed = ACTIONS[:6] + [ACTIONS[7], call]
+    hand = {**facts(missed), "states": {seat: "active" for seat in range(6)}}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
+    assert [(a["slot"], a["kind"]) for a in result["inferred"]] == [(2, "check")]
+    # Read a moment late, after the bet: the same check, not a second one.
+    late = ACTIONS[:6] + [ACTIONS[7], (36, "flop", 2, "check", "0"), call]
+    result = replay_hand({**hand, "actions": facts(late)["actions"]})
+    assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
+    # A bet of seat 2's own on the table: it did not check.
+    result = replay_hand({**hand, "board": BOARD, "wagers": {2: Decimal(6)}})
+    assert result["status"] == "stopped"
 
 
 def test_a_bet_read_after_the_calls_is_moved_before_them():
@@ -356,6 +395,16 @@ BOMB_ACTIONS = [(30 + seat, "flop", seat, "check", "0") for seat in range(5)] + 
 
 def bomb_hand(pot=Decimal(84), actions=BOMB_ACTIONS):
     return {**facts(actions=actions), "opening_pot": pot, "wagers": {}, "price": None}
+
+
+def test_an_all_in_short_of_a_full_raise_is_the_seats_last_chips():
+    # Seat 5 bets 10 on the flop; seat 2, with no stack reading, goes all in
+    # for 12: short of a raise to 20, which only a seat's last chips may be.
+    short = ACTIONS[:8] + [(34, "flop", 2, "all_in", "12")]
+    result = replay_hand(facts(actions=short))
+    assert (result["status"], result["replayed"]) == ("ok", len(short))
+    seen = result["arena"].observe(5)
+    assert (seen["stacks"]["2"], seen["bets"]["2"], seen["actor"]) == ("0", "12", 5)
 
 
 def test_a_bomb_pot_is_replayed_from_the_flop():

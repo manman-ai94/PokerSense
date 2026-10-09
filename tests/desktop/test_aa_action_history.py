@@ -212,6 +212,45 @@ def test_a_call_after_an_all_in_owes_the_all_in():
                                           (3, "call", "448", "pot_rise")]
 
 
+def unread_pot_bet(street="flop", frames=40, back=None):
+    """Seat 3 bets 44 on ``street`` while the pot cannot be read; its bet on
+    the table reads 44. With ``back`` the pot comes back at that value."""
+    pots = ["29"] * 5 + [None] * frames + ([back] * 10 if back else [])
+    return [{**payload(pot, street),
+             "street_wagers": {"3": "44" if i >= 7 else None},
+             "action_history_candidate": [event(6, 3, "aggressive")] if i > 6 else []}
+            for i, pot in enumerate(pots)]
+
+
+def test_a_bet_while_the_pot_is_unreadable_is_priced_by_the_bet_on_the_table():
+    # 10/09: bets and all-ins waited for an unreadable pot, and the replay
+    # stopped on a raise without an amount at your turn.
+    hand = feed(AAActionHistory(), unread_pot_bet())
+    assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("44", "wager")]
+    assert hand["pending_amounts"] == 0
+    # The pot read again settles it: the rise holds just that bet.
+    hand = feed(AAActionHistory(), unread_pot_bet(back="73"))
+    assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("44", "pot_rise")]
+    # Before the flop the blinds are in the bet too: it waits for the pot.
+    hand = feed(AAActionHistory(), unread_pot_bet("preflop"))
+    assert [a["amount_source"] for a in hand["actions"]] == ["pending"]
+
+
+def test_an_all_in_while_the_pot_is_unreadable_is_confirmed_by_the_bet_on_the_table():
+    frames = [{**item, "pot": {"value": None if i >= 10 else item["pot"]["value"]},
+               "street_wagers": {"1": "448" if i >= 10 else None}}
+              for i, item in enumerate(shove())]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["kind"], a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("all_in", "448", "stack")]
+    # Without the bet read it still waits for the pot.
+    frames = [{**item, "street_wagers": {}} for item in frames]
+    hand = feed(AAActionHistory(), frames)
+    assert [a["amount_source"] for a in hand["actions"]] == ["pending"]
+
+
 def test_a_moment_with_nobody_read_after_the_flop_does_not_end_the_hand():
     history = AAActionHistory()
     feed(history, [payload("23")] * 3 + [payload("40", "flop")] * 3)

@@ -140,7 +140,7 @@ class AAReads:
             return False
         replay = replay_hand(facts)
         arena = replay["arena"]
-        if arena is None or replay["dealer_source"] != "reader":
+        if arena is None or replay["dealer_source"] not in ("reader", "blinds"):
             return False
         bomb = arena.observe(arena.occupied_seats[0])["bomb_pot"]
         entries = {} if bomb else preflop_entries(arena)   # none in a bomb pot

@@ -208,6 +208,8 @@ class AAActionHistory:
             self._settle(action, now)
             return
         found = self._rise(action["frame"], now)
+        if found == "pending" and self._from_wager(action):
+            return
         if found == "pending":
             action["amount_source"] = "pending"
         elif found is not None:
@@ -234,12 +236,55 @@ class AAActionHistory:
             if found[1] <= owed:
                 action["amount"], action["amount_source"] = str(found[1]), "pot_rise"
 
+    def _from_wager(self, action):
+        """While the pot is unreadable, price a call or raise after the flop by
+        the seat's bet on the table: what it has in on the street minus what
+        its earlier actions there put in. Its pot rise is settled later, as
+        for a call the betting prices. Not before the flop (the blinds are in
+        the bet but not in the actions), nor when a later action of the seat
+        on the street may be in the bet too. True when priced.
+
+        On 10/09 the pot went unreadable around several bets and all-ins
+        while the bets on the table were read; the action then waited for
+        the pot, and the replay stopped on a raise without an amount (12
+        hands; 5 of your decisions got only the rough advice)."""
+        if action["street"] not in POSTFLOP:
+            return False
+        level = self._wager(action)
+        mine = [other for other in self._hand["actions"]
+                if other is not action and other["slot"] == action["slot"]
+                and other["street"] == action["street"] and other["kind"] in PRICED]
+        if level is None or any(other["frame"] > action["frame"] for other in mine):
+            return False
+        if any(other["amount"] is None for other in mine):
+            return False
+        chips = level - sum(Decimal(other["amount"]) for other in mine)
+        if chips <= 0:
+            return False
+        action["amount"], action["amount_source"] = str(chips), "wager"
+        action["owed"] = chips
+        return True
+
+    def _wager(self, action):
+        """The most ``action``'s seat was read to have in on its street, or None."""
+        known = self._wagers.get(str(action["slot"]))
+        if known is None or known[:2] != (self._hand["hand_id"], action["street"]):
+            return None
+        return known[2]
+
     def _price_all_in(self, action, now):
         """An all-in seen from the stack takes the chips it had out of the
         nearest rise (the rise wins when smaller). Without a rise it is not
-        confirmed and is dropped."""
+        confirmed and is dropped. While the pot is unreadable, the seat's bet
+        on the table holding at least those chips confirms it at once (its
+        rise is settled later): on 10/09 three all-ins waited for the pot at
+        your turn and got only the rough advice."""
         found = self._rise(action["frame"], now)
         if found == "pending":
+            level = self._wager(action)
+            if level is not None and level >= action["stack"]:
+                action["amount"] = str(action["stack"])
+                action["amount_source"], action["owed"] = "stack", action["stack"]
             return
         if found is None:
             action["amount_source"] = "unconfirmed"
