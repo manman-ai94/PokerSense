@@ -85,6 +85,11 @@ class Inline:
         return future
 
 
+def still():
+    """A clock that never moves: only frames count toward the rough rule."""
+    return 0.0
+
+
 def run(advice, frames, **options):
     return [advice.observe(payload(frame, **options), frame) for frame in frames]
 
@@ -121,7 +126,7 @@ def test_an_empty_or_unreadable_range_gives_advice_without_range_equity():
 
 def test_the_solve_runs_in_the_background_once_per_decision():
     executor = Inline(finish=False)
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor, clock=still)
     results = run(advice, range(50))
     # The solve and the range rule next to it, once.
     assert results[-1]["status"] == "computing" and executor.submitted == 2
@@ -272,12 +277,12 @@ def test_checked_to_in_a_multiway_pot_bets_or_checks_by_the_share():
 
 
 def test_multiway_without_ranges_or_your_stack_gives_the_share_or_nothing(monkeypatch):
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     monkeypatch.setattr(advice, "_ranges", lambda observation: None)
     report = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
     assert (report["status"], report["reason"]) == ("idle", "more_than_one_opponent")
     assert "range_equity" not in report
-    unread = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    unread = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     rows = [three_handed(frame) for frame in range(50)]
     for row in rows:
         row["stacks"]["4"] = {"value": None}
@@ -401,14 +406,14 @@ def test_when_the_solve_cannot_answer_the_range_rule_does(monkeypatch):
     assert (graded["kind"], graded["solver_gave_up"]) == ("multiway",
                                                           "own_hand_not_in_range")
     # Without the range rule's action the reason shows until the rough rule.
-    blind = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
+    blind = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline(), clock=still)
     monkeypatch.setattr(blind, "_ranges", lambda observation: None)
     result = run(blind, range(50))[-1]
     assert (result["status"], result["reason"]) == ("abstain", "own_hand_not_in_range")
 
 
 def test_a_hand_that_does_not_replay_abstains():
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     result = run(advice, range(50), drop=(0,))[-1]      # seat 3's fold was missed
     assert (result["status"], result["reason"]) == ("abstain", "not_this_seats_turn")
 
@@ -440,7 +445,7 @@ def test_your_buttons_before_the_last_action_is_read():
 
 
 def test_a_hand_joined_midway_gets_no_advice():
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     result = run(advice, range(50), complete=False)[-1]
     assert (result["status"], result["reason"]) == ("abstain", "hand_incomplete")
 
@@ -454,8 +459,8 @@ def heads_up(row, wagers=None):
     return row
 
 
-def test_a_second_into_your_turn_without_advice_the_rough_rule_answers():
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+def test_a_moment_into_your_turn_without_advice_the_rough_rule_answers():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     results = [advice.observe(heads_up(payload(frame, complete=False)), frame)
                for frame in range(60)]
     # Your turn shows at 42; for ROUGH_FRAMES frames the reason, then an action.
@@ -477,12 +482,57 @@ def test_a_second_into_your_turn_without_advice_the_rough_rule_answers():
 def test_the_rough_rule_waits_while_the_proper_advice_is_coming():
     # Work that is still running past ROUGH_FRAMES gets the rough rule next to it.
     executor = Inline(finish=False)
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor, clock=still)
     results = run(advice, range(60))
     assert executor.submitted == 3 and results[-1]["status"] == "computing"
     # Advice that comes in time is never replaced.
-    done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    done = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
     assert {r.get("kind", "solver") for r in run(done, range(60))[42:]} == {"solver"}
+
+
+def test_the_rough_rule_does_not_wait_behind_the_solve():
+    # On 10/08 and 10/07 the heads-up solve and its range rule held both
+    # workers, and the rough rule queued behind them: your turn stayed blank.
+    busy, own = Inline(finish=False), Inline()
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), busy, rough_executor=own, clock=still)
+    results = run(advice, range(60))
+    assert busy.submitted == 2 and own.submitted == 1     # the solve, the range rule
+    assert [r["status"] for r in results[42:52]] == ["computing"] * 10
+    rough = results[52]
+    assert (rough["status"], rough["kind"], rough["rough_for"]) == (
+        "ready", "rough", "computing")
+    # On its own the advice starts a worker for the rough rule apart from the
+    # solve's.
+    alone = AASolverAdvice(Bot({"CALL": 1.0}))
+    assert alone._submit_rough(lambda: "rough").result(timeout=5) == "rough"
+    assert alone._executor is None and alone._rough_executor is not None
+    alone._rough_executor.shutdown()
+
+
+def test_a_stall_counts_toward_the_rough_rule():
+    # Frames are dropped while recognition stalls: the clock still runs.
+    now = [0.0]
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                            rough_executor=Inline(), clock=lambda: now[0])
+    results = []
+    for frame in range(42, 46):
+        now[0] = {44: 1.1, 45: 1.2}.get(frame, 0.0)        # 1.1 s between 43 and 44
+        results.append(advice.observe(payload(frame), frame))
+    assert [r["status"] for r in results] == ["computing"] * 2 + ["ready"] * 2
+    assert results[2]["kind"] == "rough"
+
+
+def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch):
+    call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
+    answers = iter([None, call])
+    monkeypatch.setattr(aa_solver_advice, "rough_advice",
+                        lambda fields, cards, street: next(answers))
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                            rough_executor=Inline(), clock=still)
+    results = run(advice, range(60))
+    # No price on the first ask (52): asked again RETRY frames on.
+    assert [r["status"] for r in results[52:55]] == ["computing"] * 3
+    assert (results[55]["status"], results[55]["kind"]) == ("ready", "rough")
 
 
 def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",

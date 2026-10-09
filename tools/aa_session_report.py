@@ -74,10 +74,16 @@ class _Solved:
 
 
 def replayed_advice(rows):
-    """Each row's advice worked out again with the current code."""
+    """Each row's advice worked out again with the current code, on the
+    recording's clock (a stall the frames skip still counts)."""
     from poker_engine.desktop.aa_solver_advice import AASolverAdvice
-    advice = AASolverAdvice(_Solved(), _Now())
-    return [advice.observe_fields(row["fields"], row["processed"]) for row in rows]
+    now = [0.0]
+    advice = AASolverAdvice(_Solved(), _Now(), clock=lambda: now[0])
+    result = []
+    for row in rows:
+        now[0] = row.get("pts_seconds") or now[0]
+        result.append(advice.observe_fields(row["fields"], row["processed"]))
+    return result
 
 
 def cause(report):

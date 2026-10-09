@@ -53,13 +53,17 @@ current decision stands:
 - ``abstain``: this hand cannot be used (the reason says why).
 
 Your turn is never left without an action while your cards and the board
-are read: when none has come ``ROUGH_FRAMES`` frames (about a second) into
-your turn (the hand cannot be replayed on the table, say joined midway, an
-action missed or four players; the history still waits for an action; or the
-work takes longer), a rough rule answers from the screen alone (``kind``
-``rough``). Each opponent still in holds the top ``CALLER_SHARE`` of
-starting hands, the one with the most chips in on this street the top
-``BETTOR_SHARE`` when that is a bet or raise to you; your share of the pot
+are read: when none has come ``ROUGH_SECONDS`` into your turn (or
+``ROUGH_FRAMES`` frames, whichever is first; the hand cannot be replayed on
+the table, say joined midway, an action missed or four players; the history
+still waits for an action; or the work takes longer), a rough rule answers
+from the screen alone (``kind`` ``rough``). It runs on a worker of its own:
+in the solve's two it waited behind a heads-up solve and its range rule,
+and the clock counts a stall the frames do not (10/08 and 10/07 measured at
+real pace: four of your turns, most over a second long, got nothing). Each
+opponent still in holds the top ``CALLER_SHARE`` of starting hands, the one
+with the most chips in on this street the top ``BETTOR_SHARE`` when that is
+a bet or raise to you; your share of the pot
 against them, against the price on your button, gives check when it is
 free, call when the share is at least what the call needs (``required``),
 fold otherwise. Before the flop only ``PREFLOP_REALIZE`` of the share counts
@@ -144,11 +148,12 @@ PROVISIONAL_BASIS = ("equity against the opponent's range (a population model fi
                      "range_multiway rule with its heads-up cuts, until the heads-up "
                      "solve is done; for study only")
 WORKERS = 2                     # the solve and the range rule next to it
-ROUGH_FRAMES = 10               # frames of your turn without advice (about a second)
+ROUGH_SECONDS = 0.6             # of your turn without advice
+ROUGH_FRAMES = 10               # or frames, where nothing gives the time
 CALLER_SHARE = 0.4              # rough rule: each opponent's top 40% of hands
 BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised to you
 PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position realize
-ROUGH_TRIALS = 4000
+ROUGH_TRIALS = 1500              # under 0.1 s with seven opponents
 ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 40% of "
                "starting hands, the top 20% for the one who bet or raised to you) "
                "against the price on your button, from the screen alone: a rough rule "
@@ -279,9 +284,14 @@ def rough_advice(fields, cards, street):
 class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
-    def __init__(self, bot=None, executor=None, preflop=None, model=None):
+    def __init__(self, bot=None, executor=None, preflop=None, model=None,
+                 rough_executor=None, clock=time.monotonic):
         self._bot = bot
         self._executor = executor
+        # The rough rule's own worker; an executor given for the solve serves
+        # it too unless one is given for it.
+        self._rough_executor = rough_executor or executor
+        self._clock = clock
         self._preflop = preflop
         self._model = model
         self.reset()
@@ -324,7 +334,7 @@ class AASolverAdvice:
             self._turn_from = None
             return self._report("idle", "not_your_turn")
         if self._turn_from is None:
-            self._turn_from = frame
+            self._turn_from = (frame, self._clock())
         street = fields.get("street")
         if street not in ("preflop", "flop", *SOLVED):
             return self._report("idle", "street_not_covered", street=street)
@@ -337,9 +347,14 @@ class AASolverAdvice:
         if job is None or retry:
             self._jobs[key] = self._start(fields, cards, frame, key)
         report = self._outcome(key, street)
-        if report["status"] == "ready" or frame - self._turn_from < ROUGH_FRAMES:
+        if report["status"] == "ready" or not self._rough_due(frame):
             return report
-        return self._rough_outcome(key, fields, cards, street, report) or report
+        return self._rough_outcome(key, fields, cards, street, frame, report) or report
+
+    def _rough_due(self, frame):
+        """Long enough into your turn for the rough rule."""
+        first, since = self._turn_from
+        return frame - first >= ROUGH_FRAMES or self._clock() - since >= ROUGH_SECONDS
 
     # -- jobs -------------------------------------------------------------------
 
@@ -382,6 +397,13 @@ class AASolverAdvice:
             self._executor = ThreadPoolExecutor(max_workers=WORKERS,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(function, *args)
+
+    def _submit_rough(self, function, *args):
+        """On a worker of its own: in the solve's pool it waits for the solve."""
+        if self._rough_executor is None:
+            self._rough_executor = ThreadPoolExecutor(max_workers=1,
+                                                      thread_name_prefix="rough-advice")
+        return self._rough_executor.submit(function, *args)
 
     def _with_reads(self, observation):
         """``observation`` with each opponent's reads so far, when there are any."""
@@ -536,7 +558,7 @@ class AASolverAdvice:
     def _rough_done(self, key):
         """The rough rule's action for this decision, or None (not asked, not
         done, or the screen does not give it what it needs)."""
-        job = self._rough.get(key)
+        job = self._rough.get(key, (None,))[0]
         if job is None or not job.done():
             return None
         try:
@@ -545,10 +567,15 @@ class AASolverAdvice:
             rough = None
         return rough and {**rough, "status": "ready"}
 
-    def _rough_outcome(self, key, fields, cards, street, report):
-        """The rough rule's report for this decision, or None."""
-        if key not in self._rough:
-            self._rough[key] = self._submit(rough_advice, fields, cards, street)
+    def _rough_outcome(self, key, fields, cards, street, frame, report):
+        """The rough rule's report for this decision, or None. Asked again,
+        ``RETRY`` frames on, with the screen as it is then when the frame
+        asked did not give it what it needs (the price came a moment later)."""
+        job, asked = self._rough.get(key, (None, None))
+        if job is None or (job.done() and self._rough_done(key) is None
+                           and frame >= asked + RETRY):
+            job = self._submit_rough(rough_advice, fields, cards, street)
+            self._rough[key] = job, frame
         rough = self._rough_done(key)
         if rough is None:
             return None
