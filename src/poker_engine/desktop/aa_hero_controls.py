@@ -17,6 +17,15 @@ before reading, so the strokes look like the ones the reader knows.
 
 A value is reported once two consecutive observations agree and the Hero is
 the current actor. No absent button is interpreted as a legal check.
+
+The reader knows few 6s and 7s, none from the button: on 10/09 call prices
+with a 6 or a 7 went unread on 27-29% of frames against 3-4% for the other
+digits (74 unread for 13 seconds facing an all in). A reading the reader is
+not sure of is taken when it is exactly the price the chips in front give
+(the most an opponent has in on this street less your own), so a doubtful
+digit is never taken alone; on the 10/09 log that price agreed with every
+one of 2959 sure readings it could be checked against (the 41 that did not
+had an opponent's chips unread, which gives a different number).
 """
 
 from dataclasses import asdict
@@ -99,6 +108,22 @@ def button_text(image):
     return {"kind": None, "reason": "unexpected_button_text"}
 
 
+def _wager_price(row):
+    """What calling costs by the chips in front: the most an opponent has in
+    on this street less your own; None when none is read or it is not more."""
+    wagers = {}
+    for seat, value in (row.get("street_wagers") or {}).items():
+        value = value.get("value") if isinstance(value, dict) else value
+        try:
+            wagers[str(seat)] = Decimal(str(value)) if value is not None else None
+        except InvalidOperation:
+            wagers[str(seat)] = None
+    top = max((value for seat, value in wagers.items()
+               if seat != "4" and value is not None), default=None)
+    price = top - (wagers.get("4") or 0) if top is not None else None
+    return price if price is not None and price > 0 else None
+
+
 def _hero_stack(row):
     value = ((row.get("stacks") or {}).get("4") or {})
     value = value.get("value") if isinstance(value, dict) else value
@@ -138,6 +163,11 @@ class AAHeroControls:
         if kind == "call":
             diagnostic = asdict(self.bank.diagnose(text["digits"]))
             value, raw = diagnostic["value"], diagnostic["raw_text"]
+            price = _wager_price(row)
+            if (value is None and raw and raw.isdigit() and not raw.startswith("0")
+                    and price is not None and Decimal(raw) == price):
+                value = raw
+                diagnostic["value_source"] = "doubtful_reading_matches_chips_in_front"
             if value is not None and Decimal(value) <= 0:
                 value = None
         elif kind == "check":

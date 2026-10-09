@@ -112,6 +112,34 @@ def test_button_price_requires_positive_controls_actor_and_stability(monkeypatch
     assert reader.observe(image, row)["visible"] is False
 
 
+def test_a_doubtful_price_is_taken_only_when_the_chips_in_front_give_it(monkeypatch):
+    # 10/09 live: "74 跟注" facing an all in of 124 with 50 in front went
+    # unread for 13 seconds; the reader was not sure of the 7.
+    image = green_button(*CALL_BUTTON)
+    bank = SimpleNamespace(
+        diagnose=lambda patch: GrayRead(None, "74", "ambiguous", ()))
+    reader = aa_hero_controls.AAHeroControls(bank)
+    monkeypatch.setattr(aa_hero_controls, "hero_turn_candidate",
+                        lambda image: {"hero_turn": True})
+    row = {"frame": 0, "scene_supported": True, "current_actor": 4,
+           "street_wagers": {"0": "124", "1": None, "4": "50"}}
+    assert reader.observe(image, row)["call_amount"] is None       # once
+    row["frame"] = 1
+    result = reader.observe(image, row)
+    assert (result["call_amount"], result["price_confirmed"]) == ("74", True)
+    assert result["diagnostic"]["value_source"] == (
+        "doubtful_reading_matches_chips_in_front")
+    # Anything else stays unread: another number, your own chips unread
+    # (the chips give 124), or no opponent's chips read.
+    for frame, wagers in ((10, {"0": "124", "4": "40"}), (20, {"0": "124", "4": None}),
+                          (30, {"0": None, "4": "50"})):
+        reader.observe(image, {**row, "frame": frame, "street_wagers": wagers})
+        result = reader.observe(image, {**row, "frame": frame + 1,
+                                        "street_wagers": wagers})
+        assert result["call_amount"] is None
+        assert result["reason"] == "price_or_actor_unknown"
+
+
 @pytest.mark.parametrize("bands, button, amount", [
     (((867, 881, 354, 366), (867, 881, 370, 383)), "check", "0"),    # "让牌"
     (((868, 880, 349, 357), (868, 880, 361, 362), (868, 880, 365, 366),
