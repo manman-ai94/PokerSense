@@ -34,6 +34,11 @@ def test_decisions_advice_causes_and_stalls_are_counted():
     assert counts == (2, 2, 1)
     assert summary["no_advice_causes"] == {"idle:your_cards_not_read": 1}
     assert summary["stalls_over_2s"] == 1
+    # One hand of two had advice on every one of your decisions; neither
+    # went past the flop.
+    assert summary["fully_advised"] == {"hands": 2, "advised": 1, "past_preflop": 0,
+                                        "past_preflop_advised": 0}
+    assert summary["advised_by_kind"] == {"preflop": 1}
     first, second = report["hands"]
     assert first["decisions"][0]["first_ready"] == 0.1
     assert first["your_cards"] == "As Kd" and first["your_cards_readings"] == 1

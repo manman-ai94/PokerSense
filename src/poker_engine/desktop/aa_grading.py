@@ -318,6 +318,8 @@ class AAGrades:
                     self._rows.append(row)
 
     def _row(self, spot, outcome, kind, amount):
+        if outcome.get("kind") == "rough":       # advice, too rough to grade by
+            return None
         stack = _decimal(spot["stack"])
         to_call = _decimal(outcome.get("to_call"))
         if to_call is None:

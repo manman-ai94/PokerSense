@@ -16,7 +16,10 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   takes one to several seconds (on 10/08 you acted before 6 solves were
   done, one river solve ran past 13 seconds), so the range rule below works
   out an action next to it, in a fraction of a second: until the solve is
-  done that is the advice, marked ``provisional``.
+  done that is the advice, marked ``provisional``. When the solve cannot
+  answer (the street began with more than two players, your hand is not in
+  the range your play implies, a bet the tree has no branch for), the range
+  rule's action stays the advice, with ``solver_gave_up`` saying why.
 
 - After the flop with more than one opponent there is no solver, and on the
   heads-up flop a solve takes about a minute. Your share of the pot against
@@ -49,6 +52,23 @@ current decision stands:
 - ``ready``: the actions with their frequencies;
 - ``abstain``: this hand cannot be used (the reason says why).
 
+Your turn is never left without an action while your cards and the board
+are read: when none has come ``ROUGH_FRAMES`` frames (about a second) into
+your turn (the hand cannot be replayed on the table, say joined midway, an
+action missed or four players; the history still waits for an action; or the
+work takes longer), a rough rule answers from the screen alone (``kind``
+``rough``). Each opponent still in holds the top ``CALLER_SHARE`` of
+starting hands, the one with the most chips in on this street the top
+``BETTOR_SHARE`` when that is a bet or raise to you; your share of the pot
+against them, against the price on your button, gives check when it is
+free, call when the share is at least what the call needs (``required``),
+fold otherwise. Before the flop only ``PREFLOP_REALIZE`` of the share counts
+(the betting still to come; ``aa_preflop`` counts out of position the same),
+unless the call puts you all in. ``rough_for`` is why the other advice is not there; it
+replaces the rough one as soon as it comes. (On 10/08 the window left at
+least one of your decisions without advice in 50 of the 71 hands you
+played.)
+
 The pot the solver sees is corrected to the pot on screen: the AA rules do
 not post extra chips such as a mushroom or bomb pot (preflop, extra chips on
 screen are added to the pot the policy sees). The mushroom pool read at the
@@ -77,6 +97,9 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
+from itertools import combinations
+import json
 import sys
 import time
 
@@ -90,12 +113,12 @@ from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
-from poker_engine.scoreboard.strength import range_equity
-from poker_engine.solver.texassolver import amount_of
+from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
+from poker_engine.solver.texassolver import amount_of, combo_key
 
 from .aa_reads import AAReads
 from .aa_session import frame_summary
-from .aa_solver_input import hand_facts, solver_observation
+from .aa_solver_input import RULES_PATH, hand_facts, solver_observation
 
 HERO = 4                        # your seat: bottom centre
 SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
@@ -121,6 +144,17 @@ PROVISIONAL_BASIS = ("equity against the opponent's range (a population model fi
                      "range_multiway rule with its heads-up cuts, until the heads-up "
                      "solve is done; for study only")
 WORKERS = 2                     # the solve and the range rule next to it
+ROUGH_FRAMES = 10               # frames of your turn without advice (about a second)
+CALLER_SHARE = 0.4              # rough rule: each opponent's top 40% of hands
+BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised to you
+PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position realize
+ROUGH_TRIALS = 4000
+ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 40% of "
+               "starting hands, the top 20% for the one who bet or raised to you) "
+               "against the price on your button, from the screen alone: a rough rule "
+               "for when the hand cannot be worked out; for study only")
+BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+IN_HAND = ("active", "all_in")
 
 
 def _read_hands(observation):
@@ -179,6 +213,69 @@ def range_report(observation, weights):
     return None if value is None else {"value": round(value, 3), "hands": hands}
 
 
+@lru_cache(maxsize=None)
+def top_range(share):
+    """{combo key: 1.0} for the top ``share`` of starting hands."""
+    return {combo_key(pair): 1.0 for pair in combinations(DECK, 2)
+            if combo_percentile(pair) <= share}
+
+
+@lru_cache(maxsize=1)
+def open_level():
+    """The most a player puts in before the flop without raising: the big
+    blind, or the straddle where the AA rules have one."""
+    rules = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    return max(Decimal(rules["big_blind"]), Decimal(rules.get("straddle_amount") or 0))
+
+
+def rough_advice(fields, cards, street):
+    """The rough rule's action for your turn, from the screen alone: your
+    share of the pot against fixed ranges, against the price on your button.
+    None when the board, the players still in or the price are not read."""
+    board = [card for card in fields.get("board") or () if card]
+    if street not in BOARD_CARDS or len(board) != BOARD_CARDS[street]:
+        return None
+    seats = fields.get("participants") or {}
+    opponents = sorted(seat for seat, state in seats.items()
+                       if seat != str(HERO) and state in IN_HAND)
+    pot = _decimal(fields.get("pot"))
+    if not opponents or pot is None:
+        return None
+    wagers = {seat: _decimal(value) or Decimal(0)
+              for seat, value in (fields.get("street_wagers") or {}).items()}
+    mine = wagers.get(str(HERO), Decimal(0))
+    top = max(wagers.get(seat, Decimal(0)) for seat in opponents)
+    controls = fields.get("hero_controls") or {}
+    if controls.get("button") == "check":
+        to_call = Decimal(0)
+    else:
+        # The button's price, else what the most chips in on this street need.
+        to_call = _decimal(controls.get("call_amount"))
+        if to_call is None and top > mine:
+            to_call = top - mine
+        if to_call is None:
+            return None
+    stack = _decimal((fields.get("stacks") or {}).get(str(HERO)))
+    all_in = stack is not None and 0 < stack <= to_call
+    if all_in:
+        to_call = stack
+    raised = to_call > 0 and top > mine and (street != "preflop" or top > open_level())
+    ranges = {seat: top_range(BETTOR_SHARE if raised and wagers.get(seat) == top
+                              else CALLER_SHARE) for seat in opponents}
+    value, counts = ranges_equity(cards, board, ranges, trials=ROUGH_TRIALS)
+    if value is None:
+        return None
+    realize = PREFLOP_REALIZE if street == "preflop" and not all_in else 1.0
+    value *= realize
+    required = to_call / (pot + to_call) if to_call > 0 else Decimal(0)
+    action = "check" if to_call == 0 else "call" if value >= required else "fold"
+    return {"kind": "rough", "advice": [{"action": action, "frequency": 1.0}],
+            "range_equity": {"value": round(value, 3), "opponents": len(opponents),
+                             "hands": None, "hands_each": counts, "realize": realize},
+            "required": round(float(required), 3), "pot": str(pot),
+            "to_call": str(to_call), "basis": ROUGH_BASIS}
+
+
 class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
@@ -194,6 +291,7 @@ class AASolverAdvice:
         numbers its frames, and so its hands, from 0 again, and may be
         another table."""
         self._rows, self._hand_id, self._jobs, self._quick = [], None, {}, {}
+        self._rough, self._turn_from = {}, None
         self.reads = AAReads()
 
     def __call__(self, payload, frame):
@@ -202,8 +300,10 @@ class AASolverAdvice:
     def settled(self):
         """This hand's id and its decisions so far: {(decision, street):
         outcome}, None while still being worked out. A solve that finishes
-        after you acted is here too, for grading what you did."""
-        return self._hand_id, {key: self._settle(key) for key in list(self._jobs)}
+        after you acted is here too, for grading what you did; where the
+        window showed the range rule's action instead (the solve could not
+        answer) or the rough rule's, that is the outcome."""
+        return self._hand_id, {key: self._shown(key) for key in list(self._jobs)}
 
     def observe(self, payload, frame):
         return self.observe_fields(frame_summary(payload), frame)
@@ -217,11 +317,14 @@ class AASolverAdvice:
         if history["hand_id"] != self._hand_id:
             self.reads.add_hand(self._rows)
             self._rows, self._hand_id = [], history["hand_id"]
-            self._jobs, self._quick = {}, {}
+            self._jobs, self._quick, self._rough = {}, {}, {}
         self._rows.append({"processed": frame, "fields": fields})
         del self._rows[:-MAX_ROWS]
         if not (fields.get("hero_controls") or {}).get("visible"):
+            self._turn_from = None
             return self._report("idle", "not_your_turn")
+        if self._turn_from is None:
+            self._turn_from = frame
         street = fields.get("street")
         if street not in ("preflop", "flop", *SOLVED):
             return self._report("idle", "street_not_covered", street=street)
@@ -233,7 +336,10 @@ class AASolverAdvice:
         retry = isinstance(job, dict) and frame >= job.get("retry_at", frame + 1)
         if job is None or retry:
             self._jobs[key] = self._start(fields, cards, frame, key)
-        return self._outcome(key, street)
+        report = self._outcome(key, street)
+        if report["status"] == "ready" or frame - self._turn_from < ROUGH_FRAMES:
+            return report
+        return self._rough_outcome(key, fields, cards, street, report) or report
 
     # -- jobs -------------------------------------------------------------------
 
@@ -415,15 +521,60 @@ class AASolverAdvice:
             self._jobs[key] = job
         return job
 
-    def _provisional(self, key):
-        """The range rule's advice worked out next to a running solve, or None."""
+    def _quick_rule_done(self, key):
+        """The range rule's advice worked out next to the solve, or None."""
         quick = self._quick.get(key)
         if quick is None or not quick.done() or quick.result().get("status") != "ready":
             return None
-        return {**quick.result(), "provisional": True, "basis": PROVISIONAL_BASIS}
+        return quick.result()
+
+    def _provisional(self, key):
+        """The range rule's advice while the solve is running, or None."""
+        quick = self._quick_rule_done(key)
+        return quick and {**quick, "provisional": True, "basis": PROVISIONAL_BASIS}
+
+    def _rough_done(self, key):
+        """The rough rule's action for this decision, or None (not asked, not
+        done, or the screen does not give it what it needs)."""
+        job = self._rough.get(key)
+        if job is None or not job.done():
+            return None
+        try:
+            rough = job.result()
+        except Exception:                  # never lose the other report over it
+            rough = None
+        return rough and {**rough, "status": "ready"}
+
+    def _rough_outcome(self, key, fields, cards, street, report):
+        """The rough rule's report for this decision, or None."""
+        if key not in self._rough:
+            self._rough[key] = self._submit(rough_advice, fields, cards, street)
+        rough = self._rough_done(key)
+        if rough is None:
+            return None
+        rough.pop("status")
+        return self._report("ready", None, street=street, decision=key[0],
+                            rough_for=report.get("reason") or report["status"], **rough)
+
+    def _answer(self, key):
+        """The decision's outcome, None while the solve runs: the range rule's
+        action when the solve cannot answer."""
+        job = self._settle(key)
+        if job is not None and job["status"] != "ready":
+            quick = self._quick_rule_done(key)
+            if quick is not None:          # the solve cannot answer; the rule does
+                job = {**quick, "solver_gave_up": job.get("reason")}
+        return job
+
+    def _shown(self, key):
+        """``_answer``, or the rough rule's action when it has none."""
+        job = self._answer(key)
+        if job is not None and job["status"] != "ready":
+            job = self._rough_done(key) or job
+        return job
 
     def _outcome(self, key, street):
-        job = self._settle(key) or self._provisional(key)
+        job = self._answer(key) or self._provisional(key)
         if job is None:
             return self._report("computing", None, street=street, decision=key[0])
         return self._report(job["status"], job.get("reason"), street=street,
@@ -431,7 +582,8 @@ class AASolverAdvice:
                                 "kind", "heads_up", "advice", "options", "cuts", "pot",
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
-                                "bomb_pot", "seconds", "basis", "provisional")
+                                "bomb_pot", "seconds", "basis", "provisional",
+                                "solver_gave_up")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

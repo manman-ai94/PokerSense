@@ -390,9 +390,20 @@ def test_the_opponents_reads_from_finished_hands_go_to_the_preflop_policy():
     assert advice.reads.snapshot() == {}
 
 
-def test_a_solver_fallback_abstains_with_its_reason():
+def test_when_the_solve_cannot_answer_the_range_rule_does(monkeypatch):
     advice = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
     result = run(advice, range(50))[-1]
+    shown = (result["status"], result["kind"], result["solver_gave_up"])
+    assert shown == ("ready", "multiway", "own_hand_not_in_range")
+    assert "provisional" not in result and "heads-up cuts" in result["basis"]
+    # Grading goes by the action shown.
+    graded = advice.settled()[1][(9, "turn", "call:10", 0)]
+    assert (graded["kind"], graded["solver_gave_up"]) == ("multiway",
+                                                          "own_hand_not_in_range")
+    # Without the range rule's action the reason shows until the rough rule.
+    blind = AASolverAdvice(Bot(error="own_hand_not_in_range"), Inline())
+    monkeypatch.setattr(blind, "_ranges", lambda observation: None)
+    result = run(blind, range(50))[-1]
     assert (result["status"], result["reason"]) == ("abstain", "own_hand_not_in_range")
 
 
@@ -432,6 +443,95 @@ def test_a_hand_joined_midway_gets_no_advice():
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     result = run(advice, range(50), complete=False)[-1]
     assert (result["status"], result["reason"]) == ("abstain", "hand_incomplete")
+
+
+def heads_up(row, wagers=None):
+    """``row`` with only you and seat 2 in, and the chips in front on this street."""
+    row["seat_states_v1"] = {"seats": {str(s): {"state": "active" if s in (2, 4) else
+                                                "folded" if s < 6 else "empty"}
+                                       for s in range(8)}}
+    row["street_wagers"] = wagers or {}
+    return row
+
+
+def test_a_second_into_your_turn_without_advice_the_rough_rule_answers():
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    results = [advice.observe(heads_up(payload(frame, complete=False)), frame)
+               for frame in range(60)]
+    # Your turn shows at 42; for ROUGH_FRAMES frames the reason, then an action.
+    assert {r["reason"] for r in results[42:52]} == {"hand_incomplete"}
+    rough = results[52]
+    assert (rough["status"], rough["kind"], rough["rough_for"]) == (
+        "ready", "rough", "hand_incomplete")
+    # Seat 2's bet of 10 into 35: the call needs 10 of 45.
+    assert (rough["to_call"], rough["pot"], rough["required"]) == ("10", "35", 0.222)
+    edge = rough["range_equity"]
+    assert edge["opponents"] == 1 and 0 < edge["value"] < 1
+    assert rough["advice"] == [{"action": "call" if edge["value"] >= 0.222 else "fold",
+                                "frequency": 1.0}]
+    assert "rough rule" in rough["basis"] and rough["advice_emitted"] is True
+    logged = frame_summary({"solver_advice_v1": rough})["solver_advice"]
+    assert logged["kind"] == "rough"
+
+
+def test_the_rough_rule_waits_while_the_proper_advice_is_coming():
+    # Work that is still running past ROUGH_FRAMES gets the rough rule next to it.
+    executor = Inline(finish=False)
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
+    results = run(advice, range(60))
+    assert executor.submitted == 3 and results[-1]["status"] == "computing"
+    # Advice that comes in time is never replaced.
+    done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    assert {r.get("kind", "solver") for r in run(done, range(60))[42:]} == {"solver"}
+
+
+def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",
+          wagers=None, board=None, stack="200"):
+    fields = {"board": board if board is not None else
+              BOARD.get(street, ["Ah", "Kd", "7c", "2s", "9h"]) + [None] * 5,
+              "participants": {"2": "active", "3": "folded", "4": "active"},
+              "pot": pot, "street_wagers": wagers or {},
+              "hero_controls": {"visible": True, "button": button,
+                                "call_amount": price}, "stacks": {"4": stack}}
+    return aa_solver_advice.rough_advice(fields, list(hero), street)
+
+
+def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():
+    free = rough(button="check", price=None)
+    assert (free["advice"][0]["action"], free["to_call"], free["required"]) == (
+        "check", "0", 0.0)
+    # 72 offsuit against a raise to 40 before the flop: 40 of 87 is too much.
+    junk = rough("preflop", hero=("7c", "2d"), price="40", pot="47",
+                 wagers={"2": "40", "4": "0"})
+    assert junk["advice"][0]["action"] == "fold" and junk["required"] == 0.46
+    aces = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
+                 wagers={"2": "40", "4": "0"})
+    assert aces["advice"][0]["action"] == "call"
+    # Before the flop 80% of the share counts (the betting still to come),
+    # all of it when the call puts you all in, for what you have.
+    assert aces["range_equity"]["realize"] == 0.8
+    short = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
+                  wagers={"2": "40", "4": "0"}, stack="30")
+    assert (short["to_call"], short["range_equity"]["realize"]) == ("30", 1.0)
+    assert short["range_equity"]["value"] > aces["range_equity"]["value"]
+    assert rough()["range_equity"]["realize"] == 1.0
+
+
+def test_the_one_who_bet_or_raised_to_you_holds_a_stronger_range():
+    plain = rough()["range_equity"]["value"]
+    bet = rough(wagers={"2": "10"})["range_equity"]["value"]
+    assert bet < plain
+    # Before the flop the straddle (4) is not a raise; more is.
+    limp = rough("preflop", price="2", pot="17", wagers={"2": "4", "4": "2"})
+    raise_ = rough("preflop", price="2", pot="17", wagers={"2": "5", "4": "3"})
+    assert raise_["range_equity"]["value"] < limp["range_equity"]["value"]
+
+
+def test_the_rough_rule_needs_the_board_and_a_price():
+    assert rough(board=["Ah", "Kd", "7c", None, None]) is None    # turn card unread
+    assert rough(price=None) is None                               # nothing to price
+    # The price from the chips in front when the button's is not read.
+    assert rough(price=None, wagers={"2": "10", "4": "0"})["to_call"] == "10"
 
 
 def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():

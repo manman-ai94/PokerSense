@@ -8,9 +8,12 @@ what you then did and whether it was the advised action, the betting-history
 checks of ``tools/check_aa_action_history.py``, whether the hand replays on
 the AA table (``aa_solver_input.check_hand``), the stalls (more than a second
 between two shown frames) and your chips from this hand's start to the next
-one's. The summary counts the causes over the session, most frequent first,
-splits hands and decisions by table size and adds up your chips by whether
-you followed the advice.
+one's. The summary leads with the hands in which every one of your decisions
+got advice, from the first before the flop to the last (``fully_advised``;
+also for the hands you played past the flop), then counts the decisions
+advised, by kind of advice (``rough`` is the rough rule's), and the causes
+over the session, most frequent first, splits hands and decisions by table
+size and adds up your chips by whether you followed the advice.
 
     PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py \\
         --frames <measurement>/frames.jsonl [--frames ...] [--out report.json]
@@ -105,7 +108,8 @@ def decisions(rows, advice):
         current["cards_read"] |= len([c for c in fields.get("hero") or () if c]) == 2
         if report.get("status") == "ready" and current["first_ready"] is None:
             current["first_ready"] = round(row["pts_seconds"] - current["pts"], 2)
-            current["kind"] = report.get("kind")
+            current["kind"] = report.get("kind") or (
+                "preflop" if current["street"] == "preflop" else "solver")
             current["advice"] = [option.get("action") for option in
                                  (report.get("advice") or [])[:1]]
         current["seconds"] = round(row["pts_seconds"] - current["pts"], 1)
@@ -302,10 +306,17 @@ def followed(hand):
     return "yes"
 
 
+def advised_throughout(hand):
+    """Every one of your decisions in ``hand`` got advice."""
+    return all(turn["first_ready"] is not None for turn in hand["decisions"])
+
+
 def summarize(hands):
     real = [h for h in hands if h["complete"] or h["you_in"]]
     turns = [t for h in real for t in h["decisions"]]
     advised = [t for t in turns if t["first_ready"] is not None]
+    played = [h for h in real if h["decisions"]]
+    deep = [h for h in played if any(t["street"] != "preflop" for t in h["decisions"])]
     yours = [h for h in real if h["you_in"]]
     causes = Counter(t["cause"] for t in turns if t.get("cause"))
     problems = Counter()
@@ -344,7 +355,11 @@ def summarize(hands):
             group = results.setdefault(followed(hand), Counter())
             group["hands"] += 1
             group["chips"] += hand["your_chips"]
-    return {"hands": len(real), "players": dict(sorted(Counter(
+    return {"fully_advised": {
+                "hands": len(played), "advised": sum(map(advised_throughout, played)),
+                "past_preflop": len(deep),
+                "past_preflop_advised": sum(map(advised_throughout, deep))},
+            "hands": len(real), "players": dict(sorted(Counter(
                 h["players"] for h in real).items())),
             "by_players": {size: dict(counts)
                            for size, counts in sorted(sizes.items())},
@@ -358,6 +373,7 @@ def summarize(hands):
             "your_hands": len(yours), "your_decisions": len(turns),
             "advised": len(advised),
             "advised_by_street": dict(Counter(t["street"] for t in advised)),
+            "advised_by_kind": dict(Counter(t["kind"] for t in advised)),
             "decisions_by_street": dict(Counter(t["street"] for t in turns)),
             "seconds_to_advice_median": sorted(t["first_ready"] for t in advised)[
                 len(advised) // 2] if advised else None,
