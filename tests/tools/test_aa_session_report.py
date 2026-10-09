@@ -4,14 +4,16 @@ from tools.aa_session_report import session_report
 
 
 def row(frame, pts, *, hand="hand_0", turn=False, cards=("As", "Kd"), advice=None,
-        published=None):
+        published=None, stack="100", pot=10, actions=()):
     return {"processed": frame, "pts_seconds": pts,
             "timing": {"published_at": pts if published is None else published},
             "fields": {"scene_supported": True, "hero": list(cards) if cards else None,
                        "participants": {"4": "active", "5": "active"},
                        "hero_controls": {"visible": turn}, "street": "preflop",
+                       "stacks": {"4": stack}, "pot": pot,
                        "actions_v1": {"hand_id": hand, "complete": False,
-                                      "start": "boundary", "dealer": 5, "actions": []},
+                                      "start": "boundary", "dealer": 5,
+                                      "actions": [list(a) for a in actions]},
                        "solver_advice": advice or {"status": "idle",
                                                    "reason": "not_your_turn"}}}
 
@@ -55,3 +57,26 @@ def test_a_card_read_two_ways_in_one_hand_is_flagged():
         item["fields"]["board"] = ["7c", "8d", "9h", None, None]
     summary = session_report([("log", rows)])["summary"]
     assert summary["hand_problems"] == {"your_cards_read_two_ways": 1}
+
+
+def test_what_you_did_your_chips_and_a_hand_split_in_two():
+    raise_ = {"status": "ready", "kind": "preflop", "advice": [{"action": "raise"}]}
+    you = [(5, "preflop", 4, "all_in", "100", "pot_rise")]
+    rows = ([row(f, f * 0.1, stack="100") for f in range(4)]
+            + [row(4, 0.4, turn=True, advice=raise_),
+               row(5, 0.5, actions=you, stack="0", pot=210)]
+            # The same hand goes on as if a new one had started.
+            + [row(f, f * 0.1, hand="hand_6", stack="0", pot=210) for f in range(6, 9)]
+            + [row(f, f * 0.1, hand="hand_9", cards=("2c", "7d"), stack="205")
+               for f in range(9, 12)])
+    report = session_report([("log", rows)])
+    first, second, third = report["hands"]
+    assert first["decisions"][0]["you_did"] == "raise"
+    assert first["decisions"][0]["followed"] is True
+    assert (first["your_chips"], second["your_chips"]) == (105.0, None)
+    assert second["split_from"] == "hand_0"
+    summary = report["summary"]
+    assert summary["hand_problems"]["hand_split_in_two"] == 1
+    assert summary["followed_advice"] == summary["advised_and_action_seen"] == 1
+    assert summary["your_chips_by_advice"]["yes"] == {"hands": 1, "chips": 105.0}
+    assert summary["by_players"][2]["advised"] == 1

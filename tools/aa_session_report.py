@@ -4,10 +4,13 @@ Reads the ``frames.jsonl`` logs that ``tools/measure_aa_realtime.py --advice``
 writes for the recordings of one session and reports, for every hand: the
 players, whether you were in it and your cards were read, each of your
 decisions (your buttons on screen) with the advice it got or why none came,
-the betting-history checks of ``tools/check_aa_action_history.py``, whether
-the hand replays on the AA table (``aa_solver_input.check_hand``) and the
-stalls (more than a second between two shown frames). The summary counts the
-causes over the session, most frequent first.
+what you then did and whether it was the advised action, the betting-history
+checks of ``tools/check_aa_action_history.py``, whether the hand replays on
+the AA table (``aa_solver_input.check_hand``), the stalls (more than a second
+between two shown frames) and your chips from this hand's start to the next
+one's. The summary counts the causes over the session, most frequent first,
+splits hands and decisions by table size and adds up your chips by whether
+you followed the advice.
 
     PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py \\
         --frames <measurement>/frames.jsonl [--frames ...] [--out report.json]
@@ -43,6 +46,8 @@ STALL = 1.0          # seconds between two shown frames that count as a stall
 STALE = 2.0          # the live window clears the table after this long
 LATE = 3.0           # advice later than this after your buttons showed
 MISREAD = 3          # frames a second reading of one card needs to count
+FIRST = 5            # frames at a hand's start that read its stacks
+AGGRESSIVE = {"bet": "raise", "raise": "raise", "all_in": "raise", "allin": "raise"}
 
 
 def load(path):
@@ -93,7 +98,8 @@ def decisions(rows, advice):
         if current is None:
             current = {"pts": round(row["pts_seconds"], 1),
                        "street": fields.get("street"), "reports": [],
-                       "first_ready": None, "cards_read": False}
+                       "first_ready": None, "cards_read": False,
+                       "frame": row["processed"]}
             result.append(current)
         current["reports"].append(report)
         current["cards_read"] |= len([c for c in fields.get("hero") or () if c]) == 2
@@ -111,6 +117,41 @@ def decisions(rows, advice):
         elif turn["first_ready"] > LATE:
             turn["cause"] = "advice_late"
     return result
+
+
+def plain(action):
+    """fold, check, call or raise (a bet or an all-in counts as a raise)."""
+    action = str(action or "").lower()
+    return AGGRESSIVE.get(action, action) or None
+
+
+def your_actions(turns, actions):
+    """What you did at each decision: your first action on its street from
+    its first frame on, and whether that was the advised action."""
+    for turn in turns:
+        frame = turn.pop("frame")
+        done = next((item for item in actions if str(item["slot"]) == HERO
+                     and item["street"] == turn["street"]
+                     and item["frame"] >= frame), None)
+        turn["you_did"] = None if done is None else plain(done["kind"])
+        if turn.get("advice") and turn["you_did"]:
+            turn["followed"] = plain(turn["advice"][0]) == turn["you_did"]
+    return turns
+
+
+def number(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def stack(rows, seat=HERO):
+    """The seat's stack at the start of these rows: the usual reading of
+    their first frames that read it."""
+    readings = [(row["fields"].get("stacks") or {}).get(seat) for row in rows]
+    readings = [value for value in readings if value not in (None, "")][:FIRST]
+    return number(Counter(readings).most_common(1)[0][0]) if readings else None
 
 
 def stalls(rows):
@@ -152,7 +193,7 @@ def hand_report(rows, advice, gaps=()):
         # of them is wrong.
         "your_cards_readings": sum(n >= MISREAD for n in cards.values()),
         "board_slots_with_two_readings": sum(map(flickers, boards)),
-        "decisions": decisions(rows, advice),
+        "decisions": your_actions(decisions(rows, advice), history["actions"]),
         "skipped_seats": len(skipped_seats(history)),
         "unexplained_pot_rises": len(unexplained_rises(history)),
         "unrecorded_folds": len(unrecorded_folds(history)),
@@ -160,7 +201,10 @@ def hand_report(rows, advice, gaps=()):
             "ok" if replay["status"] == "ok" else replay["reason"]),
         "bomb_pot": None if replay is None else replay.get("bomb_pot"),
         "stalls": [gap for gap in gaps
-                   if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]]}
+                   if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]],
+        "start_stack": stack(rows),
+        "most_pot": max(filter(None, map(number, (f.get("pot") for f in fields))),
+                        default=None)}
 
 
 def flickers(readings):
@@ -199,10 +243,60 @@ def session_report(logs, *, replay_advice=False):
             history = row["fields"].get("actions_v1")
             if history and row["fields"].get("scene_supported"):
                 grouped.setdefault(history["hand_id"], []).append((row, report))
+        ours = []
         for pairs in grouped.values():
             hand = hand_report([p[0] for p in pairs], [p[1] for p in pairs], gaps)
-            hands.append({"log": name, **hand})
+            ours.append({"log": name, **hand})
+        chips(ours)
+        hands += ours
     return {"summary": summarize(hands), "hands": hands}
+
+
+def chips(hands):
+    """Your chips from each hand's start to the next hand's start in the same
+    recording. A hand that goes on with your same two cards was split in two
+    (a new hand was started in the middle of it): both parts count as one, on
+    the first. A rise larger than the hand's biggest pot is a rebuy or a
+    misread and is left out."""
+    parts = []
+    for hand in hands:
+        last = parts[-1][-1] if parts else None
+        if last is not None and hand["your_cards"] and \
+                hand["your_cards"] == last["your_cards"]:
+            hand["split_from"] = last["hand_id"]
+            parts[-1].append(hand)
+        else:
+            parts.append([hand])
+    for whole, after in zip(parts, parts[1:] + [None]):
+        first = whole[0]
+        one = first["start_stack"]
+        two = after[0]["start_stack"] if after else None
+        most = max((h["most_pot"] for h in whole if h["most_pot"] is not None),
+                   default=None)
+        for hand in whole:
+            hand["your_chips"] = None
+        if not any(h["you_in"] for h in whole) or one is None or two is None:
+            continue
+        change = two - one
+        if change > 0 and (most is None or change > most):
+            continue
+        first["your_chips"] = round(change, 2)
+    for hand in hands:
+        del hand["start_stack"], hand["most_pot"]
+
+
+def followed(hand):
+    """Whether you followed the advice in this hand: "yes" when every advised
+    decision was followed, "no" when one was not, "no_advice" when a decision
+    had none, "no_decision" when you only folded out of turn or watched."""
+    turns = hand["decisions"]
+    if not turns:
+        return "no_decision"
+    if any(turn.get("followed") is False for turn in turns):
+        return "no"
+    if any(turn["first_ready"] is None for turn in turns):
+        return "no_advice"
+    return "yes"
 
 
 def summarize(hands):
@@ -229,8 +323,35 @@ def summarize(hands):
                 problems["hands_with_" + key] += 1
         if any(stall["seconds"] > STALE for stall in hand["stalls"]):
             problems["hands_with_stall_over_2s"] += 1
+    split = sum(bool(hand.get("split_from")) for hand in hands)
+    if split:
+        problems["hand_split_in_two"] = split
+    sizes = {}
+    for hand in real:
+        size = sizes.setdefault(hand["players"], Counter())
+        size["hands"] += 1
+        size["your_decisions"] += len(hand["decisions"])
+        size["advised"] += sum(t["first_ready"] is not None for t in hand["decisions"])
+        if hand["your_chips"] is not None:
+            size["your_chips"] += hand["your_chips"]
+    known = [t for t in advised if t.get("you_did")]
+    results = {}
+    for hand in real:
+        if hand["your_chips"] is not None:
+            group = results.setdefault(followed(hand), Counter())
+            group["hands"] += 1
+            group["chips"] += hand["your_chips"]
     return {"hands": len(real), "players": dict(sorted(Counter(
                 h["players"] for h in real).items())),
+            "by_players": {size: dict(counts)
+                           for size, counts in sorted(sizes.items())},
+            "advised_and_action_seen": len(known),
+            "followed_advice": sum(bool(t.get("followed")) for t in known),
+            "your_chips": round(sum(h["your_chips"] for h in real
+                                    if h["your_chips"] is not None), 2),
+            "your_chips_by_advice": {key: {"hands": value["hands"],
+                                           "chips": round(value["chips"], 2)}
+                                     for key, value in sorted(results.items())},
             "your_hands": len(yours), "your_decisions": len(turns),
             "advised": len(advised),
             "advised_by_street": dict(Counter(t["street"] for t in advised)),
