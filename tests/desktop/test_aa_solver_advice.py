@@ -686,6 +686,12 @@ def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
         sys.setswitchinterval(0.005)          # Python's default
         assert advice._submit(lambda: "done").result(5) == "done"
         assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+        # The rough rule's worker too, when it starts first.
+        rough = AASolverAdvice()
+        sys.setswitchinterval(0.005)
+        assert rough._submit_rough(lambda: "rough").result(5) == "rough"
+        assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+        rough._rough_executor.shutdown()
     finally:
         advice._executor.shutdown()
         sys.setswitchinterval(before)
