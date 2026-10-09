@@ -386,6 +386,14 @@ view = signalView(running({...rough({action: "check", frequency: 1.0}, {rough_fo
   required: 0}), hero_controls_v1: {visible: true, button: "check"}}), 0, {});
 assert.deepEqual([view.verdict.word, view.verdict.note, view.basis[1]],
   ["过牌", "粗略：你大概能赢 31%，不花钱就过牌", "建议还在算，先按价格粗略给一个"]);
+// After the flop the rough rule also bets and raises (10/09: it checked trips twice).
+view = signalView(running({...rough({action: "bet", frequency: 1.0, chips: "56", to: "56"},
+  {rough_for: "computing", to_call: "0", required: 0, range_equity: {value: 0.91, opponents: 1}}),
+  hero_controls_v1: {visible: true, button: "check"}}), 0, {});
+assert.deepEqual([view.tone, view.verdict.note], ["raise", "粗略：你大概能赢 91%，牌够好，下注"]);
+view = signalView(running(rough({action: "raise", frequency: 1.0, chips: "141", to: "141"},
+  {range_equity: {value: 0.8, opponents: 1}})), 0, {});
+assert.equal(view.verdict.note, "粗略：你大概能赢 80%，牌够好，加注");
 // An answer that changes during your turn says so and blinks a moment (10/09 live: the rough
 // answer showed first, the range rule changed it a second later, after you had acted on it).
 const shown = {};
