@@ -167,7 +167,7 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa
 5. 开 PR（中文：做了什么、怎么验证的、还剩什么），打开自动合并。
 6. 三项检查全绿就合并；绿了没自动合并就手动合并；红了查原因修到绿，不跳过、不关掉测试。
 7. 收尾：里程碑有变化就更新 ROADMAP；新学到的事实写进项目记忆；给主人一条中文结果：做成了什么、他能看到什么变化、需要他做什么。
-   每个合并的改动（本机或 GitHub）都在 [docs/WORKLOG.md](docs/WORKLOG.md) 顶部加一条中文记录，和改动一起提交：最多 5 行，写日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。只在本机工作时，它代替 PR 描述。文件太长时把旧记录移到 `docs/archive/`。
+   每个合并的改动都在 [docs/WORKLOG.md](docs/WORKLOG.md) 顶部加一条中文记录，和改动一起提交：最多 5 行，写日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。文件太长时把旧记录移到 `docs/archive/`。
 8. 不等主人说“继续”，按路线图顺序做下一件，开始前在项目里发一行说明。
 
 在哪里做：改代码、跑测试、开 PR、合并在云端或本地都可以，改完都推到 GitHub，以 `main` 为准。
@@ -179,16 +179,16 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa
 
 ## Git 与 GitHub 规则
 
-- `main` 是唯一的长期分支，并且受保护：不能直接推送或强推；只能通过 PR 合并，
-  并且三项检查 `review-hygiene`、`test (macos-latest)`、`test (windows-latest)`
-  必须通过，分支还要先和 main 同步。
+- 仓库：<https://github.com/manman-ai94/PokerSense>（公开）。旧仓库 `xiaoyangpeng1994-create/PokerSense`
+  的账号 2026-10-07 被暂停，2026-10-09 起改用这个新仓库，旧仓库不再推送。
+- `main` 是唯一的长期分支：不直接推送或强推，只通过 PR 合并；三项检查 `review-hygiene`、
+  `test (macos-latest)`、`test (windows-latest)` 全绿、分支和 main 同步后再合并。
 - 固定流程：从最新 `main` 开短分支 → 提交 → 推送 → 开 PR → CI 通过 →
-  用 merge commit 合并 → 删除分支（仓库已设置合并后自动删除）。
+  用 merge commit 合并 → 删除分支。
 - 分支命名：`feat/`、`fix/`、`docs/`、`chore/`、`research/` 加简短英文描述。
 - 一个 PR 只做一件事；main 必须随时能跑。PR 描述用中文写清：做了什么、怎么验证的、还剩什么。
 - 修改 `.github/workflows/` 需要 `gh` 带 `workflow` 权限。
-- 2026-10-06 大扫除前的所有分支，都保存为 `archive/<原分支名>` 标签；旧 Draft PR 已关闭。
-- **2026-10-07 起只在本机工作**：主人的 GitHub 账号被暂停，正在申诉。主人通知恢复之前，不推送、不碰 GitHub，在 Mac 上开分支、测试、提交；等推送的分支列在 `docs/WORKLOG.md` 的“等推送”里。
+- 2026-10-06 前的旧分支存为 `archive/<原分支名>` 标签（只在 Mac 和备份包里）；新仓库的分支保护和自动合并由主人决定。
 
 ## 文档规则
 

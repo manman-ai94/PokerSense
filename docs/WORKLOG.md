@@ -1,72 +1,12 @@
 # 工作记录
 
-每个合并的改动（本机或 GitHub）都在“记录”最上面加一条，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
-只在本机工作时，这里代替 PR 描述。文件太长时，把旧记录移到 `docs/archive/`。
+每个合并的改动都在“记录”最上面加一条，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
+文件太长时，把旧记录移到 `docs/archive/`。
 
-## 等推送（GitHub 恢复后）
+## 推送情况
 
-主人的 GitHub 账号 2026-10-07 约 22:43 UTC 被暂停，正在申诉。下面的分支只在本机，恢复后逐个推送、开 PR 或接着原来的 PR 合并；合并前都要先和 main 同步。
-
-| 分支 | 提交 | 对应 PR | 内容 |
-|---|---|---|---|
-| `feat/five-handed-tables` | 017b42e（合并提交 ad6d244，已并进本机 main） | #80 | 规则模型支持 5 人桌；冻结基线的指纹随之更新；窗口 5 人桌也给建议 |
-| `docs/roadmap-ui-first` | 158b3e6 | #81 | 路线图和本文件改成界面优先 |
-| `fix/readiness-kill-race` | f90bbe3 | #82 | 修 Mac 上偶发失败的进程组测试（还没开自动合并） |
-| `docs/worklog` | 本条提交 | 还没有 | 加本文件和记录规则 |
-| `feat/signal-window` | 056d6a0（已并进本机 main） | 还没有 | 新界面“信号灯”窗口第 1 步：首页换成大色块窗口，旧观察页移到 /classic |
-| `fix/signal-capture-device` | ca5f1ca（已并进本机 main） | 还没有 | 新窗口可以选采集卡设备编号 |
-| `fix/release-capture-when-idle` | 65d2a07（已并进本机 main） | 还没有 | 没有页面开着 3 分钟就关掉采集卡或录像回放 |
-| `feat/hu-range-equity` | 1d12deb（已并进本机 main） | 还没有 | 单挑转牌、河牌算你对对手范围的胜率，显示在新界面 |
-| `feat/grade-after-acting` | ded65f9（已并进本机 main） | 还没有 | 你行动后给这一步打分、本场记录、“行动后再看”开关 |
-| `feat/floating-window` | f81b5ea（已并进本机 main） | 还没有 | 置顶小窗（Chrome 画中画） |
-| `feat/record-in-window` | 6ef3278（已并进本机 main） | 还没有 | 窗口里直接录采集卡画面；Mac 上用 Chrome 打开窗口 |
-| `docs/roadmap-ui-done` | cfa05d3（已并进本机 main） | 还没有 | 路线图：界面重做完成，下一步多人底池与保险 |
-| `fix/multiway-note` | 74e34f5（已并进本机 main） | 还没有 | 多人底池的说明改成“只当上限参考” |
-| `feat/insurance-hint` | 8055dd5（已并进本机 main） | 还没有 | 全下以后提示保险别买，按 AA 赔率表算保险亏多少 |
-| `feat/multiway-range-equity` | 5974b34（已并进本机 main） | 还没有 | 翻牌和多人底池算你对各对手范围的胜率 |
-| `feat/scoreboard-by-flop` | 644a03d（已并进本机 main） | 还没有 | 记分牌按翻牌时几个人分开看成绩 |
-| `research/multiway-range-policy` | 0087a04（已并进本机 main） | 还没有 | 记分牌上按对手范围胜率打多人底池的 `range_multiway` |
-| `feat/multiway-advice` | 68f676f（已并进本机 main） | 还没有 | 实时窗口在几个人的底池给建议、行动后打分 |
-| `feat/scoreboard-mushroom` | 4562ca2（已并进本机 main） | 还没有 | 模拟牌桌按 AA 规则收蘑菇、小盲赢底池拿走蘑菇池 |
-| `feat/mushroom-pool-reader` | 5ebc565（已并进本机 main） | 还没有 | 实时窗口读出屏幕上的蘑菇池，你当小盲时翻前建议算上它 |
-| `feat/advice-every-step` | 26260ec（已并进本机 main） | 还没有 | 胜率方案第 1 步：漏读的动作按牌桌补上、单挑翻牌按胜率和价格给建议、路线图改成 3 步方案 |
-| `feat/recording-disk-guard` | b94d4d4（已并进本机 main） | 还没有 | 录像防止存满硬盘：剩不到 20 GB 不开始录，剩不到 10 GB 自动停，显示每段录像多大 |
-| `research/aa-population-stats` | aac6282（已并进本机 main） | 还没有 | AA 真人翻前翻后打法统计工具（云端统计线程做） |
-| `feat/tough-opponents` | dd318f7（已并进本机 main） | 还没有 | 记分牌更难缠的对手和一次跑完所有牌桌的体检（云端对手线程做） |
-| `feat/aa-real-table` | a771b28（合并提交 40a88ad，已并进本机 main） | 还没有 | 记分牌的“AA 真人桌”对手（云端对手线程做） |
-| `fix/dealer-and-street` | 70334c7（已并进本机 main） | 还没有 | 旁观时读到正下方座位的庄标；摊牌时公共牌闪没不再把一手切成两手；摊牌扔牌不再让整手作废 |
-| `feat/opponent-reads` | ff08802（合并提交 07d25c2，已并进本机 main） | 还没有 | 翻前策略按每个对手的入池率、加注率调整范围（云端对手线程做） |
-| `feat/live-reads` | 082e515 到本条（合并后已并进本机 main） | 还没有 | 实时窗口记下本场每个对手的入池率、加注率，翻前建议按人调整，座位旁标“常加注 / 很松 / 很紧”；本场小结（有建议几次、照着打几次、输赢多少大盲）；复查修正；录像只录手机画面 |
-| `fix/all-in-button` | 本条（已并进本机 main） | 还没有 | 轮到你要全下跟注时，按钮不再认成“让牌” |
-| `feat/bomb-pots-sim` | 5e48d1f（合并提交 94fe80e，已并进本机 main） | 还没有 | 模拟牌桌能打暴击局（云端对手线程做） |
-| `fix/scoreboard-takes` | 9ac8e94（合并提交 a4a3ea3，已并进本机 main） | 还没有 | 复查第 4、9 条：蘑菇池拿走率按策略各量各的（云端对手线程做） |
-| `fix/rebuy-post` | 本条（已并进本机 main） | 还没有 | 补码后自己交的大盲算进跟注价，那一手翻前也有建议 |
-| `feat/bomb-pots-window` | f7ded15（合并提交 7a8df55，已并进本机 main） | 还没有 | 实时窗口认出暴击局，翻牌以后照常给建议 |
-| `feat/find-capture-device` | ca12bc2（已并进本机 main） | 还没有 | 窗口自己找采集卡；找不到时说清是摄像头、没画面还是没认到，并显示收到的画面 |
-| `fix/read-aware-ranges` | 392a8bb（已并进本机 main） | 还没有 | 推算对手范围时用上对手读数：翻前按人放宽或收紧，翻后对很凶的人保留一部分诈唬 |
-| `fix/all-in-price` | dc58923（合并提交 170f0e5，已并进本机 main） | 还没有 | 跟注要全下时，按钮必须显示 All in，不再跳过价钱核对 |
-| `feat/live-range-reads` | c6365fe（已并进本机 main） | 还没有 | 实时窗口翻牌以后推算对手范围也用上对手读数 |
-| `fix/stay-on-dark-card` | 751347f（已并进本机 main） | 还没有 | 手机没画面时窗口留在采集卡上，不去开电脑摄像头 |
-| `fix/no-camera-without-card` | 0d9970f（合并提交 36092a0，已并进本机 main） | 还没有 | 采集卡没插时不再一直开着电脑摄像头，直说没认到采集卡 |
-| `feat/new-window-takes-over` | 0e2ccae（合并提交 6f353c6，已并进本机 main） | 还没有 | 再双击启动时先关掉之前开着的窗口，新窗口用同一个地址 |
-| `fix/dark-card-note` | 090dc7f（合并提交 a094eef，已并进本机 main） | 还没有 | 采集卡黑屏时的说明改成“画面一来就自己接上” |
-| `fix/missed-raise-from-wager` | 本条（已并进本机 main） | 还没有 | 漏读的加注按那个座位桌上的下注补上，不再因“没轮到你”不给建议 |
-| `fix/live-session-20261008` | 本条（已并进本机 main） | 还没有 | 主人 10/08 实战后的修复：卡住一下不再停掉、算建议不拖慢识别、“只支持 5–8 人”、一场牌局逐手报告工具 |
-| `fix/missed-seat-bets` | 2819894 | 还没有 | 顶上座位漏读的下注、加注按它的筹码下降补上；全下的短筹码不再被当成还要说话；重复读到的跟注只算一次 |
-| `feat/advice-while-solving` | 60e0e43 | 还没有 | 单挑求解器还没算完时，先按胜率和价格给建议，算完换成求解器的 |
-| `fix/keep-hand-through-stall` | 9de70c9 | 还没有 | 识别卡顿 1–3 秒时接着这手牌，不再当成中途加入；卡顿后重复读到的让牌、弃牌只算一次 |
-| `fix/late-chips-advice` | 7212c18 | 还没有 | 前面那个下注的金额晚一点才读到时，金额一到就重新给建议 |
-| `fix/no-postflop-reads` | 4f3376e | 还没有 | 翻牌以后推算对手范围先不用对手读数，等按翻后下注率读人的修改（`feat/postflop-reads-live` 撤回） |
-| `feat/always-advice` | 43cb73a（已并进本机 main） | 还没有 | 轮到你时总有建议：求解器算不了时用胜率和价格的答案；1 秒内还没有就给标“粗略”的建议；报告以“整手都有建议的手数”为首 |
-| `docs/worklog-install-20261009` | c8562af（已并进本机 main） | 还没有 | 记下 Mac 上装好 10/08 场后修复、用真求解器按真实节奏重测的数字 |
-| `fix/rough-when-busy` | aa16ae9 | 还没有 | 粗略建议单独一个线程算，不排在求解器后面；轮到你 0.6 秒（画面卡住也算时间）就给，要它的那一帧最多等 0.15 秒 |
-| `fix/postflop-aggression-floor` | 6d491b5 | 还没有 | 推算对手范围时，翻后只给翻牌后下注加注明显多的人加下限，不再看翻前加注率 |
-| `feat/postflop-reads-live` | 7ff6925 | 还没有 | 窗口记每个对手翻后下注、加注的比例，翻牌以后推算范围重新带上对手读数 |
-| `fix/frame-switch` | 7803560（合并提交 e5fdd25，已并进本机 main） | 还没有 | 后台在算时，读牌每 0.1 毫秒就能拿回 Python 的锁（原来 0.5 毫秒），粗略建议的线程也这样设 |
-| `fix/allin-and-late-card` | dc4bf02 | 还没有 | 底池没读到时粗略建议照样给（按上次读到的底池和桌上筹码算）；采集卡比窗口后插时，直接提示再双击“PokerSense 开始” |
-| `fix/steady-advice` | aa44b078 | 还没有 | 建议不再中途悄悄换：每条街重新计时，正式答案在算时粗略建议等到 1.5 秒，换了就标“已更新”并闪一下；跟注额没读到时按行动记录推算 |
-| `fix/call-price-from-chips` | 80871e1a | 还没有 | 按钮上的跟注额读得不确定时，只要和桌上筹码算出的价格完全一样就采用 |
-| `feat/warm-range-rule` | 本条 | 还没有 | 翻牌后对手下注时就先读他们的范围，轮到你时多人底池的建议更快出来 |
+2026-10-07 到 10-09 GitHub 账号被暂停期间，所有改动只在 Mac 本机合并。2026-10-09 15:35 UTC，本机 main（e5fdd25）
+和全部分支都推到了新仓库 <https://github.com/manman-ai94/PokerSense>，之后照常走 PR。当时的“等推送”清单见 git 历史。
 
 ## 记录
 
