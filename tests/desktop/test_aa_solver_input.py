@@ -296,6 +296,10 @@ def test_the_seats_before_yours_are_filled_in_from_your_price():
     checked = fill_to_seat(arena, 5, {**hand, "price": Decimal(0)})
     assert [(a["slot"], a["kind"]) for a in checked] == [(2, "call")]
     assert fill_to_seat(arena, 5, {**hand, "price": None}) is None
+    # Your price unread: after the flop, the bets on the table give it.
+    bets = {**hand, "price": None, "wagers": {2: Decimal(10)}}
+    assert [(a["slot"], a["kind"], a["amount"]) for a in fill_to_seat(
+        arena, 5, bets)] == [(2, "raise", "10")]
 
 
 def test_the_losers_fold_badge_at_the_showdown_does_not_stop_the_replay():
@@ -457,3 +461,32 @@ def test_a_seat_all_in_without_a_stack_reading_is_not_asked_to_act_again():
     result = replay_hand(facts(actions))
     assert (result["status"], result["replayed"]) == ("ok", len(actions))
     assert result["arena"].street == "turn" and result["arena"].actor == 4
+
+
+def test_another_seats_post_on_coming_back_counts_in_its_raise():
+    # Seat 3 posted 2 on coming back, then put 19 more in: a raise to 21.
+    actions = [(10, "preflop", 3, "raise", "19"), (12, "preflop", 4, "fold", "0"),
+               (14, "preflop", 5, "fold", "0"), (16, "preflop", 0, "fold", "0"),
+               (18, "preflop", 1, "fold", "0"), (20, "preflop", 2, "call", "17")]
+    hand = {**facts(actions=actions), "board": [],
+            "opening_wagers": {0: Decimal(1), 1: Decimal(2), 2: Decimal(4),
+                               3: Decimal(2)}}
+    result = replay_hand(hand)
+    assert result["status"] == "ok"
+    put = result["arena"].observe(3)["contributions"]
+    assert (put["3"], put["2"]) == ("23", "23")         # 2 ante + 21
+    unposted = replay_hand({**hand, "opening_wagers": {}})
+    assert unposted["arena"].observe(3)["contributions"]["3"] == "21"
+
+
+def test_the_bets_before_the_first_action_skip_the_antes_and_a_missed_badge():
+    found = rows()
+    for row in found:
+        frame = row["processed"]
+        wagers = ({str(seat): "2" for seat in range(6)} if frame == 3 else
+                  {"0": "1", "1": "2", "2": "4", "3": "2"} if frame < 9 else
+                  {"0": "1", "1": "2", "2": "4", "3": None} if frame == 9 else
+                  {"3": "6"})
+        row["fields"] = {**row["fields"], "street_wagers": wagers}
+    assert hand_facts(found)["opening_wagers"] == {
+        0: Decimal(1), 1: Decimal(2), 2: Decimal(4), 3: Decimal(2)}
