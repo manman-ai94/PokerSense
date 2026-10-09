@@ -121,7 +121,29 @@ def test_the_solve_runs_in_the_background_once_per_decision():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     results = run(advice, range(50))
-    assert results[-1]["status"] == "computing" and executor.submitted == 1
+    # The solve and the range rule next to it, once.
+    assert results[-1]["status"] == "computing" and executor.submitted == 2
+
+
+class RuleOnly(Inline):
+    """Runs the range rule at once; the solve never finishes."""
+
+    def submit(self, function, *args):
+        self.finish = function.__name__ == "_quick_rule"
+        return super().submit(function, *args)
+
+
+def test_until_the_solve_is_done_the_range_rule_gives_provisional_advice():
+    advice = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), RuleOnly())
+    early = run(advice, range(50))[-1]
+    shown = (early["status"], early["kind"], early["heads_up"], early["provisional"])
+    assert shown == ("ready", "multiway", True, True)
+    assert early["advice"][0]["action"] in ("call", "fold", "raise")
+    assert "until the heads-up solve is done" in early["basis"]
+    assert advice.settled() == ("hand_1", {(9, "turn", "call:10"): None})
+    done = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), Inline())
+    final = run(done, range(50))[-1]
+    assert final["advice"][0]["action"] == "raise" and "provisional" not in final
 
 
 def test_without_your_cards_there_is_no_advice():

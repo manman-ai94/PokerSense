@@ -613,6 +613,8 @@
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
         const basis = verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
+          : verdict.kind === "multiway" && advice.provisional
+            ? ["按胜率和价格先给", "单挑求解器还在算，算完换成求解器的打法；对手范围按 AA 真人打法推算"]
           : verdict.kind === "multiway" ? ["按胜率和价格定", advice.heads_up
             ? "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算"
             : "没有多人求解器，对手范围按 AA 真人打法推算"]

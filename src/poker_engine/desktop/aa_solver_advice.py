@@ -12,7 +12,11 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   earlier play is read as AA players play) works out how often to check,
   call, fold or bet, and how much, and your share of the pot against the
   opponent's range there (``range_equity``, exact over the river cards). The
-  solve runs on a background thread, so recognition never waits for it.
+  solve runs on a background thread, so recognition never waits for it. It
+  takes one to several seconds (on 10/08 you acted before 6 solves were
+  done, one river solve ran past 13 seconds), so the range rule below works
+  out an action next to it, in a fraction of a second: until the solve is
+  done that is the advice, marked ``provisional``.
 
 - After the flop with more than one opponent there is no solver, and on the
   heads-up flop a solve takes about a minute. Your share of the pot against
@@ -105,6 +109,11 @@ HEADS_UP_BASIS = ("equity against the opponent's range (a population model fitte
                   "AA players' preflop play) against the price, the scoreboard's "
                   "range_multiway rule with its heads-up cuts; a flop solve takes "
                   "about a minute; for study only")
+PROVISIONAL_BASIS = ("equity against the opponent's range (a population model fitted "
+                     "to AA players' preflop play) against the price, the scoreboard's "
+                     "range_multiway rule with its heads-up cuts, until the heads-up "
+                     "solve is done; for study only")
+WORKERS = 2                     # the solve and the range rule next to it
 
 
 def _read_hands(observation):
@@ -175,7 +184,7 @@ class AASolverAdvice:
         """Forget the hand being followed and the reads: a new observation
         numbers its frames, and so its hands, from 0 again, and may be
         another table."""
-        self._rows, self._hand_id, self._jobs = [], None, {}
+        self._rows, self._hand_id, self._jobs, self._quick = [], None, {}, {}
         self.reads = AAReads()
 
     def __call__(self, payload, frame):
@@ -198,7 +207,8 @@ class AASolverAdvice:
             return self._report("idle", "no_hand")
         if history["hand_id"] != self._hand_id:
             self.reads.add_hand(self._rows)
-            self._rows, self._hand_id, self._jobs = [], history["hand_id"], {}
+            self._rows, self._hand_id = [], history["hand_id"]
+            self._jobs, self._quick = {}, {}
         self._rows.append({"processed": frame, "fields": fields})
         del self._rows[:-MAX_ROWS]
         if not (fields.get("hero_controls") or {}).get("visible"):
@@ -213,12 +223,12 @@ class AASolverAdvice:
         job = self._jobs.get(key)
         retry = isinstance(job, dict) and frame >= job.get("retry_at", frame + 1)
         if job is None or retry:
-            self._jobs[key] = self._start(fields, cards, frame)
+            self._jobs[key] = self._start(fields, cards, frame, key)
         return self._outcome(key, street)
 
     # -- jobs -------------------------------------------------------------------
 
-    def _start(self, fields, cards, frame):
+    def _start(self, fields, cards, frame, key):
         """A Future for the solve, or a finished outcome when there is none."""
         observation, reason = solver_observation(hand_facts(self._rows), HERO, cards)
         if reason == "not_your_turn_yet":
@@ -245,6 +255,8 @@ class AASolverAdvice:
         if self._bot is None:
             self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
                                   base=self._preflop_policy())
+        self._quick[key] = self._submit(self._quick_rule, self._with_reads(observation),
+                                        fields, time.monotonic())
         return self._submit(self._solve, observation, time.monotonic())
 
     def _submit(self, function, *args):
@@ -253,7 +265,7 @@ class AASolverAdvice:
             # instead of 5: on a frame-like load next to a 3-second range
             # job, 4x slower instead of 15x; the job itself 2% slower.
             sys.setswitchinterval(min(sys.getswitchinterval(), SWITCH_SECONDS))
-            self._executor = ThreadPoolExecutor(max_workers=1,
+            self._executor = ThreadPoolExecutor(max_workers=WORKERS,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(function, *args)
 
@@ -305,6 +317,13 @@ class AASolverAdvice:
                 "bomb_pot": observation.get("bomb_pot"),
                 "basis": HEADS_UP_BASIS if heads_up else MULTIWAY_BASIS,
                 "seconds": round(time.monotonic() - started, 2)}
+
+    def _quick_rule(self, observation, fields, started):
+        """The range rule next to a heads-up solve; it never costs the solve."""
+        try:
+            return self._multiway(observation, fields, started)
+        except Exception:                  # the solve still comes
+            return {"status": "idle", "reason": "range_rule_failed"}
 
     def _preflop_policy(self):
         if self._preflop is None:
@@ -388,8 +407,15 @@ class AASolverAdvice:
             self._jobs[key] = job
         return job
 
+    def _provisional(self, key):
+        """The range rule's advice worked out next to a running solve, or None."""
+        quick = self._quick.get(key)
+        if quick is None or not quick.done() or quick.result().get("status") != "ready":
+            return None
+        return {**quick.result(), "provisional": True, "basis": PROVISIONAL_BASIS}
+
     def _outcome(self, key, street):
-        job = self._settle(key)
+        job = self._settle(key) or self._provisional(key)
         if job is None:
             return self._report("computing", None, street=street, decision=key[0])
         return self._report(job["status"], job.get("reason"), street=street,
@@ -397,7 +423,7 @@ class AASolverAdvice:
                                 "kind", "heads_up", "advice", "options", "cuts", "pot",
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
-                                "bomb_pot", "seconds", "basis")
+                                "bomb_pot", "seconds", "basis", "provisional")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

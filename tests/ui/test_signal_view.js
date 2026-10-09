@@ -349,6 +349,12 @@ view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: 
 assert.deepEqual(view.basis, ["按胜率和价格定 · 0.4 秒算完", "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算",
   "有 1 个动作没读到，按牌桌补上", "只显示建议，不替你点"]);
 assert.equal(view.numbers[1].label, "你对他的范围能赢");
+// While the heads-up solve is still running, the range rule's action comes first and says so.
+view = signalView(running(multiway({action: "raise", frequency: 1.0, size: "60"}, {heads_up: true, provisional: true,
+  range_equity: {value: 0.62, opponents: 1, hands: 240}})), 0, {});
+assert.equal(view.verdict.kind, "multiway");
+assert.deepEqual(view.basis.slice(0, 2), ["按胜率和价格先给 · 0.4 秒算完",
+  "单挑求解器还在算，算完换成求解器的打法；对手范围按 AA 真人打法推算"]);
 // A bomb pot says so in the basis.
 view = signalView(running(multiway({action: "call", frequency: 1.0}, {bomb_pot: "14"})), 0, {});
 assert.ok(view.basis.includes("暴击局：每人先投 14，直接发翻牌"));
