@@ -221,3 +221,65 @@ def test_a_moment_with_nobody_read_after_the_flop_does_not_end_the_hand():
     first = history.observe(blink, 6)
     later = history.observe(payload("40", "flop"), 7)
     assert later["hand_id"] == first["hand_id"] == "hand_0"
+
+
+def bet_unread(seat="0", drop=51, rise=51, fold=False, unread=0):
+    """Seat ``seat`` bets on the flop without its badge being read: its stack
+    goes 590 -> 590 - drop while the pot goes 47 -> 47 + rise. ``unread``
+    frames of no stack reading before the drop; ``fold``: the seat folded
+    preflop (its fold read)."""
+    frames = [stacked(payload("17"), {seat: "590", "3": "500"})] * 5
+    frames += [stacked(payload("47", "flop"), {seat: "590", "3": "500"})] * 5
+    frames += [stacked(payload("47", "flop"), {"3": "500"})] * unread
+    frames += [stacked(payload(str(47 + rise), "flop"),
+                       {seat: str(590 - drop), "3": "500"})] * 20
+    if fold:
+        frames = [{**item, "action_history_candidate":
+                   [event(2, int(seat), "fold")] if i > 2 else []}
+                  for i, item in enumerate(frames)]
+    return frames
+
+
+def test_a_bet_whose_badge_was_missed_is_seen_from_the_stack_drop():
+    hand = feed(AAActionHistory(), bet_unread())
+    assert [(a["street"], a["slot"], a["kind"], a["amount"], a["amount_source"])
+            for a in hand["actions"]] == [("flop", 0, "raise", "51", "stack_drop")]
+
+
+def test_a_stack_drop_needs_a_pot_rise_of_just_those_chips():
+    assert feed(AAActionHistory(), bet_unread(drop=50))["actions"] == []
+
+
+def test_a_folded_seat_or_a_stack_unread_for_a_while_adds_nothing():
+    folded = feed(AAActionHistory(), bet_unread(fold=True))
+    assert [(a["slot"], a["kind"]) for a in folded["actions"]] == [(0, "fold")]
+    assert feed(AAActionHistory(), bet_unread(unread=40))["actions"] == []
+
+
+def test_blinds_going_in_before_the_hands_first_pot_add_nothing():
+    # The last hand's pot is taken away; antes and blinds go in, then the pot shows.
+    frames = [stacked(payload("300", "river"), {"0": "590", "7": "246"})] * 5
+    frames += [stacked(payload("0"), {"0": "590", "7": "246"})] * 5
+    frames += [stacked(payload("0"), {"0": "586", "7": "243"})] * 5
+    frames += [stacked(payload("17"), {"0": "586", "7": "243"})] * 10
+    assert feed(AAActionHistory(), frames)["actions"] == []
+
+
+def test_a_badge_read_after_the_stack_drop_names_the_action_once():
+    frames = bet_unread()
+    frames = [{**item, "action_history_candidate":
+               [event(10, 0, "call")] if i > 14 else []}
+              for i, item in enumerate(frames)]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["slot"], a["kind"], a["amount"], a["amount_source"])
+            for a in hand["actions"]] == [(0, "call", "51", "stack_drop")]
+
+
+def test_a_call_badge_read_again_is_one_call():
+    frames = [payload("17")] * 3 + [payload("21")] * 10 + [payload("21")] * 10
+    frames = [{**item, "action_history_candidate":
+               [event(3, 5, "call")] + ([event(15, 5, "call")] if i > 15 else [])}
+              for i, item in enumerate(frames)]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["frame"], a["slot"], a["kind"]) for a in hand["actions"]] == [
+        (3, 5, "call")]

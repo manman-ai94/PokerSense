@@ -3,9 +3,9 @@
 A real-time measurement (``tools/measure_aa_realtime.py``) takes as long as
 the recording. The log keeps, per processed frame, what the history layer
 reads: pot, board-card street, dealer, board and hero cards, seat states,
-stacks and the latest reader actions. This feeds those fields through
-``AAActionHistory`` again, so a change to the layer can be checked on whole
-recordings in seconds:
+stacks, bets on the table and the latest reader actions. This feeds those
+fields through ``AAActionHistory`` again, so a change to the layer can be
+checked on whole recordings in seconds:
 
     python tools/replay_aa_action_history.py --frames <log>/frames.jsonl \\
         --out <new>/frames.jsonl
@@ -50,6 +50,7 @@ def payload(fields, actions):
                 for slot, state in (fields.get("participants") or {}).items()}},
             "stacks": {slot: {"value": value}
                        for slot, value in (fields.get("stacks") or {}).items()},
+            "street_wagers": fields.get("street_wagers"),
             "action_history_candidate": actions}
 
 

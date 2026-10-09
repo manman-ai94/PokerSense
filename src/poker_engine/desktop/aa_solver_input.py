@@ -19,9 +19,11 @@ that replay, and checks the hand on the way:
   taken for preflop calls. An earlier street is fine: the first action on a
   new street is often read before its board cards.) Two actions read in the
   same frame may be in either order; a fold read again for a seat that already
-  folded is skipped. At the showdown the loser's cards are thrown away under
-  the fold badge: a fold after the betting is over or from a seat that went
-  all in is skipped, and a fold on the river with nothing to call is a check.
+  folded is skipped. A seat that went all in with no stack reading is given
+  what it had put in by then as its stack (it is not asked to act again). At
+  the showdown the loser's cards are thrown away under the fold badge: a fold
+  after the betting is over or from a seat that went all in is skipped, and a
+  fold on the river with nothing to call is a check.
 
 An action the reader missed can be filled in from the table, at most
 ``MAX_INFERRED`` per hand and only with the dealer that was read, when only
@@ -405,12 +407,25 @@ def _still_to_act(arena, seat, table):
 
 
 def _steps(seats, dealer, actions, board, stacks, bomb=None):
+    """Replay ``actions``; a seat that went all in without a stack reading is
+    given what it had put in by then as its stack, so it is not asked to act
+    again (it was taken as deep)."""
+    stacks = dict(stacks or {})
+    while True:
+        outcome = _steps_once(seats, dealer, actions, board, stacks, bomb)
+        if outcome[0] != "all_in_again":
+            return outcome
+        seat, chips = outcome[1]
+        stacks[seat] = chips
+
+
+def _steps_once(seats, dealer, actions, board, stacks, bomb):
     arena = AAFullHandArena(
         _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
-        starting_stacks={seat: (stacks or {}).get(seat, DEEP) for seat in seats})
+        starting_stacks={seat: stacks.get(seat, DEEP) for seat in seats})
     arena.reset(0, deck=replay_deck(board_history(board), len(seats)),
                 bomb=None if bomb is None else _money(bomb))
-    folded, all_in = set(), set()
+    folded, all_in, put_in = set(), set(), {}
     for index, action in enumerate(actions):
         if action["kind"] == "fold" and action["slot"] in folded:
             continue                  # the same fold read again (badge flicker)
@@ -418,6 +433,8 @@ def _steps(seats, dealer, actions, board, stacks, bomb=None):
             continue                  # cards thrown away at the showdown
         if arena.terminal:
             return "stopped", "action_after_hand_end", index, arena
+        if arena.actor in put_in:
+            return "all_in_again", (arena.actor, put_in[arena.actor]), index, arena
         if arena.actor != action["slot"]:
             return "stopped", "not_this_seats_turn", index, arena
         street = action.get("street")
@@ -436,6 +453,11 @@ def _steps(seats, dealer, actions, board, stacks, bomb=None):
             folded.add(action["slot"])
         elif action["kind"] == "all_in":
             all_in.add(action["slot"])
+            if action["slot"] not in stacks:
+                put_in[action["slot"]] = Decimal(arena.observe(action["slot"])[
+                    "contributions"][str(action["slot"])])
+    if not arena.terminal and arena.actor in put_in:
+        return "all_in_again", (arena.actor, put_in[arena.actor]), len(actions), arena
     return "ok", None, len(actions), arena
 
 
@@ -448,19 +470,25 @@ def _to_call(arena):
 
 def _arena_action(arena, action):
     """The table action for a rebuilt one: raises go to what the seat had in
-    plus its chips; an all-in that does not top the bets is a call."""
+    plus its chips; an all-in that does not top the bets is a call. A call or
+    raise seen from the seat's stack going down (source "stack_drop") is a
+    call when its chips come to the highest bet and a raise when they top it."""
     kind = action["kind"]
     if kind == "fold":
         return "fold"
-    if kind in ("check", "call"):
+    dropped = action.get("source") == "stack_drop" and kind in ("call", "raise")
+    if kind == "check" or (kind == "call" and not dropped):
         return "check_call"
     if action["amount"] in (None, ""):
         return None
     bets = {int(seat): Decimal(value)
             for seat, value in arena.observe(action["slot"])["bets"].items()}
     target = bets[action["slot"]] + Decimal(action["amount"])
-    if kind == "all_in" and target <= max(bets.values()):
+    top = max(bets.values())
+    if (kind == "all_in" and target <= top) or (dropped and target == top):
         return "check_call"
+    if dropped and target < top:
+        return None                   # short of a call: a stack read wrong
     return f"raise_to:{target}"
 
 

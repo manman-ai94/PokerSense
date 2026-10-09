@@ -22,6 +22,17 @@ This layer keeps the reader's actions and rebuilds the rest:
   went all in, if the pot rises next to it: the action gets the stack it
   had (or the rise, when smaller). On two recordings each such drop matched
   a pot rise no action explained;
+- **missed calls and raises**: a seat still in the hand whose steady stack
+  goes down (not to 0) by just what the nearest pot rise still holds, with
+  no call or raise of its own read nearby, put those chips in (``amount_source``
+  "stack_drop"). The replay makes it a call or a raise by what the others
+  have in. Only once the hand was seen before the flop and its first pot
+  was read: the blinds, the straddle and a bomb pot's posts go in before
+  it, while the street can still be the last hand's. At 5- and
+  6-handed tables on 10/08 none of the top seat's 21 bets and raises was
+  read as one, while its stack was read on 99% of frames. A call read for a
+  seat that already called on the street with no bet since is the badge
+  read again and is left out;
 - **hand**: a new hand starts when the steady pot goes down, the board goes
   back to preflop, the dealer button moves, or after a readable table
   showed no hand in progress. A hand already running when observation
@@ -88,13 +99,18 @@ class AAActionHistory:
         self._dealers = deque(maxlen=2)          # last dealer readings
         self._stack_reads = {}                   # seat -> (value, count, first)
         self._stacks = {}                        # seat -> last steady stack
+        self._held = {}                          # seat -> last frame it was read
+        self._wager_reads = {}                   # seat -> (value, count)
+        self._wagers = {}                        # seat -> (hand, street, most in)
+        self._drops = []                         # stack drops not placed yet
+        self._opened = None                      # first frame of the hand's pot
 
     # -- hands -----------------------------------------------------------------
 
     def _start(self, frame, dealer, reason, complete=True):
         self._hand = {"hand_id": f"hand_{frame}", "start_frame": frame,
                       "dealer": dealer, "complete": complete, "start": reason,
-                      "actions": []}
+                      "actions": [], "streets": set()}
         self._hand_over = False
 
     def _boundary(self, payload, frame, street, dropped, dealer):
@@ -177,6 +193,9 @@ class AAActionHistory:
         if "stack" in action:
             self._price_all_in(action, now)
             return
+        if "drop" in action:
+            self._price_drop(action, now)
+            return
         owed = self._owed(action)
         if owed == "pending":
             action["amount_source"] = "pending"
@@ -228,6 +247,19 @@ class AAActionHistory:
         action["amount"] = str(chips)
         action["amount_source"] = "stack" if chips == action["stack"] else "pot_rise"
 
+    def _price_drop(self, action, now):
+        """A call or raise seen from a stack drop needs the nearest pot rise to
+        hold just those chips; otherwise it is not confirmed and is dropped (a
+        stack read late, or an ante or blind read after the pot)."""
+        found = self._rise(action["frame"], now)
+        if found == "pending":
+            return
+        if found is None or found[1] != action["drop"]:
+            action["amount_source"] = "unconfirmed"
+            return
+        self._shares[found[0]] = self._shares.get(found[0], 0) + action["drop"]
+        action["amount"], action["amount_source"] = str(action["drop"]), "stack_drop"
+
     def _watch_stacks(self, payload, frame):
         """Add an all-in for a seat whose steady stack drops to 0 with no call
         or raise of its own nearby."""
@@ -236,12 +268,20 @@ class AAActionHistory:
             value = _amount((item or {}).get("value"))
             if value is None:
                 continue
+            if value == self._stacks.get(slot):
+                self._held[slot] = frame
             last, count, first = self._stack_reads.get(slot, (None, 0, frame))
             count, first = (count + 1, first) if value == last else (1, frame)
             self._stack_reads[slot] = (value, count, first)
             if count != 2:
                 continue
             before, self._stacks[slot] = self._stacks.get(slot), value
+            if (before is not None and 0 < value < before
+                    and first - self._held.get(slot, first) <= AFTER):
+                # Only a drop from a stack still read just before it: after a
+                # stretch unread the chips may have gone in long ago.
+                self._drops.append((int(slot), first, before - value))
+            self._held[slot] = frame
             if value != 0 or not before or first < hand["start_frame"]:
                 continue
             seat = int(slot)
@@ -252,6 +292,54 @@ class AAActionHistory:
                 "frame": first, "street": self._street_at(first), "slot": seat,
                 "kind": "all_in", "amount": None, "amount_source": "pending",
                 "cash_amount": None, "stack": before})
+        hand["actions"].sort(key=lambda action: action["frame"])
+
+    def _watch_wagers(self, payload, frame):
+        """The most each seat was read to have in on this street (a bet only
+        grows on a street), for telling a call from a raise."""
+        hand = self._hand
+        for slot, raw in (payload.get("street_wagers") or {}).items():
+            value = _amount(raw)
+            last, count = self._wager_reads.get(slot, (None, 0))
+            count = count + 1 if value == last else 1
+            self._wager_reads[slot] = (value, count)
+            street = self._street_at(frame)
+            if value is None or count != 2 or street not in STREETS:
+                continue
+            known = self._wagers.get(slot)
+            if known is not None and known[:2] == (hand["hand_id"], street):
+                value = max(value, known[2])
+            self._wagers[slot] = (hand["hand_id"], street, value)
+
+    def _place_drops(self):
+        """Add a call or raise for each stack drop with no call or raise of
+        the seat's own read nearby (see the module notes)."""
+        hand = self._hand
+        for seat, at, chips in self._drops:
+            street = self._street_at(at)
+            mine = [a for a in hand["actions"] if a["slot"] == seat]
+            if (at < hand["start_frame"] or self._opened is None
+                    or at <= self._opened or "preflop" not in hand["streets"]
+                    or street not in STREETS
+                    or any(a["kind"] == "fold" and a["frame"] < at for a in mine)
+                    or any(a["kind"] in PRICED and abs(a["frame"] - at) <= AFTER
+                           for a in mine)):
+                continue
+            put = {}
+            for action in hand["actions"]:
+                if action["street"] == street and action["amount"] is not None:
+                    put[action["slot"]] = put.get(action["slot"], 0) + Decimal(
+                        action["amount"])
+            for slot, (hand_id, on, level) in self._wagers.items():
+                if (hand_id, on) == (hand["hand_id"], street):
+                    put[int(slot)] = max(put.get(int(slot), 0), level)
+            level = put.pop(seat, 0) + chips
+            hand["actions"].append({
+                "frame": at, "street": street, "slot": seat,
+                "kind": "raise" if level > max(put.values(), default=0) else "call",
+                "amount": None, "amount_source": "pending", "cash_amount": None,
+                "drop": chips})
+        self._drops = []
         hand["actions"].sort(key=lambda action: action["frame"])
 
     # -- frames ----------------------------------------------------------------
@@ -270,6 +358,10 @@ class AAActionHistory:
             steady = runs[-1][0] if runs else None
             dropped = steady is not None and self._steady is not None and \
                 steady < self._steady
+            if dropped:
+                self._opened = None
+            elif steady and self._opened is None:
+                self._opened = frame
             if steady is not None:
                 self._steady = steady
         reading = payload.get("dealer_seat")
@@ -277,6 +369,8 @@ class AAActionHistory:
         dealer = (self._dealers[0] if len(self._dealers) == 2
                   and self._dealers[0] == self._dealers[1] else None)
         reason = self._boundary(payload, frame, street, dropped, dealer)
+        if reason is not None:
+            self._opened = None           # the new hand's pot is read after this
         hand = self._hand
         if (reason is not None and hand is not None and hand["complete"]
                 and not hand["actions"]):
@@ -292,8 +386,11 @@ class AAActionHistory:
             self._hand["dealer"] = dealer
         if street in STREETS:
             self._streets.append((frame, street))
+            self._hand["streets"].add(street)
         self._take(payload, frame)
+        self._watch_wagers(payload, frame)
         self._watch_stacks(payload, frame)
+        self._place_drops()
         for action in self._hand["actions"]:
             if action["amount_source"] == "pending":
                 self._price(action, frame)
@@ -318,12 +415,22 @@ class AAActionHistory:
             if event["frame"] < hand["start_frame"]:
                 continue                  # belongs to a hand already over
             priced = kind in PRICED
-            if priced and any("stack" in other and other["slot"] == event.get("slot")
-                              and abs(other["frame"] - event["frame"]) <= AFTER
-                              for other in hand["actions"]):
-                continue                  # the all-in already seen from the stack
+            seen = next((other for other in hand["actions"]
+                         if ("stack" in other or "drop" in other)
+                         and other["slot"] == event.get("slot")
+                         and abs(other["frame"] - event["frame"]) <= AFTER), None)
+            if priced and seen is not None:
+                if "drop" not in seen or seen["amount_source"] != "pending":
+                    if "drop" in seen and kind in ("call", "raise"):
+                        seen["kind"] = kind   # its chips came from the stack
+                    continue              # already seen from the stack
+                hand["actions"].remove(seen)  # not confirmed yet: the badge wins
+            street = self._street_at(event["frame"])
+            if kind == "call" and self._called_already(event["slot"], street,
+                                                       event["frame"]):
+                continue                  # the call badge read again
             hand["actions"].append({
-                "frame": event["frame"], "street": self._street_at(event["frame"]),
+                "frame": event["frame"], "street": street,
                 "slot": event.get("slot"), "kind": kind,
                 "amount": None if priced else "0",
                 "amount_source": "pending" if priced else "no_chips",
@@ -331,6 +438,18 @@ class AAActionHistory:
         # Priced in frame order afterwards: a call's chips depend on the bets
         # before it on the same street.
         hand["actions"].sort(key=lambda action: action["frame"])
+
+    def _called_already(self, seat, street, frame):
+        """``seat`` called earlier on ``street`` and nobody bet since: a call
+        badge still shown is sometimes read again, often for several seats in
+        one frame as the street ends (10/08)."""
+        before = [a for a in self._hand["actions"]
+                  if a["street"] == street and a["frame"] < frame]
+        mine = [index for index, a in enumerate(before) if a["slot"] == seat]
+        if not mine or before[mine[-1]]["kind"] != "call":
+            return False
+        return not any(a["kind"] in ("raise", "all_in")
+                       for a in before[mine[-1] + 1:])
 
     def snapshot(self):
         hand = self._hand
@@ -346,7 +465,7 @@ class AAActionHistory:
                 "missing_amounts": sum(a["amount_source"] == "unknown"
                                        for a in actions),
                 "basis": "reader action badges, pot rises, betting, stacks, "
-                         "board-card street"}
+                         "bets on the table, board-card street"}
 
 
 __all__ = ["AAActionHistory", "COMPACT_FIELDS", "steady_runs"]
