@@ -1,8 +1,10 @@
 """Advice for your preflop decisions, solver advice for your heads-up turn
 and river decisions in the background, and the range rule's elsewhere."""
 
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 import sys
+import threading
+import time
 
 import pytest
 
@@ -533,6 +535,42 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
     # No price on the first ask (52): asked again RETRY frames on.
     assert [r["status"] for r in results[52:55]] == ["computing"] * 3
     assert (results[55]["status"], results[55]["kind"]) == ("ready", "rough")
+
+
+def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
+    # 10/07 at real pace: after a stall the frame that made it due was the
+    # turn's last, and the rough rule, done a moment later, never showed.
+    call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
+    gate = threading.Event()
+
+    def answer(fields, cards, street):
+        gate.wait(5)
+        return call
+
+    def quick(fields, cards, street):
+        time.sleep(0.03)                                 # well inside ROUGH_WAIT
+        return call
+
+    monkeypatch.setattr(aa_solver_advice, "rough_advice", quick)
+    with ThreadPoolExecutor(max_workers=1) as own:
+        advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                                rough_executor=own, clock=still)
+        results = run(advice, range(53))
+        assert results[51]["status"] == "computing"
+        assert (results[52]["status"], results[52]["kind"]) == ("ready", "rough")
+    # Longer than that the frame goes on without it, and a later frame shows it.
+    monkeypatch.setattr(aa_solver_advice, "rough_advice", answer)
+    with ThreadPoolExecutor(max_workers=1) as own:
+        advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                                rough_executor=own, clock=still)
+        started = time.monotonic()
+        results = run(advice, range(53))
+        assert time.monotonic() - started < 2
+        assert results[52]["status"] == "computing"
+        gate.set()
+        own.submit(lambda: None).result(timeout=5)       # the rough job is done
+        later = advice.observe(payload(53), 53)
+        assert (later["status"], later["kind"]) == ("ready", "rough")
 
 
 def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",

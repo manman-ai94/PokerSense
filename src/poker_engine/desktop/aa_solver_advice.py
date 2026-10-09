@@ -60,7 +60,9 @@ still waits for an action; or the work takes longer), a rough rule answers
 from the screen alone (``kind`` ``rough``). It runs on a worker of its own:
 in the solve's two it waited behind a heads-up solve and its range rule,
 and the clock counts a stall the frames do not (10/08 and 10/07 measured at
-real pace: four of your turns, most over a second long, got nothing). Each
+real pace: four of your turns, most over a second long, got nothing). The
+frame that asks waits up to ``ROUGH_WAIT`` for it (it takes under 0.1 s):
+two of those turns ended on the frame after a stall that made it due. Each
 opponent still in holds the top ``CALLER_SHARE`` of starting hands, the one
 with the most chips in on this street the top ``BETTOR_SHARE`` when that is
 a bet or raise to you; your share of the pot
@@ -99,7 +101,7 @@ acts on the client.
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from itertools import combinations
@@ -150,6 +152,7 @@ PROVISIONAL_BASIS = ("equity against the opponent's range (a population model fi
 WORKERS = 2                     # the solve and the range rule next to it
 ROUGH_SECONDS = 0.6             # of your turn without advice
 ROUGH_FRAMES = 10               # or frames, where nothing gives the time
+ROUGH_WAIT = 0.15               # the frame that asks waits this long for it
 CALLER_SHARE = 0.4              # rough rule: each opponent's top 40% of hands
 BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised to you
 PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position realize
@@ -568,14 +571,18 @@ class AASolverAdvice:
         return rough and {**rough, "status": "ready"}
 
     def _rough_outcome(self, key, fields, cards, street, frame, report):
-        """The rough rule's report for this decision, or None. Asked again,
-        ``RETRY`` frames on, with the screen as it is then when the frame
-        asked did not give it what it needs (the price came a moment later)."""
+        """The rough rule's report for this decision, or None. The frame that
+        asks waits up to ``ROUGH_WAIT`` for it, so it shows in that frame and
+        not the next (after a stall the next can be the turn's last). Asked
+        again, ``RETRY`` frames on, with the screen as it is then when the
+        frame asked did not give it what it needs (the price came a moment
+        later)."""
         job, asked = self._rough.get(key, (None, None))
         if job is None or (job.done() and self._rough_done(key) is None
                            and frame >= asked + RETRY):
             job = self._submit_rough(rough_advice, fields, cards, street)
             self._rough[key] = job, frame
+            wait([job], timeout=ROUGH_WAIT)
         rough = self._rough_done(key)
         if rough is None:
             return None
