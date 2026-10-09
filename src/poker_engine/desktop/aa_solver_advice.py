@@ -470,7 +470,10 @@ class AASolverAdvice:
         job = self._jobs.get(key)
         retry = isinstance(job, dict) and frame >= job.get("retry_at", frame + 1)
         if job is None or retry:
-            self._jobs[key] = self._start(fields, cards, frame, key)
+            try:
+                self._jobs[key] = self._start(fields, cards, frame, key)
+            except Exception:              # the rough rule answers; the window goes on
+                self._jobs[key] = {"status": "abstain", "reason": "advice_failed"}
         report = self._outcome(key, street)
         if report["status"] == "ready" or not self._rough_due(frame, report):
             return report

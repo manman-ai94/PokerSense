@@ -420,9 +420,12 @@ def _steps(seats, dealer, actions, board, stacks, bomb=None):
 
 
 def _steps_once(seats, dealer, actions, board, stacks, bomb):
-    arena = AAFullHandArena(
-        _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
-        starting_stacks={seat: stacks.get(seat, DEEP) for seat in seats})
+    try:
+        arena = AAFullHandArena(
+            _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
+            starting_stacks={seat: stacks.get(seat, DEEP) for seat in seats})
+    except ValueError:                # stacks the table cannot start with
+        return "stopped", "stacks_do_not_fit", 0, None
     arena.reset(0, deck=replay_deck(board_history(board), len(seats)),
                 bomb=None if bomb is None else _money(bomb))
     folded, all_in, put_in = set(), set(), {}
@@ -495,13 +498,22 @@ def _arena_action(arena, action):
 def starting_stacks(facts, replay):
     """Each seat's stack before the hand: its last reading plus what it put in.
 
-    Seats without a reading are left out (unknown).
+    Seats without a reading are left out (unknown), and so is a stack the
+    table cannot start a seat with: no more than the ante, or not whole
+    chips (10/09: a stack read as 0 after the ante went in made the table
+    refuse the hand, and that error stopped the window).
     """
     if replay["arena"] is None:
         return {}
+    rules = _rules(len(facts["seats"]))
     put = replay["arena"].observe(facts["seats"][0])["contributions"]
-    return {seat: facts["stacks"][seat] + Decimal(put[str(seat)])
-            for seat in facts["seats"] if seat in facts["stacks"]}
+    stacks = {}
+    for seat in facts["seats"]:
+        if seat in facts["stacks"]:
+            stack = facts["stacks"][seat] + Decimal(put[str(seat)])
+            if stack > rules.ante and not stack % rules.minimum_chip:
+                stacks[seat] = stack
+    return stacks
 
 
 def solver_observation(facts, seat, cards):

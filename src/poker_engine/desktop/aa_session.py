@@ -269,11 +269,21 @@ class AARecognitionSession:
                 if self._table_math is not None:
                     payload["table_math_v1"] = self._table_math(payload)
                 math_finished = time.monotonic()
+                # Advice and grading are for study: an error in them leaves
+                # this frame without them, it never stops the window.
                 if self._solver_advice is not None:
-                    advice = self._solver_advice(payload, processed)
+                    try:
+                        advice = self._solver_advice(payload, processed)
+                    except Exception:
+                        advice = {"schema_version": 1, "status": "abstain",
+                                  "reason": "advice_failed", "advice_emitted": False,
+                                  "acts_on_client": False}
                     payload["solver_advice_v1"] = advice
                 if self._grades is not None:
-                    payload["grade_v1"] = self._grades(payload, processed)
+                    try:
+                        payload["grade_v1"] = self._grades(payload, processed)
+                    except Exception:
+                        payload["grade_v1"] = None
                 advice_finished = time.monotonic()
                 # Detach mutable reader results and reject NaN/non-JSON values.
                 payload = json.loads(json.dumps(payload, allow_nan=False))

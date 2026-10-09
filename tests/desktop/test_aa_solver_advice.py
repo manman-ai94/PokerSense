@@ -795,6 +795,18 @@ def test_a_bomb_pot_gets_advice_after_the_flop_like_any_other_hand():
     assert normal["bomb_pot"] is None
 
 
+def test_an_error_working_out_the_advice_leaves_it_to_the_rough_rule(monkeypatch):
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(), clock=still)
+
+    def broken(*args):
+        raise ValueError("stack must cover ante and align to minimum chip")
+
+    monkeypatch.setattr(advice, "_start", broken)
+    reports = [advice.observe(payload(frame), frame) for frame in range(42, 60)]
+    assert (reports[0]["status"], reports[0]["reason"]) == ("abstain", "advice_failed")
+    assert reports[-1]["kind"] == "rough"
+
+
 def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
     before = sys.getswitchinterval()
     advice = AASolverAdvice()

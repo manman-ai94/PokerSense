@@ -363,6 +363,30 @@ def test_grades_follow_the_advice_and_reset_when_a_source_starts():
     assert grades.resets == 2 and grades.seen[0] == {"status": "idle"}
 
 
+def test_an_error_in_the_advice_or_the_grading_never_stops_the_window():
+    # 10/09: the advice raised on a stack it could not start the table with,
+    # and the error ended the session with the hero's buttons on screen.
+    def advice(payload, frame):
+        raise ValueError("stack must cover ante and align to minimum chip")
+
+    def grades(payload, frame):
+        raise RuntimeError("grading failed")
+
+    session = AARecognitionSession(lambda options: Source(), Reader,
+                                   solver_advice=advice, grades=grades)
+    session.start({})
+    try:
+        wait_until(lambda: (session.snapshot()["payload"] or {}).get(
+            "solver_advice_v1"))
+        snapshot = session.snapshot()
+        assert snapshot["status"] == "RUNNING"
+        assert snapshot["payload"]["solver_advice_v1"]["reason"] == "advice_failed"
+        assert snapshot["payload"]["grade_v1"] is None
+    finally:
+        session.stop()
+        wait_until(lambda: session.snapshot()["status"] == "STOPPED")
+
+
 def test_frame_summary_prefers_current_evidence_and_keeps_legacy_fields():
     from poker_engine.desktop.aa_session import frame_summary
 
