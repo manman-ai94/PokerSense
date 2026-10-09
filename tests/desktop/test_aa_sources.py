@@ -450,3 +450,20 @@ def test_the_camera_list_names_what_macos_lists():
     failing = CameraList(run=broken, platform="darwin")
     failing.refresh()
     assert failing.names() is None
+
+
+def test_a_card_plugged_in_after_the_window_opened_says_to_open_it_again():
+    from poker_engine.desktop.aa_sources import CAMERA_ONLY, late_card
+
+    # 10/09: the window opened at 12:21, the card was plugged in at 12:24;
+    # macOS listed it, the window saw only the FaceTime camera.
+    said = late_card(CAMERA_ONLY, ["FaceTime高清相机", "UGREEN 25854"])
+    assert said.startswith("采集卡插好了（Mac 认到了“UGREEN 25854”）")
+    assert "再双击一次桌面上的“PokerSense 开始”" in said
+    # Only the computer's own cameras (or an iPhone as one): plug the card in.
+    for names in (["FaceTime HD Camera"], ["FaceTime HD Camera", "小明的iPhone 相机"],
+                  [], None):
+        assert late_card(CAMERA_ONLY, names) == CAMERA_ONLY
+    # Other errors stay as they are.
+    assert late_card("采集卡没有画面了", ["UGREEN 25854"]) == "采集卡没有画面了"
+    assert late_card(None, ["UGREEN 25854"]) is None

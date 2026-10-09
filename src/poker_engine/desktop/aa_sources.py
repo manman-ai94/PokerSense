@@ -21,7 +21,8 @@ recording keeps it.
 
 ``CameraList`` names the cameras macOS lists, so the window can say whether
 the card is there at all (a card plugged into a hub instead of the Mac is
-not).
+not), and that the window has to be opened again when the card is there but
+was plugged in after it (``late_card``).
 """
 
 from decimal import Decimal, InvalidOperation
@@ -97,6 +98,27 @@ class CameraList:
 PLUG = ("请把采集卡自己的 USB 直接插到 Mac（扩展坞插在手机上，不要插 Mac），再点开始；"
         "插好了还是这样，就关掉终端窗口，从桌面重新打开“PokerSense 开始”")
 CAMERA_ONLY = f"Mac 只认到它自带的摄像头，没认到采集卡（摄像头已经关上）：{PLUG}"
+# The computer's own cameras (and an iPhone used as one), by the names macOS
+# gives them.
+OWN_CAMERAS = ("FaceTime", "Built-in", "iPhone", "Desk View", "桌上视角")
+LATE_CARD = ("采集卡插好了（Mac 认到了“{name}”），但这个窗口打不开它：窗口是在插卡之前开的，"
+             "看不到后插的设备。再双击一次桌面上的“PokerSense 开始”（它会关掉这个窗口、重新打开），"
+             "再点开始")
+
+
+def late_card(error, names):
+    """``error``, or ``LATE_CARD`` when it is ``CAMERA_ONLY`` while macOS
+    lists a camera other than the computer's own (``names``, from
+    ``CameraList``): the card is on the Mac, but a running window does not
+    see a device plugged in after it started (10/09: the window was opened
+    at 12:21 and the card plugged in at 12:24; macOS listed it as device 1,
+    the window saw only the FaceTime camera and said to plug the card in)."""
+    if not isinstance(error, str) or CAMERA_ONLY not in error or not names:
+        return error
+    cards = [name for name in names if not any(word in name for word in OWN_CAMERAS)]
+    return LATE_CARD.format(name=cards[0]) if cards else error
+
+
 # The capture backend's English errors, as the window says them.
 PLAIN_ERRORS = (
     ("could not open capture-card device",
