@@ -253,7 +253,9 @@
     const need = isNumber(advice.required) ? pct(Number(advice.required)) : "—";
     const note = row.action === "check" ? `粗略：你大概能赢 ${share}，不花钱就过牌`
       : row.action === "call" ? `粗略：你大概能赢 ${share}，跟注只要 ${need} 就够`
-        : `粗略：你大概能赢 ${share}，跟注要 ${need} 才够，不跟`;
+        : row.action === "bet" ? `粗略：你大概能赢 ${share}，牌够好，下注`
+          : row.action === "raise" ? `粗略：你大概能赢 ${share}，牌够好，加注`
+            : `粗略：你大概能赢 ${share}，跟注要 ${need} 才够，不跟`;
     return {...label, kind: "rough", note};
   }
 

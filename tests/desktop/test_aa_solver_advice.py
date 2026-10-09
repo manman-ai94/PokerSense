@@ -811,3 +811,35 @@ def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
     finally:
         advice._executor.shutdown()
         sys.setswitchinterval(before)
+
+
+def _rough_fields(button, call=None, wagers=None):
+    return {"board": ["7s", "9s", "5c", "5h", None], "pot": "135",
+            "participants": {"2": "active", "4": "active"},
+            "street_wagers": wagers or {}, "stacks": {"4": "400", "2": "300"},
+            "hero_controls": {"visible": True, "button": button, "call_amount": call}}
+
+
+def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines():
+    # 10/09 live, hand_33520: trips on the turn, checked to you; the rough rule
+    # only knew check, call and fold and said check (twice, turn and river).
+    trips = aa_solver_advice.rough_advice(_rough_fields("check"), ["5s", "6h"], "turn")
+    assert trips["range_equity"]["value"] >= 0.55
+    assert trips["advice"] == [{"action": "bet", "frequency": 1.0,
+                                "chips": "89", "to": "89"}]
+    # Facing a bet of 40 with the same hand: a pot-sized raise after calling.
+    raised = aa_solver_advice.rough_advice(
+        _rough_fields("call", "40", {"2": "40"}), ["5s", "6h"], "turn")
+    assert raised["advice"][0]["action"] == "raise"
+    assert raised["advice"][0]["to"] == str(40 + 135 + 40)
+    # A weak hand still checks; before the flop nothing changes.
+    weak = aa_solver_advice.rough_advice(_rough_fields("check"), ["2d", "3c"], "turn")
+    assert weak["advice"] == [{"action": "check", "frequency": 1.0}]
+    row = {"action": "check", "frequency": 1.0}
+    assert aa_solver_advice.rough_aggression(
+        row, 0.3, 2, Decimal(100), Decimal(0), Decimal(0), Decimal(0),
+        Decimal(500)) is row
+    # The bet never asks for more than your stack.
+    capped = aa_solver_advice.rough_aggression(
+        row, 0.9, 1, Decimal(300), Decimal(0), Decimal(0), Decimal(0), Decimal(50))
+    assert capped["to"] == "50"

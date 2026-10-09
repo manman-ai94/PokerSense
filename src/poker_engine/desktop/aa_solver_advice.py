@@ -131,6 +131,7 @@ import time
 from poker_engine.core.enums import Position
 from poker_engine.scoreboard.bots import position
 from poker_engine.scoreboard.mushroom import MIN_PLAYERS
+from poker_engine.scoreboard.multiway_bot import DEFAULTS as MULTIWAY_LINES
 from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params
@@ -181,8 +182,9 @@ PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position 
 ROUGH_TRIALS = 1500              # under 0.1 s with seven opponents
 ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 40% of "
                "starting hands, the top 20% for the one who bet or raised to you) "
-               "against the price on your button, from the screen alone: a rough rule "
-               "for when the hand cannot be worked out; for study only")
+               "against the price on your button, and after the flop against the "
+               "range rule's lines for a bet or a raise, from the screen alone: a "
+               "rough rule for when the hand cannot be worked out; for study only")
 BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 IN_HAND = ("active", "all_in")
 
@@ -365,11 +367,35 @@ def rough_advice(fields, cards, street, pot=None):
     value *= realize
     required = to_call / (pot + to_call) if to_call > 0 else Decimal(0)
     action = "check" if to_call == 0 else "call" if value >= required else "fold"
-    return {"kind": "rough", "advice": [{"action": action, "frequency": 1.0}],
+    row = {"action": action, "frequency": 1.0}
+    if street != "preflop" and not all_in and stack is not None:
+        row = rough_aggression(row, value, len(opponents), pot, to_call, mine, top,
+                               stack)
+    return {"kind": "rough", "advice": [row],
             "range_equity": {"value": round(value, 3), "opponents": len(opponents),
                              "hands": None, "hands_each": counts, "realize": realize},
             "required": round(float(required), 3), "pot": str(pot),
             "pot_read": read is not None, "to_call": str(to_call), "basis": ROUGH_BASIS}
+
+
+def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
+    """After the flop the rough rule bets and raises by the range rule's lines
+    (``multiway_bot.DEFAULTS``: heads-up ones against one opponent): a bet of
+    two thirds of the pot with nothing to call, a raise of the pot after
+    calling; otherwise ``row`` as it is. On 10/09 it only checked, called or
+    folded: it checked trips twice, and 8 of the 10 answers that changed
+    under you went from its check or call to the range rule's bet or raise."""
+    heads_up = opponents == 1
+    bet_at = MULTIWAY_LINES["hu_bet" if heads_up else "bet"]
+    raise_at = MULTIWAY_LINES["hu_raise" if heads_up else "raise"]
+    if to_call == 0 and value >= bet_at:
+        action, to = "bet", mine + (pot * Decimal("0.66")).quantize(Decimal(1))
+    elif to_call > 0 and value >= raise_at and stack > to_call:
+        action, to = "raise", top + (pot + to_call).quantize(Decimal(1))
+    else:
+        return row
+    to = min(to, mine + stack)
+    return {"action": action, "frequency": 1.0, "chips": str(to - mine), "to": str(to)}
 
 
 class AASolverAdvice:
