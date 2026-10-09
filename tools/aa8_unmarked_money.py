@@ -19,13 +19,15 @@ from tools.aa_pot_candidate import (
 from tools.aa8_action_transfer import inventory, load, sha
 
 
-def pot_patch(image, prefix=None):
+def pot_patch(image, prefix=None, threshold=.90):
+    """The pot's digits after the "底池:" label, found by matching ``prefix``
+    (a reviewed rasterization of the label) at ``threshold`` or better."""
     patch = region(image)
     binary = pot_mask(patch)
     colon = colon_x(binary)
     if prefix is not None:
         matches = [x for x in colon_candidates(binary) if x >= 34 and
-                   prefix_score(binary[:, x - 34:x + 2], prefix) >= .90]
+                   prefix_score(binary[:, x - 34:x + 2], prefix) >= threshold]
         colon = matches[0] if len(matches) == 1 else None
     if colon is None:
         return None
