@@ -297,9 +297,12 @@ def test_the_seats_before_yours_are_filled_in_from_your_price():
     assert [(a["slot"], a["kind"]) for a in checked] == [(2, "call")]
     assert fill_to_seat(arena, 5, {**hand, "price": None}) is None
     # Your price unread: after the flop, the bets on the table give it.
-    bets = {**hand, "price": None, "wagers": {2: Decimal(10)}}
+    # Not in your turn's first frames: the action before yours is usually
+    # read a moment after your buttons show.
+    bets = {**hand, "price": None, "wagers": {2: Decimal(10)}, "turn_frames": 2}
+    assert fill_to_seat(arena, 5, bets) is None
     assert [(a["slot"], a["kind"], a["amount"]) for a in fill_to_seat(
-        arena, 5, bets)] == [(2, "raise", "10")]
+        arena, 5, {**bets, "turn_frames": 3})] == [(2, "raise", "10")]
 
 
 def test_the_losers_fold_badge_at_the_showdown_does_not_stop_the_replay():
