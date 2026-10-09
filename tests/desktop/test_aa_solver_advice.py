@@ -192,11 +192,12 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
     assert row["action"] == ("bet" if edge["value"] >= DEFAULTS["hu_bet"] else "check")
     assert bot.seen == [] and "heads-up cuts" in report["basis"]
     assert report["inferred_actions"] == 0
-    # Without your stack the share only; without the range nothing.
-    unread = flop_turn(AASolverAdvice(bot, Inline()), stacks_read=False)
+    # Without your stack the share only; without the range nothing. A still
+    # clock: on a slow machine the range job alone outlasts the rough rule's wait.
+    unread = flop_turn(AASolverAdvice(bot, Inline(), clock=still), stacks_read=False)
     assert (unread["status"], unread["reason"]) == ("idle", "heads_up_flop")
     assert 0 < unread["range_equity"]["value"] < 1
-    blind = AASolverAdvice(bot, Inline())
+    blind = AASolverAdvice(bot, Inline(), clock=still)
     monkeypatch.setattr(blind, "_ranges", lambda observation: None)
     report = flop_turn(blind)
     assert (report["reason"], "range_equity" in report) == ("heads_up_flop", False)
