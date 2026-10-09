@@ -142,6 +142,41 @@ class _Tracker:
         return self.tracker.observe(frame, glyphs, suspended=self.reader.suspended)
 
 
+POT_LABEL_MATCH = .80      # the "底池:" label match the window reads the pot at
+
+
+def _live_pipeline(pipeline):
+    """The frozen pipeline module with the pot read at ``POT_LABEL_MATCH``.
+
+    The label is matched at .90 against reviewed rasterizations; with the
+    label drawn a pixel off, a third to a half of the turn and river frames
+    of 10/09 went without a pot (a turn all-in's pot of 273 for 13 s). At .80
+    the same frames read, and only one placement of the colon still has to
+    match; the digits are read as strictly as before. 10/09 recording, read
+    again frame by frame (another decoder than the window's, so .90 already
+    read some): of 1445 flop-to-river frames the re-measure had no pot for,
+    1081 read at .80 against 669 at .90; 400 frames that had one read the
+    same, and every one looked at by eye (18 that differed from a nearby
+    reading, 12 more at random) was right.
+    The module object is replaced, not changed: the frozen offline tools keep
+    .90."""
+    from tools.aa8_unmarked_money import pot_patch
+    live = ModuleType(pipeline.__name__ + "_live")
+    live.__dict__.update(vars(pipeline))
+
+    def unique_pot_patch(image, prefixes):
+        candidates = {}
+        for prefix in prefixes:
+            patch = pot_patch(image, prefix, threshold=POT_LABEL_MATCH)
+            if patch is not None:
+                key = (patch.shape, hashlib.sha256(patch.tobytes()).hexdigest())
+                candidates[key] = patch
+        return next(iter(candidates.values())) if len(candidates) == 1 else None
+
+    live.unique_pot_patch = unique_pot_patch
+    return live
+
+
 def _create_candidate(spec):
     # Explicit module, imported only after user starts a configured session.
     from tools.aa8_candidate_v2 import create_candidate
@@ -151,6 +186,7 @@ def _create_candidate(spec):
     from .aa_live_context_v3 import LiveStateAdapterV3
     from tools.aa8_cards_v2 import AA8CardReaderV2
     state = create_candidate(spec)
+    state.p = _live_pipeline(state.p)
     state.cards = AA8CardReaderV2(spec["heads_path"], preprocessing="gaussian_050")
     state.frame_enricher = LiveFrameEvidence(
         state.cache.bank, state.profile, state.seats.empty)

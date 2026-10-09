@@ -46,3 +46,17 @@ def test_cannot_explain_raise_as_call_or_add_missing_roster():
     changed = deepcopy(after)
     changed["stacks"]["6"] = "100"
     assert infer_call(before, changed, context)["action"] is None
+
+
+def test_the_pot_label_matches_at_the_threshold_given(monkeypatch):
+    import numpy as np
+    import tools.aa8_unmarked_money as money
+    binary = np.zeros((21, 104), np.uint8)
+    binary[5:15, 45:60] = 255                       # the digits after the colon
+    monkeypatch.setattr(money, "region", lambda image: np.zeros((21, 104, 3), np.uint8))
+    monkeypatch.setattr(money, "pot_mask", lambda patch: binary)
+    monkeypatch.setattr(money, "colon_x", lambda binary: None)
+    monkeypatch.setattr(money, "colon_candidates", lambda binary: [40])
+    monkeypatch.setattr(money, "prefix_score", lambda candidate, prefix: .85)
+    assert money.pot_patch(None, "label") is None              # .90 by default
+    assert money.pot_patch(None, "label", threshold=.80) is not None

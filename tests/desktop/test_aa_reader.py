@@ -284,3 +284,24 @@ def test_supplement_precedes_transition_and_is_copied_on_reset(
     assert row["glyph_transitions"][0]["glyph"] == "all_in"
     row = reader.read(image, 3, {"pts_seconds": .3})
     assert row["glyphs"]["0"] == "all_in" and not row["glyph_transitions"]
+
+
+def test_the_window_reads_the_pot_at_a_looser_label_match(monkeypatch):
+    from types import ModuleType
+    import tools.aa8_unmarked_money as money
+    from poker_engine.desktop import aa_reader
+    seen = []
+
+    def pot_patch(image, prefix, threshold=.90):
+        seen.append(threshold)
+        return np.full((4, 4), prefix, np.uint8)
+
+    monkeypatch.setattr(money, "pot_patch", pot_patch)
+    frozen = ModuleType("pipeline")
+    frozen.unique_pot_patch, frozen.region = "frozen", "kept"
+    live = aa_reader._live_pipeline(frozen)
+    assert isinstance(live, ModuleType) and live.region == "kept"
+    assert frozen.unique_pot_patch == "frozen"              # offline tools keep .90
+    assert live.unique_pot_patch(None, [7, 7]) is not None  # the labels agree
+    assert seen == [aa_reader.POT_LABEL_MATCH] * 2 == [.80] * 2
+    assert live.unique_pot_patch(None, [7, 8]) is None      # they disagree: no pot
