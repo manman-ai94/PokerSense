@@ -83,16 +83,17 @@ hand of four or more players: the small blind takes it with the pot, so the
 policy counts it as extra pot when you are the small blind (the report's
 ``mushroom_pool`` is then the amount counted). Each opponent's entry and
 raise rates over the hands seen so far (``aa_reads``) go to the preflop
-policy too, which widens or narrows that seat's expected range by them.
-They are left out of the range reading after the flop for now: there a
-seat that raises far more than the model before the flop is taken as
-bluffing more after it too, which misreads tight-aggressive players who
-bet honestly after the flop (on the scoreboard, 2026-10-09: -406 bb/100 in
-bomb pots against such a table, paired, with the reads against without
-them). They come back once the reading keys that on how often a seat bets
-after the flop. The report's ``reads_hands`` is how many hands they come
-from (0 after the flop); every report's ``seat_reads`` has each seat's
-numbers and word for the window. A bomb pot (暴击) is replayed as
+policy too, which widens or narrows that seat's expected range by them,
+and to the range reading after the flop (``ranges.opponent_ranges``: the
+same widening, and bets from a seat that bets or raises clearly more often
+than the model after the flop keep some hands the model would not bet
+with). That keys on the seat's postflop bets and raises, not its preflop
+raise rate: read that way, a tight-aggressive player who bets honestly was
+taken as bluffing (on the scoreboard, 2026-10-09: -406 bb/100 in bomb pots
+against such a table, with the reads against without them, before it keyed
+on them). The report's ``reads_hands`` is how many hands they come from;
+every report's ``seat_reads`` has each seat's numbers and word for the
+window. A bomb pot (暴击) is replayed as
 one (``aa_solver_input.bomb_post``) and advised like any other hand after
 the flop; the report's ``bomb_pot`` is each player's post. The advice
 comes from a model of how people play and is for study only; nothing here
@@ -378,7 +379,8 @@ class AASolverAdvice:
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
         if len(live) > 2 or observation["street"] not in SOLVED:
-            return self._submit(self._multiway, observation, fields, time.monotonic())
+            return self._submit(self._multiway, self._with_reads(observation), fields,
+                                time.monotonic())
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
         pot = _decimal(fields.get("pot"))
@@ -387,8 +389,8 @@ class AASolverAdvice:
         if self._bot is None:
             self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
                                   base=self._preflop_policy())
-        self._quick[key] = self._submit(self._quick_rule, observation, fields,
-                                        time.monotonic())
+        self._quick[key] = self._submit(self._quick_rule, self._with_reads(observation),
+                                        fields, time.monotonic())
         return self._submit(self._solve, observation, time.monotonic())
 
     def _submit(self, function, *args):
