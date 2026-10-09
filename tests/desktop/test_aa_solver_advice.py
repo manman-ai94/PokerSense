@@ -198,22 +198,30 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
     assert (report["reason"], "range_equity" in report) == ("heads_up_flop", False)
 
 
-def test_the_opponents_reads_stay_out_of_the_range_reading_after_the_flop(
-        monkeypatch):
-    # Read by the preflop raise rate, a tight-aggressive player who bets
-    # honestly after the flop is taken as bluffing: left out for now.
+def test_the_opponents_reads_go_to_the_range_reading_after_the_flop(monkeypatch):
+    # A seat that bets far more than the AA players after the flop keeps more
+    # of the hands the model would not play that way. One that only raises
+    # more before the flop does not: read that way, a tight-aggressive player
+    # who bets honestly was taken as bluffing.
     seen, real = [], aa_solver_advice.opponent_ranges
     monkeypatch.setattr(aa_solver_advice, "opponent_ranges",
                         lambda observation, model: seen.append(observation)
                         or real(observation, model))
     plain = flop_turn(AASolverAdvice(Bot({"CALL": 1.0}), Inline()))
-    reads = {"2": {"hands": 30, "vpip": 0.6, "pfr": 0.4}}
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
-    monkeypatch.setattr(advice.reads, "snapshot", lambda: reads)
-    report = flop_turn(advice)
-    assert "reads" not in seen[-1] and report["status"] == "ready"
-    assert report["reads_hands"] == 0
-    assert report["range_equity"] == plain["range_equity"]
+    assert "reads" not in seen[-1] and plain["reads_hands"] == 0
+
+    def equity(**postflop):
+        reads = {"2": {"hands": 30, "vpip": 0.6, "pfr": 0.4, **postflop}}
+        advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+        monkeypatch.setattr(advice.reads, "snapshot", lambda: reads)
+        report = flop_turn(advice)
+        assert seen[-1]["reads"] == reads and report["status"] == "ready"
+        assert report["reads_hands"] == 30
+        return report["range_equity"]
+
+    honest = equity(postflop=40, aggression=0.21)
+    assert equity() == honest                       # no postflop numbers yet
+    assert equity(postflop=40, aggression=0.6) != honest
 
 
 # The same hand three-handed: seat 1 completes its big blind and checks along.
@@ -387,9 +395,11 @@ def test_the_opponents_reads_from_finished_hands_go_to_the_preflop_policy():
     turn["action_history_v1"] = {**turn["action_history_v1"], "hand_id": "hand_2"}
     result = advice.observe(turn, 70)
     reads = policy.seen[-1]["reads"]
-    assert reads["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0} and "4" not in reads
+    assert reads["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0, "postflop": 0,
+                          "aggression": 0.0} and "4" not in reads
     assert result["reads_hands"] == 1
     assert result["seat_reads"]["3"] == {"hands": 1, "vpip": 0.0, "pfr": 0.0,
+                                         "postflop": 0, "aggression": 0.0,
                                          "tag": None}
     assert frame_summary({"solver_advice_v1": result})["solver_advice"][
         "reads_hands"] == 1
@@ -676,6 +686,12 @@ def test_the_background_thread_lets_recognition_get_the_lock_back_quickly():
         sys.setswitchinterval(0.005)          # Python's default
         assert advice._submit(lambda: "done").result(5) == "done"
         assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+        # The rough rule's worker too, when it starts first.
+        rough = AASolverAdvice()
+        sys.setswitchinterval(0.005)
+        assert rough._submit_rough(lambda: "rough").result(5) == "rough"
+        assert sys.getswitchinterval() == pytest.approx(aa_solver_advice.SWITCH_SECONDS)
+        rough._rough_executor.shutdown()
     finally:
         advice._executor.shutdown()
         sys.setswitchinterval(before)

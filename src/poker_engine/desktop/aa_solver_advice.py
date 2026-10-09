@@ -33,9 +33,11 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   Reading the ranges is plain Python and takes seconds when many players
   are in (a bomb pot, 暴击), and would hold the interpreter lock 5 ms at
   a time, slowing recognition many-fold (on 2026-10-08 in a 5-handed bomb
-  pot the window lost its picture for over 2 seconds). Starting the
+  pot the window lost its picture for over 2 seconds). Starting a
   background thread makes the interpreter switch threads every
-  ``SWITCH_SECONDS`` instead.
+  ``SWITCH_SECONDS`` instead. The solve, the range rule next to it and the
+  rough rule can run at once: on 10/07 at real pace recognition took about
+  a second a frame for 8 frames while they did.
 
 An action the history missed but the table shows (``aa_solver_input``) is
 filled in; the report's ``inferred_actions`` counts them. A decision is the
@@ -83,16 +85,17 @@ hand of four or more players: the small blind takes it with the pot, so the
 policy counts it as extra pot when you are the small blind (the report's
 ``mushroom_pool`` is then the amount counted). Each opponent's entry and
 raise rates over the hands seen so far (``aa_reads``) go to the preflop
-policy too, which widens or narrows that seat's expected range by them.
-They are left out of the range reading after the flop for now: there a
-seat that raises far more than the model before the flop is taken as
-bluffing more after it too, which misreads tight-aggressive players who
-bet honestly after the flop (on the scoreboard, 2026-10-09: -406 bb/100 in
-bomb pots against such a table, paired, with the reads against without
-them). They come back once the reading keys that on how often a seat bets
-after the flop. The report's ``reads_hands`` is how many hands they come
-from (0 after the flop); every report's ``seat_reads`` has each seat's
-numbers and word for the window. A bomb pot (暴击) is replayed as
+policy too, which widens or narrows that seat's expected range by them,
+and to the range reading after the flop (``ranges.opponent_ranges``: the
+same widening, and bets from a seat that bets or raises clearly more often
+than the model after the flop keep some hands the model would not bet
+with). That keys on the seat's postflop bets and raises, not its preflop
+raise rate: read that way, a tight-aggressive player who bets honestly was
+taken as bluffing (on the scoreboard, 2026-10-09: -406 bb/100 in bomb pots
+against such a table, with the reads against without them, before it keyed
+on them). The report's ``reads_hands`` is how many hands they come from;
+every report's ``seat_reads`` has each seat's numbers and word for the
+window. A bomb pot (暴击) is replayed as
 one (``aa_solver_input.bomb_post``) and advised like any other hand after
 the flop; the report's ``bomb_pot`` is each player's post. The advice
 comes from a model of how people play and is for study only; nothing here
@@ -131,7 +134,7 @@ SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
 THREADS = 4                     # solver threads (the scoreboard uses one)
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
-SWITCH_SECONDS = 0.0005         # thread switch while a background job runs
+SWITCH_SECONDS = 0.0001         # thread switch while a background job runs
 SALT = "live-advice"
 BASIS = ("heads-up TexasSolver strategy; ranges from a population model of "
          "public hand histories fitted to AA players' preflop play; for study only")
@@ -163,6 +166,16 @@ ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 
                "for when the hand cannot be worked out; for study only")
 BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 IN_HAND = ("active", "all_in")
+
+
+def _switch_quickly():
+    """The frame loop gets the interpreter lock back within ``SWITCH_SECONDS``
+    instead of 5 ms. On a frame-like load next to range jobs from the 10/07
+    log (cloud, 2026-10-09; median frame against the frame alone): 5 ms, two
+    jobs: 49x slower; 0.5 ms: 3x with one job, 8x with two, 11x with three;
+    0.1 ms: 2x, 3x, 5x; the jobs themselves 4-13% slower than at 0.5 ms
+    (0.05 ms gains nothing more)."""
+    sys.setswitchinterval(min(sys.getswitchinterval(), SWITCH_SECONDS))
 
 
 def _read_hands(observation):
@@ -378,7 +391,8 @@ class AASolverAdvice:
         live = [seat for seat in observation["occupied_seats"]
                 if seat not in observation["folded"]]
         if len(live) > 2 or observation["street"] not in SOLVED:
-            return self._submit(self._multiway, observation, fields, time.monotonic())
+            return self._submit(self._multiway, self._with_reads(observation), fields,
+                                time.monotonic())
         if any(seat in observation["stacks_unknown"] for seat in live):
             return {"status": "abstain", "reason": "stack_unknown"}
         pot = _decimal(fields.get("pot"))
@@ -387,16 +401,13 @@ class AASolverAdvice:
         if self._bot is None:
             self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
                                   base=self._preflop_policy())
-        self._quick[key] = self._submit(self._quick_rule, observation, fields,
-                                        time.monotonic())
+        self._quick[key] = self._submit(self._quick_rule, self._with_reads(observation),
+                                        fields, time.monotonic())
         return self._submit(self._solve, observation, time.monotonic())
 
     def _submit(self, function, *args):
         if self._executor is None:
-            # The frame loop gets the lock back within half a millisecond
-            # instead of 5: on a frame-like load next to a 3-second range
-            # job, 4x slower instead of 15x; the job itself 2% slower.
-            sys.setswitchinterval(min(sys.getswitchinterval(), SWITCH_SECONDS))
+            _switch_quickly()
             self._executor = ThreadPoolExecutor(max_workers=WORKERS,
                                                 thread_name_prefix="solver-advice")
         return self._executor.submit(function, *args)
@@ -404,6 +415,7 @@ class AASolverAdvice:
     def _submit_rough(self, function, *args):
         """On a worker of its own: in the solve's pool it waits for the solve."""
         if self._rough_executor is None:
+            _switch_quickly()
             self._rough_executor = ThreadPoolExecutor(max_workers=1,
                                                       thread_name_prefix="rough-advice")
         return self._rough_executor.submit(function, *args)

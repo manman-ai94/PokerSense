@@ -1,4 +1,4 @@
-"""Reads on the opponents at the live table, for the preflop advice.
+"""Reads on the opponents at the live table, for the advice.
 
 The preflop policy (``aa_preflop``) widens or narrows what it expects from
 a seat by how often that seat has put chips in (VPIP) and raised (PFR)
@@ -17,6 +17,13 @@ seen since the observation started:
 - your own seat is not counted, and a seat read empty during a hand starts
   over after it: someone else may sit there next; a bomb pot (暴击) has no
   preflop decisions and is not counted.
+
+After the flop it counts each seat's decisions (check, call, bet, raise and
+fold each once) and how many of them bet or raised, over the same hands and
+bomb pots too, as far as the hand replays: the range reading
+(``scoreboard.ranges``) keeps extra hands for a seat that bets clearly more
+often than the AA statistics' players (21% of their postflop decisions), not
+for one that only raises more before the flop.
 
 The scoreboard checked these reads against tables of the same kind of
 players; at a real table people change gears, so they are a guide, pulled
@@ -90,6 +97,16 @@ def preflop_entries(arena):
     return entries
 
 
+def postflop_actions(arena):
+    """{seat: (decisions, bets or raises)} after the flop, from a replay."""
+    counts = {}
+    for row in arena.observe(arena.occupied_seats[0])["public_history"]:
+        if row["street"] != "preflop":
+            decisions, bets = counts.get(row["actor"], (0, 0))
+            counts[row["actor"]] = decisions + 1, bets + (row["kind"] == "raise_to")
+    return counts
+
+
 class AAReads:
     """Each seat's hands, VPIP and PFR over the hands seen so far."""
 
@@ -97,9 +114,10 @@ class AAReads:
         self.reset()
 
     def reset(self):
-        self._counts = {}       # seat -> [hands, put chips in, raised]
+        # seat -> [hands, put chips in, raised, postflop decisions, bets or raises]
+        self._counts = {}
         self._words = {}        # seat -> its word for the window
-        self.hands = 0          # hands counted
+        self.hands = 0          # hands counted before the flop
 
     def add_hand(self, rows):
         """Count one finished hand's frame-log rows (oldest first); True
@@ -112,7 +130,7 @@ class AAReads:
                                 or {}).items():
                 if state == "empty":
                     self._counts.pop(int(slot), None)
-        self._words = {seat: tag(*count, self._words.get(seat))
+        self._words = {seat: tag(*count[:3], self._words.get(seat))
                        for seat, count in self._counts.items()}
         return counted
 
@@ -121,34 +139,46 @@ class AAReads:
         if not facts["complete"] or not facts["actions"]:
             return False
         replay = replay_hand(facts)
-        if replay["arena"] is None or replay["dealer_source"] != "reader":
+        arena = replay["arena"]
+        if arena is None or replay["dealer_source"] != "reader":
             return False
-        if replay["arena"].observe(replay["arena"].occupied_seats[0])["bomb_pot"]:
-            return False                # no preflop decisions in a bomb pot
-        entries = preflop_entries(replay["arena"])
+        bomb = arena.observe(arena.occupied_seats[0])["bomb_pot"]
+        entries = {} if bomb else preflop_entries(arena)   # none in a bomb pot
         if entries is None:
             return False
         for seat, (played, raised) in entries.items():
-            if seat == HERO:
-                continue
-            count = self._counts.setdefault(seat, [0, 0, 0])
-            count[0] += 1
-            count[1] += played
-            count[2] += raised
-        self.hands += 1
+            if seat != HERO:
+                self._add(seat, 0, (1, played, raised))
+        for seat, (decisions, bets) in postflop_actions(arena).items():
+            if seat != HERO:
+                self._add(seat, 3, (decisions, bets))
+        self.hands += not bomb
         return True
 
+    def _add(self, seat, at, values):
+        count = self._counts.setdefault(seat, [0, 0, 0, 0, 0])
+        for offset, value in enumerate(values):
+            count[at + offset] += value
+
     def labels(self):
-        """{seat: {"hands", "vpip", "pfr", "tag"}} for the window."""
+        """``snapshot`` with each seat's ``tag`` for the window."""
         return {seat: {**read, "tag": self._words.get(int(seat))}
                 for seat, read in self.snapshot().items()}
 
     def snapshot(self):
-        """{seat: {"hands", "vpip", "pfr"}} as the preflop policy takes it."""
-        return {str(seat): {"hands": hands, "vpip": round(played / hands, 4),
-                            "pfr": round(raised / hands, 4)}
-                for seat, (hands, played, raised) in sorted(self._counts.items())
-                if hands}
+        """{seat: {"hands", "vpip", "pfr", "postflop", "aggression"}} as the
+        preflop policy and the range reading take it: ``postflop`` decisions
+        after the flop and the share of them that bet or raised."""
+        return {str(seat): {"hands": hands, "vpip": _share(played, hands),
+                            "pfr": _share(raised, hands), "postflop": decisions,
+                            "aggression": _share(bets, decisions)}
+                for seat, (hands, played, raised, decisions, bets)
+                in sorted(self._counts.items()) if hands or decisions}
 
 
-__all__ = ["AAReads", "TAG_HANDS", "holds", "preflop_entries", "tag", "wilson"]
+def _share(hits, out_of):
+    return round(hits / out_of, 4) if out_of else 0.0
+
+
+__all__ = ["AAReads", "TAG_HANDS", "holds", "postflop_actions", "preflop_entries",
+           "tag", "wilson"]

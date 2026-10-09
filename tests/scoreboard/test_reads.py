@@ -7,7 +7,8 @@ import pytest
 
 from poker_engine.scoreboard.bots import make_policy, raise_toward
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy, read_shares
-from poker_engine.scoreboard.reads import (FACTOR_RANGE, MODEL, READ_PRIOR, factors,
+from poker_engine.scoreboard.reads import (AGGRESSION_PRIOR, FACTOR_RANGE, MODEL,
+                                           READ_PRIOR, aggression_factor, factors,
                                            measure, sample)
 from poker_engine.scoreboard.runner import play_hand, run_scoreboard
 from poker_engine.scoreboard.strength import DECK, class_combos, hand_class
@@ -66,8 +67,39 @@ def test_measured_shares_tell_tight_and_loose_players_apart():
     shares = measure(RULES, ("nit", "aa_population"), deals=30)
     assert set(shares) == {"nit", "aa_population"}
     assert shares["nit"]["vpip"] < shares["aa_population"]["vpip"]
+    assert shares["nit"]["postflop"] < shares["aa_population"]["postflop"]
     for value in shares.values():
         assert 0 <= value["pfr"] <= value["vpip"] <= 1
+        assert 0 <= value["aggression"] <= 1
+
+
+def test_measured_aggression_tells_a_maniac_from_the_population():
+    shares = measure(RULES, ("maniac", "aa_population"), deals=40)
+    assert shares["maniac"]["aggression"] > 1.3 * shares["aa_population"]["aggression"]
+
+
+def test_postflop_reads_are_sampled_apart_from_the_preflop_ones():
+    preflop = {"a": {"vpip": 0.5, "pfr": 0.2}}
+    both = {"a": {**preflop["a"], "postflop": 0.4, "aggression": 0.3}}
+    styles = {0: "a", 1: "a", 2: "a"}
+    plain = sample(preflop, styles, 1, seed=4, hands=2000)
+    full = sample(both, styles, 1, seed=4, hands=2000)
+    assert "postflop" not in plain["0"]
+    for seat in ("0", "2"):
+        assert {key: full[seat][key] for key in plain[seat]} == plain[seat]
+        assert full[seat]["postflop"] == pytest.approx(800, rel=0.1)
+        assert full[seat]["aggression"] == pytest.approx(0.3, abs=0.05)
+
+
+def test_aggression_factor_needs_postflop_numbers_and_is_pulled_to_the_model():
+    assert aggression_factor(None, AA) is None
+    assert aggression_factor({"hands": 100, "vpip": 0.5, "pfr": 0.4}, AA) is None
+    read = {"hands": 100, "vpip": 0.3, "pfr": 0.1,
+            "postflop": AGGRESSION_PRIOR, "aggression": 3 * AA["aggression"]}
+    assert aggression_factor(read, AA) == pytest.approx(2.0)     # halfway from 1 to 3
+    assert aggression_factor({**read, "postflop": 0}, AA) == pytest.approx(1.0)
+    assert aggression_factor({**read, "postflop": 10_000, "aggression": 1.0},
+                             AA) == FACTOR_RANGE[1]
 
 
 def facing_an_open(seed=3):

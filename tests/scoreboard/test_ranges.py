@@ -6,7 +6,7 @@ import random
 
 from poker_engine.scoreboard.bots import _rng, make_policy, opponents_in_hand
 from poker_engine.scoreboard.population import PopulationBot
-from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
+from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity, read_floors
 from poker_engine.scoreboard.strength import equity
 from poker_engine.solver.texassolver import all_combos
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
@@ -79,7 +79,8 @@ def test_ranges_kept_from_earlier_decisions_are_the_same_as_read_again():
     assert kept == opponent_ranges(last, model)
 
 
-def test_reads_widen_the_range_of_a_seat_that_raises_more_than_the_model():
+def _bet_into():
+    """A flop where the preflop opener has bet into the observer, and the opener."""
     rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
     arena = AAFullHandArena(rules).reset(3)
     opener = arena.actor
@@ -92,7 +93,11 @@ def test_reads_widen_the_range_of_a_seat_that_raises_more_than_the_model():
                if a["kind"] == "raise_to")
     if arena.actor == opener:
         arena.step(bet)
-    observation = arena.observe(arena.actor)
+    return arena.observe(arena.actor), opener
+
+
+def test_reads_widen_the_range_of_a_seat_that_raises_more_than_the_model():
+    observation, opener = _bet_into()
     model = PopulationBot(adjusted=True)
 
     def width(reads):
@@ -105,3 +110,32 @@ def test_reads_widen_the_range_of_a_seat_that_raises_more_than_the_model():
     wide = width({str(opener): {"hands": 300, "vpip": 0.5, "pfr": 0.35}})
     tight = width({str(opener): {"hands": 300, "vpip": 0.15, "pfr": 0.05}})
     assert tight < plain < wide
+
+
+def test_only_betting_more_after_the_flop_keeps_extra_hands_after_it():
+    observation, opener = _bet_into()
+    arena = AAFullHandArena(AARuleProfileV2.from_dict(json.loads(
+        RULES.read_text(encoding="utf-8"))))
+    arena.reset(3)
+    for row in observation["public_history"]:
+        arena.step(row["id"])
+    while arena.actor != opener:            # check to the opener, who then bets
+        arena.step("check_call")
+    arena.step(next(a["id"] for a in arena.observe(opener)["legal_actions"]
+                    if a["kind"] == "raise_to"))
+    observation = arena.observe(arena.actor)
+    model = PopulationBot(adjusted=True)
+    assert observation["street"] == "flop"
+    preflop = {"hands": 300, "vpip": 0.37, "pfr": 0.115}
+    seat = str(opener)
+
+    def width(read):
+        weights = opponent_ranges({**observation, "reads": {seat: read}}, model)
+        return sum(weights[opener].values())
+
+    plain = width(preflop)
+    honest = width({**preflop, "postflop": 60, "aggression": 0.21})
+    betting = width({**preflop, "postflop": 60, "aggression": 0.6})
+    raiser = {"reads": {seat: {**preflop, "pfr": 0.35}}}
+    assert read_floors(raiser, model, [opener]) == {opener: 0.0}
+    assert honest == plain < betting
