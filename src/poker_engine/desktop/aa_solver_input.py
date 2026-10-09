@@ -8,7 +8,8 @@ that replay, and checks the hand on the way:
 
 - **seats**: the seats in the hand when its first action happened, plus any
   seat that acts. The AA rules cover 5 to 8 players;
-- **dealer**: the dealer reading, unless the betting order says otherwise.
+- **dealer**: the dealer reading (unread: the one the blinds on the table
+  show, ``blind_dealer``), unless the betting order says otherwise.
   The button can still show the last hand's dealer when the hand starts;
   when the reading does not fit the actions and exactly one other dealer
   replays the whole hand, that one is used;
@@ -35,6 +36,10 @@ one action fits (``inferred``):
 - otherwise, a seat whose turn it was and is folded on the table now folded,
   unless it acts again later on that street (it folded then; what it missed
   here can be a raise);
+- otherwise, a seat whose turn it was with nothing to call, and no bet of its
+  own on the table, checked when the next seat bets or raises; its check
+  read after that bet is that check, read late (10/09: two of your turns
+  got only the rough advice for a check missed or read a moment late);
 - otherwise, a seat whose turn it was and does not act again on that street
   called or raised to the bet it still has on the table, while the table is
   on that street (10/08: a raise to 27 missed, the next seat folded to it);
@@ -113,8 +118,11 @@ def hand_facts(rows):
             if value not in (None, ""):
                 stacks[int(seat)] = Decimal(value)
     latest = fields[-1] if fields else {}
+    before = [f for row, f in zip(rows, fields)
+              if first is None or row["processed"] <= first]
     return {"hand_id": history.get("hand_id"), "complete": history.get("complete"),
             "dealer": history.get("dealer"), "seats": sorted(seats),
+            "blind_dealer": blind_dealer(before, sorted(seats)),
             "actions": actions, "board": board, "stacks": stacks,
             "opening_pot": _opening_pot(rows, fields, first),
             "states": {int(seat): state for seat, state in
@@ -124,6 +132,33 @@ def hand_facts(rows):
                        if value not in (None, "")},
             "price": _price(latest.get("hero_controls") or {}),
             "all_in": _all_in(latest.get("hero_controls") or {})}
+
+
+def blind_dealer(fields, seats):
+    """The dealer the blinds on the table show, or None: the seat before the
+    one with the small blind in front, when exactly one seat has the small
+    blind and the next seat in the hand exactly the big blind (``fields``:
+    the hand's frames before its first action).
+
+    10/09: the dealer button went unread for a whole hand; the betting order
+    alone picked a wrong dealer before the flop and none fitted after it, so
+    four of your decisions got only the rough advice, while the blinds (1
+    and 2, then the straddle of 4) were on the table from the first frame.
+    """
+    raw = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    small, big = Decimal(raw["small_blind"]), Decimal(raw["big_blind"])
+    for f in fields:
+        wagers = {int(seat): Decimal(value)
+                  for seat, value in (f.get("street_wagers") or {}).items()
+                  if value not in (None, "")}
+        smalls = [seat for seat, value in wagers.items() if value == small]
+        bigs = [seat for seat, value in wagers.items() if value == big]
+        if len(smalls) != 1 or len(bigs) != 1 or smalls[0] not in seats:
+            continue
+        at = seats.index(smalls[0])
+        if seats[(at + 1) % len(seats)] == bigs[0]:
+            return seats[at - 1]
+    return None
 
 
 def _price(controls):
@@ -217,7 +252,9 @@ def replay_hand(facts, stacks=None):
     if bomb is None and actions and actions[0].get("street") not in (None, "preflop"):
         # No preflop betting, and not the pot a bomb pot opens with.
         return _result("stopped", "starts_after_preflop", None, None, 0, None)
-    reported = facts["dealer"]
+    reported, source = facts["dealer"], "reader"
+    if reported is None and facts.get("blind_dealer") is not None:
+        reported, source = facts["blind_dealer"], "blinds"
     candidates = ([reported] if reported in seats else []) + [
         seat for seat in seats if seat != reported]
     tried = {}
@@ -226,7 +263,7 @@ def replay_hand(facts, stacks=None):
         tried[dealer] = _replay(seats, dealer, actions, facts["board"], stacks, table,
                                 bomb)
         if dealer == reported and tried[dealer][0] == "ok":
-            return _result("ok", None, dealer, "reader", *tried[dealer][2:])
+            return _result("ok", None, dealer, source, *tried[dealer][2:])
     fits = [dealer for dealer, outcome in tried.items() if outcome[0] == "ok"]
     if len(fits) == 1:
         source = "betting_order" if reported is not None else "betting_order_only"
@@ -235,7 +272,7 @@ def replay_hand(facts, stacks=None):
         return _result("stopped", "dealer_ambiguous", None, None, 0, None)
     if reported in seats:
         status, reason, replayed, arena, inferred = tried[reported]
-        return _result(status, reason, reported, "reader", replayed, arena, inferred)
+        return _result(status, reason, reported, source, replayed, arena, inferred)
     return _result("stopped", "no_dealer_fits", None, None, 0, None)
 
 
@@ -325,6 +362,11 @@ def _fill(arena, actions, at, table):
     elif table["states"].get(seat) == "folded" and not later:
         action = _missed(arena, seat, table, None)
         rest = list(actions)
+    elif _checked(arena, seat, nxt, table):
+        action = {"slot": seat, "kind": "check", "street": arena.street, "amount": "0"}
+        late = next((index for index in later if actions[index]["kind"] == "check"),
+                    None)
+        rest = [a for index, a in enumerate(actions) if index != late]
     elif not later:
         action = _from_wager(arena, seat, table)
         rest = list(actions)
@@ -334,6 +376,19 @@ def _fill(arena, actions, at, table):
         return None
     action.update(frame=nxt["frame"], source="inferred")
     return rest[:at] + [action] + rest[at:]
+
+
+def _checked(arena, seat, nxt, table):
+    """``seat`` had nothing to call, the next seat bet or raised, and no bet
+    of ``seat``'s own is on the table on this street: it checked."""
+    bets = {int(key): Decimal(value)
+            for key, value in arena.observe(seat)["bets"].items()}
+    if max(bets.values()) != bets[seat] or nxt["kind"] not in ("raise", "all_in"):
+        return False
+    street = next((name for name, count in reversed(BOARD)
+                   if len(table.get("board") or ()) >= count), "preflop")
+    wager = (table.get("wagers") or {}).get(seat) if street == arena.street else None
+    return not wager or wager == bets[seat]
 
 
 def _from_wager(arena, seat, table):
@@ -409,7 +464,8 @@ def _still_to_act(arena, seat, table):
 def _steps(seats, dealer, actions, board, stacks, bomb=None):
     """Replay ``actions``; a seat that went all in without a stack reading is
     given what it had put in by then as its stack, so it is not asked to act
-    again (it was taken as deep)."""
+    again (it was taken as deep), and so is one whose all-in is short of a
+    full raise (the table allows that only for a seat's last chips)."""
     stacks = dict(stacks or {})
     while True:
         outcome = _steps_once(seats, dealer, actions, board, stacks, bomb)
@@ -451,6 +507,15 @@ def _steps_once(seats, dealer, actions, board, stacks, bomb):
         try:
             arena.step(step)
         except ValueError:
+            if (action["kind"] == "all_in" and action["slot"] not in stacks
+                    and step.startswith("raise_to:")):
+                # Less than a full raise is all in only with the seat's last
+                # chips; without a stack reading the seat was taken as deep
+                # (10/09, a bomb pot: all in for 140 below a raise to 148).
+                seat = action["slot"]
+                put = Decimal(arena.observe(seat)["contributions"][str(seat)])
+                chips = put + Decimal(action["amount"])
+                return "all_in_again", (seat, chips), index, arena
             return "stopped", "illegal_at_the_table", index, arena
         if action["kind"] == "fold":
             folded.add(action["slot"])
@@ -536,7 +601,7 @@ def solver_observation(facts, seat, cards):
         return None, first["reason"]
     if not first["arena"].terminal and first["arena"].actor != seat:
         filled = (fill_to_seat(first["arena"], seat, facts)
-                  if first["dealer_source"] == "reader" else None)
+                  if first["dealer_source"] in ("reader", "blinds") else None)
         if filled:
             facts = {**facts, "actions": facts["actions"] + filled}
             first = replay_hand(facts)
@@ -660,7 +725,7 @@ def check_hand(rows):
             "bomb_pot": None if bomb is None else _money(bomb)}
 
 
-__all__ = ["BOMB_BIG_BLINDS", "board_history", "bomb_post", "check_hand",
-           "fill_to_seat", "hand_facts", "own_post", "replay_hand",
+__all__ = ["BOMB_BIG_BLINDS", "blind_dealer", "board_history", "bomb_post",
+           "check_hand", "fill_to_seat", "hand_facts", "own_post", "replay_hand",
            "solver_observation", "starting_stacks", "table_observation",
            "with_post"]
