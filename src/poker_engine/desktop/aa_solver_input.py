@@ -44,8 +44,9 @@ one action fits (``inferred``):
   called or raised to the bet it still has on the table, while the table is
   on that street (10/08: a raise to 27 missed, the next seat folded to it);
 - before your turn, the seats still to act folded (folded on the table) or
-  checked or called, unless your price (the button's call amount) is more
-  than that leaves you: then the one of them still in bet up to it.
+  checked or called, unless your price (the button's call amount; after the
+  flop, when it is not read, the bets on the table) is more than that leaves
+  you: then the one of them still in bet up to it.
 
 Anything else that does not fit stops the replay with a reason: no advice
 should be given from such a hand. The opening pot is compared with the antes,
@@ -123,6 +124,9 @@ def hand_facts(rows):
     return {"hand_id": history.get("hand_id"), "complete": history.get("complete"),
             "dealer": history.get("dealer"), "seats": sorted(seats),
             "blind_dealer": blind_dealer(before, sorted(seats)),
+            "opening_wagers": _opening_wagers(
+                [f for row, f in zip(rows, fields)
+                 if first is None or row["processed"] < first]),
             "actions": actions, "board": board, "stacks": stacks,
             "opening_pot": _opening_pot(rows, fields, first),
             "states": {int(seat): state for seat, state in
@@ -132,6 +136,21 @@ def hand_facts(rows):
                        if value not in (None, "")},
             "price": _price(latest.get("hero_controls") or {}),
             "all_in": _all_in(latest.get("hero_controls") or {})}
+
+
+def _opening_wagers(fields):
+    """{seat: chips} each seat's latest bet read on the table before the
+    first action (the blinds, the straddle and any post), from the frames
+    showing the small blind (the antes show as a bet on every seat for a
+    moment); a badge missed in one frame is taken from an earlier one."""
+    opening = {}
+    for f in fields:
+        wagers = {int(seat): Decimal(value)
+                  for seat, value in (f.get("street_wagers") or {}).items()
+                  if value not in (None, "")}
+        if Decimal(1) in wagers.values():
+            opening.update(wagers)
+    return opening
 
 
 def blind_dealer(fields, seats):
@@ -261,7 +280,7 @@ def replay_hand(facts, stacks=None):
     for dealer in candidates:
         table = facts if dealer == reported else None
         tried[dealer] = _replay(seats, dealer, actions, facts["board"], stacks, table,
-                                bomb)
+                                bomb, facts.get("opening_wagers"))
         if dealer == reported and tried[dealer][0] == "ok":
             return _result("ok", None, dealer, source, *tried[dealer][2:])
     fits = [dealer for dealer, outcome in tried.items() if outcome[0] == "ok"]
@@ -282,19 +301,20 @@ def _result(status, reason, dealer, source, replayed, arena, inferred=()):
             "inferred": list(inferred)}
 
 
-def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None):
+def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None,
+            opening=None):
     """(status, reason, replayed, arena, inferred) for one dealer; swaps two
     actions read within SAME_FRAME frames of each other when that is what
     fits, and with ``table`` (the hand's facts) fills in missed actions.
     ``bomb``: each player's post when the hand is a bomb pot."""
     actions, inferred = list(actions), []
-    outcome = _steps(seats, dealer, actions, board, stacks, bomb)
+    outcome = _steps(seats, dealer, actions, board, stacks, bomb, opening)
     while outcome[0] != "ok":
         at = outcome[2]
         if at + 1 < len(actions) and abs(actions[at + 1]["frame"]
                                          - actions[at]["frame"]) <= SAME_FRAME:
             swapped = actions[:at] + [actions[at + 1], actions[at]] + actions[at + 2:]
-            retry = _steps(seats, dealer, swapped, board, stacks, bomb)
+            retry = _steps(seats, dealer, swapped, board, stacks, bomb, opening)
             if retry[2] > at + 1:
                 actions, outcome = swapped, retry
                 continue
@@ -303,7 +323,7 @@ def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None):
                   and len(inferred) < MAX_INFERRED else None)
         if filled is None:
             return (*outcome, inferred)
-        retry = _steps(seats, dealer, filled, board, stacks, bomb)
+        retry = _steps(seats, dealer, filled, board, stacks, bomb, opening)
         if retry[2] <= at + 1:
             return (*outcome, inferred)
         inferred.append(filled[at])
@@ -413,8 +433,12 @@ def _from_wager(arena, seat, table):
 def fill_to_seat(arena, seat, table):
     """The actions of the seats still to act before ``seat``, from the table
     (see the module notes), or None when they cannot be told."""
-    if table.get("price") is None or not table.get("states"):
+    price = table.get("price")
+    if price is None:
+        price = _wager_price(arena, seat, table)
+    if price is None or not table.get("states"):
         return None
+    table = {**table, "price": price}
     frame = max((action["frame"] for action in table["actions"]), default=0)
     filled, probe = [], arena
     for _ in range(MAX_INFERRED):
@@ -448,6 +472,22 @@ def fill_to_seat(arena, seat, table):
     return filled
 
 
+def _wager_price(arena, seat, table):
+    """Your price from the bets on the table when your button's is not read:
+    the most an opponent has in on this street minus what you have in; None
+    unless an opponent's bet is read while the table is on the replay's
+    street. 10/09: a bet's badge was read a moment late, your price was not
+    read, and the rough advice showed until the badge came."""
+    street = next((name for name, count in reversed(BOARD)
+                   if len(table.get("board") or ()) >= count), "preflop")
+    wagers = table.get("wagers") or {}
+    others = [value for other, value in wagers.items() if other != seat]
+    if street != arena.street or street == "preflop" or not others:
+        return None
+    price = max(others) - wagers.get(seat, Decimal(0))
+    return price if price > 0 else None
+
+
 def _still_to_act(arena, seat, table):
     """The seats acting before ``seat`` that are not folded, at the table or
     in the replay."""
@@ -461,21 +501,21 @@ def _still_to_act(arena, seat, table):
     return order
 
 
-def _steps(seats, dealer, actions, board, stacks, bomb=None):
+def _steps(seats, dealer, actions, board, stacks, bomb=None, opening=None):
     """Replay ``actions``; a seat that went all in without a stack reading is
     given what it had put in by then as its stack, so it is not asked to act
     again (it was taken as deep), and so is one whose all-in is short of a
     full raise (the table allows that only for a seat's last chips)."""
     stacks = dict(stacks or {})
     while True:
-        outcome = _steps_once(seats, dealer, actions, board, stacks, bomb)
+        outcome = _steps_once(seats, dealer, actions, board, stacks, bomb, opening)
         if outcome[0] != "all_in_again":
             return outcome
         seat, chips = outcome[1]
         stacks[seat] = chips
 
 
-def _steps_once(seats, dealer, actions, board, stacks, bomb):
+def _steps_once(seats, dealer, actions, board, stacks, bomb, opening=None):
     try:
         arena = AAFullHandArena(
             _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
@@ -485,6 +525,7 @@ def _steps_once(seats, dealer, actions, board, stacks, bomb):
     arena.reset(0, deck=replay_deck(board_history(board), len(seats)),
                 bomb=None if bomb is None else _money(bomb))
     folded, all_in, put_in = set(), set(), {}
+    posts = _posts(arena, opening)
     for index, action in enumerate(actions):
         if action["kind"] == "fold" and action["slot"] in folded:
             continue                  # the same fold read again (badge flicker)
@@ -499,7 +540,8 @@ def _steps_once(seats, dealer, actions, board, stacks, bomb):
         street = action.get("street")
         if street in STREETS and STREETS.index(street) > STREETS.index(arena.street):
             return "stopped", "street_mismatch", index, arena
-        step = _arena_action(arena, action)
+        step = _arena_action(arena, action, posts.pop(action["slot"], 0)
+                             if arena.street == "preflop" else 0)
         if step is None:
             return "stopped", "raise_without_amount", index, arena
         if step == "fold" and arena.street == "river" and not _to_call(arena):
@@ -536,9 +578,24 @@ def _to_call(arena):
     return max(bets.values()) - bets[arena.actor]
 
 
-def _arena_action(arena, action):
+def _posts(arena, opening):
+    """{seat: chips} a big blind each seat had in before the first action
+    beyond what the table posts for it (the blinds, the straddle): posted on
+    coming back to the table, and live (10/09: a raise to 21 after a post
+    was read as 19 more, as a raise to 19). ``opening``: the bets read on
+    the table before the first action."""
+    if not opening or arena.street != "preflop":
+        return {}
+    bets = arena.observe(arena.occupied_seats[0])["bets"]
+    big_blind = Decimal(_rules(len(arena.occupied_seats)).big_blind)
+    return {seat: big_blind for seat, chips in opening.items()
+            if str(seat) in bets and chips - Decimal(bets[str(seat)]) == big_blind}
+
+
+def _arena_action(arena, action, post=0):
     """The table action for a rebuilt one: raises go to what the seat had in
-    plus its chips; an all-in that does not top the bets is a call. A call or
+    plus its chips (and a post of its own the table does not know of, see
+    ``_posts``); an all-in that does not top the bets is a call. A call or
     raise seen from the seat's stack going down (source "stack_drop") is a
     call when its chips come to the highest bet and a raise when they top it."""
     kind = action["kind"]
@@ -551,7 +608,7 @@ def _arena_action(arena, action):
         return None
     bets = {int(seat): Decimal(value)
             for seat, value in arena.observe(action["slot"])["bets"].items()}
-    target = bets[action["slot"]] + Decimal(action["amount"])
+    target = bets[action["slot"]] + Decimal(post) + Decimal(action["amount"])
     top = max(bets.values())
     if (kind == "all_in" and target <= top) or (dropped and target == top):
         return "check_call"
