@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-10 · `claude/fix-windows-ci-ezhdu6`（修好 Windows 打包检查）**
+- 做了什么：每次合并到 main 后自动跑的“Windows 打包”（Build AA Windows Preview）从新仓库建好起 22 次全红：打出来的 PokerSense-AA.exe 一启动就报错退出。PR 上的三项检查不跑它，所以一直没人发现。
+- 怎么做的：缺两样东西。① 建议要用的牌力计算库 phevaluator 只在 solver-tools 里，打包不装它 → 加进 desktop 依赖（同样精确锁 0.6.0）；② 打包版找不到 `configs/game/aa-scoreboard-rules-v2.json` 和包里的 JSON 数据 → spec 把它们打进包，`aa_stakes.py` 打包时从 `_MEIPASS` 找规则文件（和界面文件同一个办法）。
+- 怎么验证的：Linux 上照工作流打包，修之前复现同样的 `No module named 'phevaluator'`，修之后离线自检 `OFFLINE_PACKAGE_SMOKE_PASS`；相关测试 121 个通过；在分支上手动跑了一次 GitHub 的 Windows 打包。
+- 还剩什么：Windows 打包版只是离线预览，真机采集还是在 Mac 上用。
+
 **2026-10-10 · `claude/table-stakes-detect-vu8m7g`（自动认出本桌盲注级别，2/4 桌也能用）**
 - 做了什么：建议、评分和所有“大盲”数字以前写死按 1/2/4(2) 算，到 2/4 桌全差一倍。现在每手开局从桌上读出级别（小盲/大盲/抓头(前注)），建议、粗略建议、评分都按它；窗口右侧“牌桌 · 识别结果”旁显示“级别 2/4/8(4)”，还没读到时写“级别未定 · 按 1/2/4(2) 算”。
 - 怎么做的：每手第一个动作前，桌上先是每人一样的前注、再是相邻三家的 x、2x、4x（盲注和抓头）；新文件 `aa_stakes.py` 从这两步读出级别（前注没读到时用开局底池反推，除不尽就不认）；暴击局、半路加入的手沿用上一手；共用的规则文件不改（记分牌照旧）。

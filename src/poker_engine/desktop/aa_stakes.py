@@ -34,8 +34,10 @@ from collections import Counter
 from decimal import Decimal
 import json
 from pathlib import Path
+import sys
 
-RULES_PATH = (Path(__file__).resolve().parents[3]
+# The packaged app keeps its configs next to its code, under _MEIPASS.
+RULES_PATH = (Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[3]))
               / "configs/game/aa-scoreboard-rules-v2.json")
 AMOUNTS = ("small_blind", "big_blind", "straddle_amount", "ante")
 ANTE_SEATS = 3                      # seats with the same bet for an ante frame
