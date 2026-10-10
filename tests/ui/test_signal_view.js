@@ -503,4 +503,11 @@ assert.equal(stopped({seconds: 3600, stopped_reason: "low_disk_space", megabytes
   "已存好 · 磁盘快满了，自动停 · 1.5 GB");
 assert.equal(stopped({seconds: 3, error: "the H.264 encoder did not open"}).note,
   "录像出错：the H.264 encoder did not open");
+// The table's level shows beside the table, from the advice's reading of it.
+const atStakes = stakes => signalView(running(base({solver_advice_v1: {status: "idle", stakes}})), 0, {}).stakes;
+assert.equal(atStakes({label: "2/4/8(4)", source: "table"}), "级别 2/4/8(4)");
+assert.equal(atStakes({label: "2/4/8(4)", source: "carried"}), "级别 2/4/8(4)");
+assert.equal(atStakes({label: "1/2/4(2)", source: "unsure"}), "级别未定 · 按 1/2/4(2) 算");
+assert.equal(atStakes(undefined), "");
+assert.equal(signalView({status: "STOPPED"}, 0, {}).stakes, "");
 console.log("signal view cases passed");

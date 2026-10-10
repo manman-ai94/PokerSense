@@ -425,7 +425,7 @@ def _advice(advice):
                                          "options", "cuts", "to_call", "pot_offset",
                                          "mushroom_pool", "reads_hands",
                                          "stacks_assumed", "inferred_actions",
-                                         "range_equity", "seconds")
+                                         "range_equity", "seconds", "stakes")
             if key in advice}
 
 

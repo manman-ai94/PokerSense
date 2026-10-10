@@ -73,16 +73,15 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from decimal import Decimal
-from pathlib import Path
 
 from poker_engine.scoreboard.replay import replay_deck, with_hole
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 from .aa_action_history import COMPACT_FIELDS
+from .aa_stakes import (AMOUNTS, RULES_PATH, detect_stakes, settle_stakes,
+                        stakes_label)
 
-RULES_PATH = (Path(__file__).resolve().parents[3]
-              / "configs/game/aa-scoreboard-rules-v2.json")
 IN_HAND = frozenset({"active", "folded", "all_in"})
 PLAYERS = range(4, 9)               # table sizes the AA rules cover
 DEEP = Decimal(100000)              # stacks for checking the betting alone
@@ -95,13 +94,19 @@ BOMB_BIG_BLINDS = 7                 # the table setting "暴击:7BB"
 WAGER_WAIT = 3                      # your-turn frames before the bets give your price
 
 
-def _rules(players):
+def _rules(players, stakes=None):
+    """The AA rules for ``players`` at ``stakes`` (``aa_stakes``; None: the
+    shared rule set's 1/2/4(2))."""
     raw = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    if stakes is not None:
+        raw.update({key: _money(Decimal(stakes[key])) for key in AMOUNTS})
     return AARuleProfileV2.from_dict({**raw, "table_size": players})
 
 
-def hand_facts(rows):
-    """What the replay needs from one hand's frame-log rows (oldest first)."""
+def hand_facts(rows, stakes=None):
+    """What the replay needs from one hand's frame-log rows (oldest first).
+    ``stakes``: what earlier hands settled on (``aa_stakes.settle_stakes``),
+    for when this hand does not show its own."""
     history = (rows[-1].get("fields") or {}).get("actions_v1") or {}
     actions = [dict(zip(COMPACT_FIELDS, item)) for item in history.get("actions", [])]
     first = actions[0]["frame"] if actions else None
@@ -123,14 +128,17 @@ def hand_facts(rows):
     latest = fields[-1] if fields else {}
     before = [f for row, f in zip(rows, fields)
               if first is None or row["processed"] <= first]
+    opening = [f for row, f in zip(rows, fields)
+               if first is None or row["processed"] < first]
+    opening_pot = _opening_pot(rows, fields, first)
+    stakes = settle_stakes(detect_stakes(opening, seats, opening_pot), stakes)
     return {"hand_id": history.get("hand_id"), "complete": history.get("complete"),
             "dealer": history.get("dealer"), "seats": sorted(seats),
-            "blind_dealer": blind_dealer(before, sorted(seats)),
-            "opening_wagers": _opening_wagers(
-                [f for row, f in zip(rows, fields)
-                 if first is None or row["processed"] < first]),
+            "stakes": stakes,
+            "blind_dealer": blind_dealer(before, sorted(seats), stakes),
+            "opening_wagers": _opening_wagers(opening, stakes["small_blind"]),
             "actions": actions, "board": board, "stacks": stacks,
-            "opening_pot": _opening_pot(rows, fields, first),
+            "opening_pot": opening_pot,
             "states": {int(seat): state for seat, state in
                        (latest.get("participants") or {}).items()},
             "wagers": {int(seat): Decimal(value) for seat, value in
@@ -141,7 +149,7 @@ def hand_facts(rows):
             "all_in": _all_in(latest.get("hero_controls") or {})}
 
 
-def _opening_wagers(fields):
+def _opening_wagers(fields, small_blind=Decimal(1)):
     """{seat: chips} each seat's latest bet read on the table before the
     first action (the blinds, the straddle and any post), from the frames
     showing the small blind (the antes show as a bet on every seat for a
@@ -151,12 +159,12 @@ def _opening_wagers(fields):
         wagers = {int(seat): Decimal(value)
                   for seat, value in (f.get("street_wagers") or {}).items()
                   if value not in (None, "")}
-        if Decimal(1) in wagers.values():
+        if Decimal(small_blind) in wagers.values():
             opening.update(wagers)
     return opening
 
 
-def blind_dealer(fields, seats):
+def blind_dealer(fields, seats, stakes=None):
     """The dealer the blinds on the table show, or None: the seat before the
     one with the small blind in front, when exactly one seat has the small
     blind and the next seat in the hand exactly the big blind (``fields``:
@@ -166,8 +174,9 @@ def blind_dealer(fields, seats):
     alone picked a wrong dealer before the flop and none fitted after it, so
     four of your decisions got only the rough advice, while the blinds (1
     and 2, then the straddle of 4) were on the table from the first frame.
+    ``stakes``: the hand's (None: the shared rule set's).
     """
-    raw = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    raw = stakes or json.loads(RULES_PATH.read_text(encoding="utf-8"))
     small, big = Decimal(raw["small_blind"]), Decimal(raw["big_blind"])
     for f in fields:
         wagers = {int(seat): Decimal(value)
@@ -256,7 +265,7 @@ def bomb_post(facts):
     if facts.get("opening_pot") is None or not facts["seats"] or any(
             action.get("street") in (None, "preflop") for action in facts["actions"]):
         return None
-    raw = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+    raw = facts.get("stakes") or json.loads(RULES_PATH.read_text(encoding="utf-8"))
     post = Decimal(raw["big_blind"]) * BOMB_BIG_BLINDS
     return post if facts["opening_pot"] == post * len(facts["seats"]) else None
 
@@ -293,7 +302,7 @@ def replay_hand(facts, stacks=None):
     for dealer in candidates:
         table = facts if dealer == reported else None
         tried[dealer] = _replay(seats, dealer, actions, facts["board"], stacks, table,
-                                bomb, facts.get("opening_wagers"))
+                                bomb, facts.get("opening_wagers"), facts.get("stakes"))
         if dealer == reported and tried[dealer][0] == "ok":
             return _result("ok", None, dealer, source, *tried[dealer][2:])
     fits = [dealer for dealer, outcome in tried.items() if outcome[0] == "ok"]
@@ -315,19 +324,20 @@ def _result(status, reason, dealer, source, replayed, arena, inferred=()):
 
 
 def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None,
-            opening=None):
+            opening=None, stakes=None):
     """(status, reason, replayed, arena, inferred) for one dealer; swaps two
     actions read within SAME_FRAME frames of each other when that is what
     fits, and with ``table`` (the hand's facts) fills in missed actions.
-    ``bomb``: each player's post when the hand is a bomb pot."""
+    ``bomb``: each player's post when the hand is a bomb pot; ``stakes``: the
+    hand's (``aa_stakes``)."""
     actions, inferred = list(actions), []
-    outcome = _steps(seats, dealer, actions, board, stacks, bomb, opening)
+    outcome = _steps(seats, dealer, actions, board, stacks, bomb, opening, stakes)
     while outcome[0] != "ok":
         at = outcome[2]
         if at + 1 < len(actions) and abs(actions[at + 1]["frame"]
                                          - actions[at]["frame"]) <= SAME_FRAME:
             swapped = actions[:at] + [actions[at + 1], actions[at]] + actions[at + 2:]
-            retry = _steps(seats, dealer, swapped, board, stacks, bomb, opening)
+            retry = _steps(seats, dealer, swapped, board, stacks, bomb, opening, stakes)
             if retry[2] > at + 1:
                 actions, outcome = swapped, retry
                 continue
@@ -336,7 +346,7 @@ def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None,
                   and len(inferred) < MAX_INFERRED else None)
         if filled is None:
             return (*outcome, inferred)
-        retry = _steps(seats, dealer, filled, board, stacks, bomb, opening)
+        retry = _steps(seats, dealer, filled, board, stacks, bomb, opening, stakes)
         if retry[2] <= at + 1:
             return (*outcome, inferred)
         inferred.append(filled[at])
@@ -523,24 +533,27 @@ def _still_to_act(arena, seat, table):
     return order
 
 
-def _steps(seats, dealer, actions, board, stacks, bomb=None, opening=None):
+def _steps(seats, dealer, actions, board, stacks, bomb=None, opening=None,
+           stakes=None):
     """Replay ``actions``; a seat that went all in without a stack reading is
     given what it had put in by then as its stack, so it is not asked to act
     again (it was taken as deep), and so is one whose all-in is short of a
     full raise (the table allows that only for a seat's last chips)."""
     stacks = dict(stacks or {})
     while True:
-        outcome = _steps_once(seats, dealer, actions, board, stacks, bomb, opening)
+        outcome = _steps_once(seats, dealer, actions, board, stacks, bomb, opening,
+                              stakes)
         if outcome[0] != "all_in_again":
             return outcome
         seat, chips = outcome[1]
         stacks[seat] = chips
 
 
-def _steps_once(seats, dealer, actions, board, stacks, bomb, opening=None):
+def _steps_once(seats, dealer, actions, board, stacks, bomb, opening=None,
+                stakes=None):
     try:
         arena = AAFullHandArena(
-            _rules(len(seats)), occupied_seats=seats, dealer_seat=dealer,
+            _rules(len(seats), stakes), occupied_seats=seats, dealer_seat=dealer,
             starting_stacks={seat: stacks.get(seat, DEEP) for seat in seats})
     except ValueError:                # stacks the table cannot start with
         return "stopped", "stacks_do_not_fit", 0, None
@@ -609,7 +622,7 @@ def _posts(arena, opening):
     if not opening or arena.street != "preflop":
         return {}
     bets = arena.observe(arena.occupied_seats[0])["bets"]
-    big_blind = Decimal(_rules(len(arena.occupied_seats)).big_blind)
+    big_blind = Decimal(arena.rules.big_blind)
     return {seat: big_blind for seat, chips in opening.items()
             if str(seat) in bets and chips - Decimal(bets[str(seat)]) == big_blind}
 
@@ -649,7 +662,7 @@ def starting_stacks(facts, replay):
     """
     if replay["arena"] is None:
         return {}
-    rules = _rules(len(facts["seats"]))
+    rules = _rules(len(facts["seats"]), facts.get("stakes"))
     put = replay["arena"].observe(facts["seats"][0])["contributions"]
     stacks = {}
     for seat in facts["seats"]:
@@ -790,7 +803,7 @@ def check_hand(rows):
     if bomb is not None:
         expected = bomb * players
     elif players in PLAYERS:
-        rules = _rules(players)
+        rules = _rules(players, facts.get("stakes"))
         expected = (rules.ante * players + rules.small_blind + rules.big_blind
                     + rules.straddle_amount)
     return {"hand_id": facts["hand_id"], "complete": facts["complete"],
@@ -801,6 +814,8 @@ def check_hand(rows):
             "opening_pot": None if facts["opening_pot"] is None
             else str(facts["opening_pot"]),
             "opening_pot_matches": facts["opening_pot"] == expected,
+            "stakes": stakes_label(facts["stakes"]),
+            "stakes_source": facts["stakes"]["source"],
             "bomb_pot": None if bomb is None else _money(bomb)}
 
 

@@ -119,12 +119,13 @@ class AAReads:
         self._words = {}        # seat -> its word for the window
         self.hands = 0          # hands counted before the flop
 
-    def add_hand(self, rows):
+    def add_hand(self, rows, stakes=None):
         """Count one finished hand's frame-log rows (oldest first); True
-        when it counted."""
+        when it counted. ``stakes``: what earlier hands settled on
+        (``aa_stakes``)."""
         if not rows:
             return False
-        counted = self._count(rows)
+        counted = self._count(rows, stakes)
         for row in rows:
             for slot, state in ((row.get("fields") or {}).get("participants")
                                 or {}).items():
@@ -134,8 +135,8 @@ class AAReads:
                        for seat, count in self._counts.items()}
         return counted
 
-    def _count(self, rows):
-        facts = hand_facts(rows)
+    def _count(self, rows, stakes=None):
+        facts = hand_facts(rows, stakes)
         if not facts["complete"] or not facts["actions"]:
             return False
         replay = replay_hand(facts)
