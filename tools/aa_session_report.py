@@ -4,7 +4,8 @@ Reads the ``frames.jsonl`` logs that ``tools/measure_aa_realtime.py --advice``
 writes for the recordings of one session and reports, for every hand: the
 players, whether you were in it and your cards were read, each of your
 decisions (your buttons on screen) with the advice it got or why none came,
-what you then did and whether it was the advised action, the betting-history
+what you then did and whether it was the advised action, the cards each
+opponent showed with that seat's actions street by street, the betting-history
 checks of ``tools/check_aa_action_history.py``, whether the hand replays on
 the AA table (``aa_solver_input.check_hand``), the stalls (more than a second
 between two shown frames) and your chips from this hand's start to the next
@@ -215,6 +216,7 @@ def hand_report(rows, advice, gaps=()):
         "your_cards_readings": sum(n >= MISREAD for n in cards.values()),
         "board_slots_with_two_readings": sum(map(flickers, boards)),
         "decisions": your_actions(decisions(rows, advice), history["actions"]),
+        **shown_cards(fields, history["actions"]),
         "skipped_seats": len(skipped_seats(history)),
         "unexplained_pot_rises": len(unexplained_rises(history)),
         "unrecorded_folds": len(unrecorded_folds(history)),
@@ -226,6 +228,23 @@ def hand_report(rows, advice, gaps=()):
         "start_stack": stack(rows),
         "most_pot": max(filter(None, map(number, (f.get("pot") for f in fields))),
                         default=None)}
+
+
+def shown_cards(fields, actions):
+    """The cards opponents turned face up in the hand, each with that seat's
+    actions street by street, and the seats read as two different pairs."""
+    shown = next((f["shown_cards"] for f in reversed(fields) if f.get("shown_cards")),
+                 None) or {"seats": {}, "unknown": []}
+    seats = []
+    for seat, value in sorted(shown["seats"].items(), key=lambda item: int(item[0])):
+        streets = {}
+        for item in actions:
+            if str(item["slot"]) == seat:
+                streets.setdefault(item["street"], []).append(
+                    item["kind"] if item["amount"] in (None, "0") else
+                    f"{item['kind']} {item['amount']}")
+        seats.append({"seat": int(seat), "cards": value["cards"], "actions": streets})
+    return {"shown_cards": seats, "shown_unknown": [int(s) for s in shown["unknown"]]}
 
 
 def flickers(readings):
@@ -394,7 +413,11 @@ def summarize(hands):
             "no_advice_causes": dict(causes.most_common()),
             "hand_problems": dict(problems.most_common()),
             "stalls_over_2s": sum(1 for h in real for s in h["stalls"]
-                                  if s["seconds"] > STALE)}
+                                  if s["seconds"] > STALE),
+            "shown_cards": {
+                "hands": sum(bool(h["shown_cards"]) for h in real),
+                "seats": sum(len(h["shown_cards"]) for h in real),
+                "seats_unknown": sum(len(h["shown_unknown"]) for h in real)}}
 
 
 def main(argv=None):

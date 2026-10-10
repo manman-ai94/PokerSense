@@ -19,6 +19,7 @@ import numpy as np
 from ..data_paths import resolve_legacy_path
 from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
 from .aa_action_history import AAActionHistory
+from .aa_shown_cards import AAShownCards
 from .aa_street import AAStreet
 from .aa_semantics import AAObservationSemantics
 
@@ -268,6 +269,10 @@ class AA8Reader:
         self._seat_states = AASeatStates()
         self._street = AAStreet()
         self._actions = AAActionHistory()
+        # Opponents' shown cards, read with the board's card model.
+        model = getattr(getattr(state, "cards", None), "_native_model", None)
+        slots = (getattr(state, "profile", None) or {}).get("slots", ())
+        self._shown = AAShownCards(model, slots)
         self._gaps = 0.0            # seconds of stalls left out of the street
         from .aa_critical_perception import CriticalPerceptionBoundary
         self._critical = CriticalPerceptionBoundary()
@@ -306,6 +311,7 @@ class AA8Reader:
             elif reset:
                 self._street.reset()
                 self._actions.reset()
+                self._shown.reset()
                 self._gaps = 0.0
             self._state.audit = source
             current_hash = hashlib.sha256(image.tobytes()).hexdigest()
@@ -339,6 +345,11 @@ class AA8Reader:
                 getattr(self._state.adapter, "actions", [])[-256:]) if hasattr(
                     self._state, "adapter") else []
             row["action_history_v1"] = self._actions.observe(row, frame)
+            cards = row.get("cards") or {}
+            known = [*(cards.get("hero") or ()), *(cards.get("board_slots") or ())]
+            row["shown_cards_v1"] = self._shown.observe(
+                image, frame, (row["action_history_v1"] or {}).get("hand_id"),
+                readable=row.get("scene_supported") is True, known=known)
             row.update(self._semantics.observe(row))
             row["critical_perception_v1"] = self._critical.observe(row)
             from .aa_critical_perception import target_s_candidate_screen

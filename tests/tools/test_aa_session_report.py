@@ -102,3 +102,21 @@ def test_buttons_read_while_your_seat_sits_out_are_not_a_turn():
                                     "participants": {"4": "active", "5": "active"}}}
     rows = [row(f, f * 0.1) for f in range(3)] + [seated, row(4, 0.4)]
     assert session_report([("log", rows)])["summary"]["your_decisions"] == 1
+
+
+def test_cards_shown_with_the_seat_s_actions():
+    acts = [(1, "preflop", 5, "call", "2", "pot_rise"),
+            (2, "flop", 5, "check", "0", "glyph"),
+            (3, "flop", 4, "bet", "6", "pot_rise"),
+            (4, "flop", 5, "call", "6", "pot_rise")]
+    rows = [row(f, f * 0.1, actions=acts[:f]) for f in range(5)]
+    rows[-1]["fields"]["shown_cards"] = {
+        "hand_id": "hand_0", "seats": {"5": {"cards": ["Qh", "Qs"], "frame": 4}},
+        "unknown": ["2"]}
+    report = session_report([("log", rows)])
+    hand = report["hands"][0]
+    assert hand["shown_cards"] == [{"seat": 5, "cards": ["Qh", "Qs"], "actions": {
+        "preflop": ["call 2"], "flop": ["check", "call 6"]}}]
+    assert hand["shown_unknown"] == [2]
+    assert report["summary"]["shown_cards"] == {"hands": 1, "seats": 1,
+                                                "seats_unknown": 1}

@@ -118,6 +118,7 @@ def test_target_identity_hash_and_temporal_events(profile, image):
     assert first["candidate_only"] is True
     assert first["strategy_eligible"] is False
     assert first["complete_legal_state"] is False
+    assert first["shown_cards_v1"] is None      # no card model in this stand-in
 
 
 def test_perception_validation_disables_strategy_sidecar(profile, image, monkeypatch):
