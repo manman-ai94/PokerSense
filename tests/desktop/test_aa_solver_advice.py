@@ -855,3 +855,7 @@ def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines()
     capped = aa_solver_advice.rough_aggression(
         row, 0.9, 1, Decimal(300), Decimal(0), Decimal(0), Decimal(0), Decimal(50))
     assert capped["to"] == "50"
+    # Into three or more opponents the bet is the pot (multiway_bot's size3).
+    assert aa_solver_advice.rough_aggression(
+        row, 0.5, 3, Decimal(120), Decimal(0), Decimal(0), Decimal(0),
+        Decimal(500))["to"] == "120"

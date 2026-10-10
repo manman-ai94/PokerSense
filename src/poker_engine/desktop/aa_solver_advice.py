@@ -381,15 +381,17 @@ def rough_advice(fields, cards, street, pot=None):
 def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
     """After the flop the rough rule bets and raises by the range rule's lines
     (``multiway_bot.DEFAULTS``: heads-up ones against one opponent): a bet of
-    two thirds of the pot with nothing to call, a raise of the pot after
-    calling; otherwise ``row`` as it is. On 10/09 it only checked, called or
+    two thirds of the pot with nothing to call (the pot into three or more
+    opponents, ``size3``), a raise of the pot after calling; otherwise ``row``
+    as it is. On 10/09 it only checked, called or
     folded: it checked trips twice, and 8 of the 10 answers that changed
     under you went from its check or call to the range rule's bet or raise."""
     heads_up = opponents == 1
     bet_at = MULTIWAY_LINES["hu_bet" if heads_up else "bet"]
     raise_at = MULTIWAY_LINES["hu_raise" if heads_up else "raise"]
     if to_call == 0 and value >= bet_at:
-        action, to = "bet", mine + (pot * Decimal("0.66")).quantize(Decimal(1))
+        size = Decimal(str(MULTIWAY_LINES["size3" if opponents >= 3 else "size"]))
+        action, to = "bet", mine + (pot * size).quantize(Decimal(1))
     elif to_call > 0 and value >= raise_at and stack > to_call:
         action, to = "raise", top + (pot + to_call).quantize(Decimal(1))
     else:
