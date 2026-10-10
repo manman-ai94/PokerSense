@@ -64,7 +64,7 @@ DEFAULT_PROTOCOL = Path(
 DEFAULT_BASELINE = Path("configs/strategy/evaluation/baseline-v1.json")
 DEFAULT_RESULTS = Path("configs/strategy/evaluation/baseline-v1-results.json")
 FROZEN_BASELINE_SHA256 = (
-    "5ecae40e03ce18b22799599446745ce1db467e7a8bf41cc994a2d4cdeabfdac6")
+    "8db5f4a9bcfe0aff5576fbf50767f925ff4e14a8933653cb851bdbcc73ea48c4")
 MODEL_SCOPE = "SYNTHETIC_CONDITIONAL_RIVER_POLICY_EVALUATION"
 
 

@@ -39,7 +39,7 @@ def profile(**changes):
     return AARuleProfileV2.from_dict(values)
 
 
-@pytest.mark.parametrize("count", (5, 6, 7, 8))
+@pytest.mark.parametrize("count", (4, 5, 6, 7, 8))
 def test_mandatory_utg_straddle_and_positions_are_parameterized(count):
     rules = profile(table_size=count)
     occupied = tuple(range(count))
@@ -49,14 +49,14 @@ def test_mandatory_utg_straddle_and_positions_are_parameterized(count):
     assert plan.positions[2] is Position.BB
     assert plan.positions[3] is Position.UTG
     assert plan.straddler_seat == 3
-    assert plan.first_actor_seat == 4
+    assert plan.first_actor_seat == 4 % count      # 4-handed: the dealer
     assert plan.current_bet == Decimal("4")
     assert plan.minimum_raise_to == Decimal("8")
     assert plan.contributions[1] == 3
     assert plan.contributions[2] == 4
     assert plan.contributions[3] == 6
     assert plan.expected_total == Decimal(2 * count + 7)
-    assert plan.positions[count - 1] is Position.CO
+    assert plan.positions[count - 1] is (Position.UTG if count == 4 else Position.CO)
 
 
 def test_real_development_opening_difference_stays_unallocated():
@@ -138,7 +138,7 @@ def test_no_flop_no_drop_requires_explicit_policy_and_evidence():
 
 
 @pytest.mark.parametrize("change", (
-    {"table_size": 4}, {"table_size": 9}, {"small_blind": "2"}, {"big_blind": "1"},
+    {"table_size": 3}, {"table_size": 9}, {"small_blind": "2"}, {"big_blind": "1"},
     {"straddle_amount": "2"}, {"rake_percent": "1.1"},
     {"minimum_chip": "0"}, {"small_blind": 1},
     {"minimum_chip": "0.6"},

@@ -1,4 +1,4 @@
-"""Exact AA 5-8 player forced-bet and rake rules for shadow strategy."""
+"""Exact AA 4-8 player forced-bet and rake rules for shadow strategy."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .contracts import GameConfig, GameType
 
 
 _POSITIONS = {
+    4: (Position.BTN, Position.SB, Position.BB, Position.UTG),
     5: (Position.BTN, Position.SB, Position.BB, Position.UTG, Position.CO),
     6: (Position.BTN, Position.SB, Position.BB, Position.UTG, Position.HJ,
         Position.CO),
@@ -61,7 +62,7 @@ class AARuleProfileV2:
 
     def __post_init__(self):
         if type(self.table_size) is not int or self.table_size not in _POSITIONS:
-            raise ValueError("table_size must be 5, 6, 7 or 8")
+            raise ValueError("table_size must be 4, 5, 6, 7 or 8")
         for name in (
             "small_blind", "big_blind", "ante", "straddle_amount",
             "rake_percent", "rake_cap_bb", "minimum_chip",

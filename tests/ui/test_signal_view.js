@@ -217,7 +217,7 @@ const states = [
   [{status: "idle", reason: "your_cards_not_read"}, "warn", "识别不全"],
   [{status: "abstain", reason: "stack_unknown"}, "warn", "识别不全"],
   [{status: "abstain", reason: "hand_incomplete"}, "info", "这一手不给建议"],
-  [{status: "abstain", reason: "players_4"}, "info", "这一手不给建议"],
+  [{status: "abstain", reason: "players_3"}, "info", "这一手不给建议"],
 ];
 for (const [advice, tone, title] of states) {
   const seen = {};
@@ -229,8 +229,8 @@ for (const [advice, tone, title] of states) {
   assert.equal(view.numbers[0].value, "25%", title);
   assert.equal(view.verdict, undefined, title);
 }
-view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_4"}})), 0, {});
-assert.equal(view.note, "4 人桌，现在只支持 5–8 人，这一步不给建议。");
+view = signalView(running(base({solver_advice_v1: {status: "abstain", reason: "players_3"}})), 0, {});
+assert.equal(view.note, "3 人桌，现在只支持 4–8 人，这一步不给建议。");
 const solving = {};
 signalView(running(base({solver_advice_v1: states[0][0]})), 0, solving);
 view = signalView(running(base({solver_advice_v1: states[0][0]})), 2100, solving);
@@ -379,9 +379,9 @@ view = signalView(running(rough({action: "call", frequency: 1.0},
   {range_equity: {value: 0.22, opponents: 2, realize: 0.8}})), 0, {});
 assert.equal(view.numbers[1].note, "2 个对手，按 AA 真人常玩的牌粗算；翻前后面还要下注，只算 80%");
 view = signalView(running(rough({action: "fold", frequency: 1.0},
-  {rough_for: "players_4", range_equity: {value: 0.12, opponents: 3}})), 0, {});
+  {rough_for: "players_3", range_equity: {value: 0.12, opponents: 2}})), 0, {});
 assert.deepEqual([view.tone, view.verdict.word, view.verdict.note], ["fold", "弃牌", "粗略：你大概能赢 12%，跟注要 25% 才够，不跟"]);
-assert.equal(view.basis[1], "4 人桌，现在只支持 5–8 人，先按价格粗略给一个");
+assert.equal(view.basis[1], "3 人桌，现在只支持 4–8 人，先按价格粗略给一个");
 view = signalView(running({...rough({action: "check", frequency: 1.0}, {rough_for: "computing", to_call: "0",
   required: 0}), hero_controls_v1: {visible: true, button: "check"}}), 0, {});
 assert.deepEqual([view.verdict.word, view.verdict.note, view.basis[1]],
