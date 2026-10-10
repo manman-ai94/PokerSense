@@ -66,7 +66,9 @@ class SolverBot(_Policy):
         self.base = base or RfiTablePolicy()
         # Opponents' ranges are read as the base policy expects them to play
         # (the AA preflop policy expects AA players), else as the 2009 players.
-        self.model = PopulationBot(adjusted=getattr(self.base, "adjusted", False))
+        # A policy wrapped around this one reads opponents the same way.
+        self.adjusted = getattr(self.base, "adjusted", False)
+        self.model = PopulationBot(adjusted=self.adjusted)
         self.solves = dict(STREET_SOLVES if solves is None else solves)
         self.threads = threads
         self.max_flop_hands = MAX_FLOP_HANDS

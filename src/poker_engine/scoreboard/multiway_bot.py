@@ -17,6 +17,8 @@ With ``hu=1`` the heads-up flop is played the same way, with its own cuts
 third or less): the live window has no solver for that street (a flop solve
 takes about a minute) and plays it so. 0.55 and 0.7 won the most of the cuts
 tried on the scoreboard (2026-10-08, AA pool with the mushroom pool).
+With ``hu=2`` the heads-up turn and river are played the same way too: what
+the live window shows there until the solver answers.
 
 ``bet`` was 0.4 until 2026-10-09: with seven opponents that bet only with
 twice a fair share, and the 10/09 session showed checks with strong hands in
@@ -38,7 +40,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from .bots import _Policy, opponents_in_hand, raise_toward
+from .bots import _Policy, _rng, opponents_in_hand, raise_toward
 from .population import PopulationBot
 from .ranges import opponent_ranges, ranges_equity
 
@@ -54,8 +56,20 @@ class RangeMultiwayBot(_Policy):
             raise ValueError(f"unknown parameters {sorted(unknown)}")
         self.base, self.name = base, name
         self.params = {**DEFAULTS, **params}
-        self.model = PopulationBot(adjusted=getattr(base, "adjusted", False))
+        self.adjusted = getattr(base, "adjusted", False)
+        self.model = PopulationBot(adjusted=self.adjusted)
         self.counts = Counter()
+
+    def for_game(self, salt):
+        # The base plays through its own game policy: a solver base needs the
+        # game's salt, which ``decide`` does not carry.
+        base = self.base.for_game(salt)
+
+        def policy(observation):
+            if not covered(observation, self.params):
+                return base(observation)
+            return self.decide(observation, _rng(salt, observation))
+        return policy
 
     def decide(self, observation, rng):
         if not covered(observation, self.params):
@@ -77,6 +91,8 @@ def covered(observation, params=DEFAULTS):
     if observation["street"] == "preflop":
         return False
     opponents = opponents_in_hand(observation)
+    if opponents == 1 and params["hu"] >= 2:      # every heads-up street
+        return True
     return opponents >= 2 or (opponents == 1 and observation["street"] == "flop"
                               and bool(params["hu"]))
 
