@@ -400,6 +400,8 @@ def frame_summary(payload):
         "street_wagers": payload.get("street_wagers"),
         "causal_wagers": payload.get("causal_street_wagers_v2"),
         "actions_v1": _actions_v1(payload.get("action_history_v1")),
+        # Cards opponents turned face up in this hand, by seat.
+        "shown_cards": payload.get("shown_cards_v1"),
         "solver_advice": _advice(payload.get("solver_advice_v1")),
     }
 

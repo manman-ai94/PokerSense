@@ -403,6 +403,9 @@ def test_frame_summary_prefers_current_evidence_and_keeps_legacy_fields():
     assert summary["participants"] == {"1": "active"}
     assert summary["participants_legacy"] == {"1": "folded"}
     assert summary["hero_controls"]["button"] == "check"
+    shown = {"hand_id": "hand_1", "seats": {"2": {"cards": ["As", "Kd"], "frame": 9}},
+             "unknown": []}
+    assert frame_summary({**current, "shown_cards_v1": shown})["shown_cards"] == shown
 
 
 def test_frame_summary_keeps_the_rebuilt_hand_compact():
