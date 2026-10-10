@@ -7,11 +7,14 @@ import random
 import pytest
 
 from poker_engine.scoreboard import solver_bot
+from poker_engine.scoreboard.bots import make_policy
+from poker_engine.scoreboard.multiway_bot import RangeMultiwayBot
 from poker_engine.scoreboard.replay import Decision
 from poker_engine.scoreboard.runner import run_scoreboard
 from poker_engine.scoreboard.solver_bot import (Fallback, SolverBot, by_class,
                                                 keep_own, kept, sample, weighted)
 from poker_engine.solver.texassolver import range_text
+from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.solver.texassolver import solver_binary
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
@@ -177,3 +180,32 @@ def test_the_opponents_range_at_a_decision_follows_his_actions_on_the_street(
     assert strategy == {"CALL": 0.25, "FOLD": 0.75}
     assert villain == {"AhKd": 0.5}
     assert bot.solved_strategy(observation, "salt") == strategy
+
+
+def test_wrapped_in_the_range_rule_it_still_gets_the_game_and_the_aa_model():
+    # Until 2026-10-10 "range_multiway+solver_turn+aa_preflop" never solved:
+    # the range rule called the solver's decide without the game's salt, and
+    # read opponents as the 2009 players because the solver hid aa_preflop's
+    # model choice.
+    seen = []
+
+    class NeedsGame(SolverBot):
+        def decide(self, observation, rng, salt=None):
+            seen.append(salt)
+            return "check_call"
+
+    bot = NeedsGame("solver_turn", base=make_policy("aa_preflop"))
+    assert bot.adjusted
+    wrapped = RangeMultiwayBot(bot)
+    assert wrapped.adjusted and wrapped.model.adjusted
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    arena = AAFullHandArena(rules)
+    arena.reset(0)
+    observation = arena.observe(arena.actor)
+    assert wrapped.for_game("game")(observation) == "check_call"
+    assert seen == ["game"]
+
+
+def test_human_mode_comes_with_the_name():
+    assert make_policy("solver_turn@human+aa_preflop").human
+    assert not make_policy("solver_turn+aa_preflop").human

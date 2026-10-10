@@ -234,8 +234,11 @@ def make_policy(name):
     if name.startswith("solver_") and "+" in name:
         # "solver_flop+aa_preflop": the solver strategy on another base policy
         from .solver_bot import SolverBot       # needs TexasSolver installed
+        # "solver_turn@human+...": your own past actions read with the
+        # population model, as the live window reads a person's
         streets, _, base = name.partition("+")
-        bot = SolverBot(streets, base=make_policy(base))
+        streets, human = streets.removesuffix("@human"), streets.endswith("@human")
+        bot = SolverBot(streets, base=make_policy(base), human=human)
         bot.name = name
         return bot
     if "/" in name:
