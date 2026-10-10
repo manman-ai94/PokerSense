@@ -44,8 +44,8 @@ assert.equal(element("advice-status").textContent, "这手牌不给建议：没�
 assert.deepEqual(texts("advice-rows"), []);
 assert.equal(element("advice-detail").textContent, "");
 
-render({status: "idle", reason: "players_4"}, null);
-assert.equal(element("advice-status").textContent, "4 人桌，规则模型只支持 5–8 人");
+render({status: "idle", reason: "players_3"}, null);
+assert.equal(element("advice-status").textContent, "3 人桌，规则模型只支持 4–8 人");
 assert.deepEqual(texts("advice-history"), ["还没有动作"]);
 
 render({status: "computing", street: "river"}, history);

@@ -7,7 +7,7 @@ the rebuilt betting history ``actions_v1``, seat states, board, stacks) into
 that replay, and checks the hand on the way:
 
 - **seats**: the seats in the hand when its first action happened, plus any
-  seat that acts. The AA rules cover 5 to 8 players;
+  seat that acts. The AA rules cover 4 to 8 players;
 - **dealer**: the dealer reading (unread: the one the blinds on the table
   show, ``blind_dealer``), unless the betting order says otherwise.
   The button can still show the last hand's dealer when the hand starts;
@@ -84,7 +84,7 @@ from .aa_action_history import COMPACT_FIELDS
 RULES_PATH = (Path(__file__).resolve().parents[3]
               / "configs/game/aa-scoreboard-rules-v2.json")
 IN_HAND = frozenset({"active", "folded", "all_in"})
-PLAYERS = range(5, 9)               # table sizes the AA rules cover
+PLAYERS = range(4, 9)               # table sizes the AA rules cover
 DEEP = Decimal(100000)              # stacks for checking the betting alone
 SAME_FRAME = 2                      # reader frames apart that may be swapped
 MAX_INFERRED = 3                    # missed actions filled in from the table

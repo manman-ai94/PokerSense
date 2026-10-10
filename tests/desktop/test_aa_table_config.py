@@ -20,8 +20,8 @@ def complete():
 
 
 @pytest.mark.parametrize("count,ok", [
-    (5, True), (6, True), (8, True), (4, False), (9, False)])
-def test_five_to_eight_dealt_players(count, ok):
+    (4, True), (5, True), (6, True), (8, True), (3, False), (9, False)])
+def test_four_to_eight_dealt_players(count, ok):
     if ok:
         result = validate_config({**complete(), "dealt_players": count})
         assert result["simulation_rules"]["table_size"] == count

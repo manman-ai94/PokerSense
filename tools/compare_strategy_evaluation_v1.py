@@ -15,7 +15,7 @@ from tools.strategy_evaluation_v1 import (
 )
 
 FROZEN_RESULT_SHA256 = (
-    "81fe23072adc7852e3e75253c13de33ac13c6f58bd16758c9baba46651ee85af")
+    "720d6cbe6914a2b3aa4daae18a9d6a2e36d7defa40c12f14ebce5f9eaff9223a")
 COMPLETE = "COMPLETE_CONDITIONAL_FIXED_POLICY"
 
 
