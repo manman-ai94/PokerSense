@@ -8,8 +8,9 @@ pot against those ranges is worked out (``ranges``); then
 - facing a bet: raise about the pot when the share is at least ``raise``,
   call when it beats the price (``to_call / (pot + to_call)``) by ``margin``,
   otherwise fold;
-- with nothing to call: bet about two thirds of the pot when the share is at
-  least ``bet``, otherwise check.
+- with nothing to call: bet when the share is at least ``bet``, otherwise
+  check; about two thirds of the pot (``size``) against two opponents, the
+  pot (``size3``) against three or more.
 
 With ``hu=1`` the heads-up flop is played the same way, with its own cuts
 ``hu_bet`` and ``hu_raise`` (one opponent's fair share is a half, not a
@@ -21,6 +22,12 @@ tried on the scoreboard (2026-10-08, AA pool with the mushroom pool).
 twice a fair share, and the 10/09 session showed checks with strong hands in
 big multiway pots. 0.3 beat 0.4 on the AA real-player table (mushroom pool,
 bomb pots, reads) on two batches of deals.
+
+``size3`` was two thirds until 2026-10-09 too. The scoreboard table offers
+the minimum, half the pot, the pot and all in, so two thirds plays as half
+the pot there; betting the pot into three or more opponents won +9.2 and
++5.5 bb/100 on the AA real-player table on two batches of deals, while the
+pot against two opponents lost 4.0.
 
 Parameters can follow the name, for example
 ``range_multiway@bet=0.55:raise=0.7:margin=0.05+aa_preflop`` (":" between
@@ -36,7 +43,8 @@ from .population import PopulationBot
 from .ranges import opponent_ranges, ranges_equity
 
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
-            "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7}
+            "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7,
+            "size": 0.66, "size3": 1.0, "raise_size": 1.0}
 
 
 class RangeMultiwayBot(_Policy):
@@ -75,9 +83,13 @@ def covered(observation, params=DEFAULTS):
 
 def street_params(observation, params=DEFAULTS):
     """The cuts for this decision: heads-up ones against one opponent."""
-    if opponents_in_hand(observation) >= 2:
+    opponents = opponents_in_hand(observation)
+    if opponents >= 3:
+        return {**params, "size": params["size3"]}
+    if opponents == 2:
         return params
-    return {**params, "bet": params["hu_bet"], "raise": params["hu_raise"]}
+    return {**params, "bet": params["hu_bet"], "raise": params["hu_raise"],
+            "size": DEFAULTS["size"]}
 
 
 def cuts(observation, params=DEFAULTS):
@@ -92,13 +104,14 @@ def cuts(observation, params=DEFAULTS):
 
 def choose(observation, share, params=DEFAULTS):
     """The action id for your share of the pot against the field."""
-    line = cuts(observation, street_params(observation, params))
+    params = street_params(observation, params)
+    line = cuts(observation, params)
     if "bet" in line:
         if share >= line["bet"]:
-            return raise_toward(observation, 0.66) or "check_call"
+            return raise_toward(observation, params["size"]) or "check_call"
         return "check_call"
     if share >= line["raise"]:
-        return raise_toward(observation, 1.0) or "check_call"
+        return raise_toward(observation, params["raise_size"]) or "check_call"
     return "check_call" if share >= line["call"] else "fold"
 
 
