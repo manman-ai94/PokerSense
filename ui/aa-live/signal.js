@@ -97,6 +97,7 @@
   }
 
   function renderSide(view) {
+    el("stakes").textContent = view.stakes || "";
     const felt = node("div", "felt");
     felt.append(node("span", null, "底池"), node("b", null, view.pot ?? "—"));
     el("table").replaceChildren(felt, ...view.seats.map(seat => {

@@ -253,10 +253,16 @@ class AAGrades:
                     row.get("lost_big_blinds", 0.0) for row in self._rows), 2),
                 "net_chips": None if net is None else str(net),
                 "net_big_blinds": (None if net is None
-                                   else round(float(net / BIG_BLIND), 1)),
+                                   else round(float(net / self._big_blind()), 1)),
                 "rebuys": self._chips.rebuys,
                 "last": self._rows[-1] if self._rows else None,
                 "rows": self._rows[:-SHOWN - 1:-1], "acts_on_client": False}
+
+    def _big_blind(self):
+        """The table's big blind as the advice reads it (``aa_stakes``);
+        the shared rule set's without one."""
+        stakes = getattr(self._advice, "stakes", None)
+        return Decimal(stakes()["big_blind"]) if callable(stakes) else BIG_BLIND
 
     # -- decisions -------------------------------------------------------------
 

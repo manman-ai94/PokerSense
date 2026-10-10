@@ -598,7 +598,8 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
     call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     answers = iter([None, call])
     monkeypatch.setattr(aa_solver_advice, "rough_advice",
-                        lambda fields, cards, street, pot=None: next(answers))
+                        lambda fields, cards, street, pot=None, stakes=None:
+                        next(answers))
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                             rough_executor=Inline(), clock=still)
     results = run(advice, range(65))
@@ -613,11 +614,11 @@ def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
     call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     gate = threading.Event()
 
-    def answer(fields, cards, street, pot=None):
+    def answer(fields, cards, street, pot=None, stakes=None):
         gate.wait(5)
         return call
 
-    def quick(fields, cards, street, pot=None):
+    def quick(fields, cards, street, pot=None, stakes=None):
         time.sleep(0.03)                                 # well inside ROUGH_WAIT
         return call
 

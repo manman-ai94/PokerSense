@@ -576,13 +576,20 @@
       active: ["STARTING", "RUNNING", "STALE", "STOPPING"].includes(status)};
   }
 
+  // The table's level as the advice reads it from the blinds and antes on
+  // the table; until a hand has shown them, the advice counts 1/2/4(2).
+  function stakesText(stakes) {
+    if (!stakes?.label) return "";
+    return stakes.source === "unsure" ? `级别未定 · 按 ${stakes.label} 算` : `级别 ${stakes.label}`;
+  }
+
   // settings.afterAct: hold the advice back on your turn and only grade
   // what you did ("行动后再看").
   function signalView(state, now, memory = {}, settings = {}) {
     const top = header(state);
     const row = top.running ? state.payload : null;
     const base = {header: top, street: null, tags: [], cards: {hero: cardList(null, 2), board: cardList(null, 5)},
-      pot: null, seats: [], log: [], numbers: [], basis: [], price: null, session: null};
+      pot: null, seats: [], log: [], numbers: [], basis: [], price: null, session: null, stakes: ""};
     if (!row) {
       since(memory, "turn", null, now); since(memory, "solve", null, now);
       const stale = String(state?.status).toUpperCase() === "STALE";
@@ -627,7 +634,8 @@
       cards: {hero: cardList(row.cards?.hero, 2, IN_HAND.has(row.seat_states_v1?.seats?.[HERO]?.state) ? 2 : 0),
         board: cardList(row.cards?.board_slots, 5, BOARD[street] ?? 0)},
       pot: chips(row.pot?.value), seats: seatList(row, names, history),
-      log: handLog(history, names, street, yourTurn), session: sessionView(row.grade_v1)};
+      log: handLog(history, names, street, yourTurn), session: sessionView(row.grade_v1),
+      stakes: stakesText(advice?.stakes)};
     const waited = since(memory, "turn", yourTurn ? decisionKey(row, history) : null, now);
     if (!yourTurn) memory.shown = null;     // your next turn is a new step
     const computing = yourTurn && advice?.status === "computing";

@@ -146,6 +146,7 @@ from .aa_reads import AAReads
 from .aa_session import frame_summary
 from .aa_solver_input import (RULES_PATH, hand_facts, solver_observation,
                               table_observation)
+from .aa_stakes import settle_stakes, stakes_report
 
 HERO = 4                        # your seat: bottom centre
 SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
@@ -262,12 +263,19 @@ def top_range(share):
             if combo_percentile(pair) <= share}
 
 
-@lru_cache(maxsize=1)
-def open_level():
+def open_level(stakes=None):
     """The most a player puts in before the flop without raising: the big
-    blind, or the straddle where the AA rules have one."""
-    rules = json.loads(RULES_PATH.read_text(encoding="utf-8"))
-    return max(Decimal(rules["big_blind"]), Decimal(rules.get("straddle_amount") or 0))
+    blind, or the straddle where the AA rules have one. ``stakes``: the
+    table's (``aa_stakes``; None: the shared rule set's 1/2/4(2))."""
+    if stakes is None:
+        return _rule_set_open_level()
+    return max(Decimal(stakes["big_blind"]),
+               Decimal(stakes.get("straddle_amount") or 0))
+
+
+@lru_cache(maxsize=1)
+def _rule_set_open_level():
+    return open_level(json.loads(RULES_PATH.read_text(encoding="utf-8")))
 
 
 def _bets(fields):
@@ -320,13 +328,13 @@ def put_in(fields, street):
     return put
 
 
-def rough_advice(fields, cards, street, pot=None):
+def rough_advice(fields, cards, street, pot=None, stakes=None):
     """The rough rule's action for your turn, from the screen alone: your
     share of the pot against fixed ranges, against the price on your button.
     ``pot`` is the pot worked out when the screen's is not read
     (``pot_on_screen``); the chips in front not read are taken from the
-    action history (``put_in``). None when the board, the players still in
-    or the price are not read."""
+    action history (``put_in``); ``stakes``: the table's (``aa_stakes``).
+    None when the board, the players still in or the price are not read."""
     board = [card for card in fields.get("board") or () if card]
     if street not in BOARD_CARDS or len(board) != BOARD_CARDS[street]:
         return None
@@ -357,7 +365,8 @@ def rough_advice(fields, cards, street, pot=None):
     all_in = stack is not None and 0 < stack <= to_call
     if all_in:
         to_call = stack
-    raised = to_call > 0 and top > mine and (street != "preflop" or top > open_level())
+    raised = to_call > 0 and top > mine and (
+        street != "preflop" or top > open_level(stakes))
     ranges = {seat: top_range(BETTOR_SHARE if raised and wagers.get(seat) == top
                               else CALLER_SHARE) for seat in opponents}
     value, counts = ranges_equity(cards, board, ranges, trials=ROUGH_TRIALS)
@@ -427,6 +436,9 @@ class AASolverAdvice:
         self._rows, self._hand_id, self._jobs, self._quick = [], None, {}, {}
         self._rough, self._turn_from = {}, None
         self._warmed, self._warming = None, None
+        # The stakes the last hand that showed them settled on, and the
+        # hand being followed's (worked out until its first action).
+        self._stakes, self._hand_stakes = None, (None, None)
         self.reads = AAReads()
 
     def __call__(self, payload, frame):
@@ -450,7 +462,9 @@ class AASolverAdvice:
         if not history:
             return self._report("idle", "no_hand")
         if history["hand_id"] != self._hand_id:
-            self.reads.add_hand(self._rows)
+            self.reads.add_hand(self._rows, self._stakes)
+            if self._rows and self.stakes()["source"] == "table":
+                self._stakes = self.stakes()
             self._rows, self._hand_id = [], history["hand_id"]
             self._jobs, self._quick, self._rough = {}, {}, {}
         self._rows.append({"processed": frame, "fields": fields})
@@ -481,6 +495,22 @@ class AASolverAdvice:
             return report
         return self._rough_outcome(key, fields, cards, street, frame, report) or report
 
+    def stakes(self):
+        """The stakes of the hand being followed (``aa_stakes``): what it
+        showed before its first action, else what earlier hands settled on."""
+        rows = self._rows
+        acted = bool(rows and ((rows[-1]["fields"].get("actions_v1") or {})
+                               .get("actions")))
+        mark = (self._hand_id, acted or len(rows))
+        if self._hand_stakes[0] != mark:
+            try:
+                stakes = (hand_facts(rows, self._stakes)["stakes"] if rows
+                          else settle_stakes(None, self._stakes))
+            except Exception:              # the earlier hands' stakes stand
+                stakes = settle_stakes(None, self._stakes)
+            self._hand_stakes = (mark, stakes)
+        return self._hand_stakes[1]
+
     def _rough_due(self, frame, report):
         """Long enough into your turn on this street for the rough rule; longer
         while the proper advice is being worked out, which then replaces it."""
@@ -494,7 +524,8 @@ class AASolverAdvice:
 
     def _start(self, fields, cards, frame, key):
         """A Future for the solve, or a finished outcome when there is none."""
-        observation, reason = solver_observation(hand_facts(self._rows), HERO, cards)
+        observation, reason = solver_observation(hand_facts(self._rows, self._stakes),
+                                                 HERO, cards)
         if reason == "not_your_turn_yet":
             # Your buttons show up a moment before the action before them is
             # read: look again shortly.
@@ -560,7 +591,7 @@ class AASolverAdvice:
     def _warm_ranges(self, rows):
         """``opponent_ranges`` on the table as it is now, for its cache."""
         try:
-            observation = table_observation(hand_facts(rows), HERO)
+            observation = table_observation(hand_facts(rows, self._stakes), HERO)
             if observation is None or HERO in observation["folded"]:
                 return False
             opponent_ranges(self._with_reads(observation), self._range_model())
@@ -747,7 +778,7 @@ class AASolverAdvice:
         if job is None or (job.done() and self._rough_done(key) is None
                            and frame >= asked + RETRY):
             job = self._submit_rough(rough_advice, fields, cards, street,
-                                     pot_on_screen(fields, self._rows))
+                                     pot_on_screen(fields, self._rows), self.stakes())
             self._rough[key] = job, frame
             wait([job], timeout=ROUGH_WAIT)
         rough = self._rough_done(key)
@@ -790,6 +821,7 @@ class AASolverAdvice:
     def _report(self, status, reason, **extra):
         return {"schema_version": 1, "status": status, "reason": reason,
                 "hand_id": self._hand_id, "basis": BASIS, **extra,
+                "stakes": stakes_report(self.stakes()),
                 "seat_reads": self.reads.labels(),
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
