@@ -127,4 +127,6 @@ def test_with_hu_the_heads_up_flop_is_played_with_its_own_cuts(monkeypatch, tabl
         "check_call")                          # a multiway pot bets from 0.3
     turn = {**spot, "street": "turn"}           # the solver plays heads-up turns
     assert bot_with(monkeypatch, 0.9, hu=1).decide(turn, random.Random(0)) == "base"
+    assert bot_with(monkeypatch, 0.9, hu=2).decide(turn, random.Random(0)).startswith(
+        "raise_to")                             # unless every street is asked for
     assert multiway_bot.street_params(spot, multiway_bot.DEFAULTS)["bet"] == 0.55
