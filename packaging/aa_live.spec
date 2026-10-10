@@ -2,6 +2,8 @@
 # Private profiles, models, recordings and credentials remain external.
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 root = Path(SPECPATH).resolve().parent
 a = Analysis(
     [str(root / "packaging" / "aa_live_entry.py")],
@@ -12,7 +14,10 @@ a = Analysis(
                         "configs/strategy/examples"),
                        (str(root / "configs" / "strategy" / "examples" /
                             "threeway-river-response-manual.json"),
-                        "configs/strategy/examples")],
+                        "configs/strategy/examples"),
+                       (str(root / "configs" / "game" /
+                            "aa-scoreboard-rules-v2.json"), "configs/game")]
+          + collect_data_files("poker_engine"),
     hiddenimports=["uvicorn.loops.auto", "uvicorn.loops.asyncio",
                    "uvicorn.protocols.http.auto", "uvicorn.protocols.http.h11_impl",
                    "uvicorn.protocols.websockets.auto",

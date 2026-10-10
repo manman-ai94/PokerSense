@@ -46,6 +46,8 @@ calibrate = [
 # Desktop shell (local server + native window). A UI-glue layer, not the
 # frozen core -- loosely bounded rather than exact-pinned on purpose.
 desktop = [
+    # The live advice imports the scoreboard's hand evaluator at startup.
+    "phevaluator==0.6.0",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "pywebview>=5.0",
