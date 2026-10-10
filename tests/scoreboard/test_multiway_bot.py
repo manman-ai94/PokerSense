@@ -7,7 +7,8 @@ import random
 import pytest
 
 from poker_engine.scoreboard import multiway_bot
-from poker_engine.scoreboard.bots import _rng, make_policy, opponents_in_hand
+from poker_engine.scoreboard.bots import (_rng, make_policy, opponents_in_hand,
+                                          raise_toward)
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
@@ -73,6 +74,21 @@ def test_bet_when_ahead_of_the_field_else_check(monkeypatch, table):
     assert bot_with(monkeypatch, 0.25).decide(spot, random.Random(0)) == "check_call"
 
 
+def test_the_bet_is_the_pot_into_three_or_more_opponents(monkeypatch, table):
+    spot = table["checked_to"]
+    others = [seat for seat in spot["occupied_seats"]
+              if seat != spot["observing_seat"]]
+    two = {**spot, "folded": others[2:]}
+    three = {**spot, "folded": others[3:]}
+    assert opponents_in_hand(two) == 2 and opponents_in_hand(three) == 3
+    pot, two_thirds = raise_toward(three, 1.0), raise_toward(two, 0.66)
+    assert pot != two_thirds
+    assert bot_with(monkeypatch, 0.9).decide(three, random.Random(0)) == pot
+    assert bot_with(monkeypatch, 0.9).decide(two, random.Random(0)) == two_thirds
+    assert bot_with(monkeypatch, 0.9, size3=0.66).decide(
+        three, random.Random(0)) == raise_toward(three, 0.66)
+
+
 def test_facing_a_bet_raise_call_or_fold_by_the_price(monkeypatch, table):
     spot = table["facing"]
     to_call = float(spot["to_call"])
@@ -99,7 +115,7 @@ def test_parameters_come_with_the_name():
     assert bot.name == "range_multiway@bet=0.4:raise=0.6:margin=0+aa_preflop"
     assert make_policy("range_multiway+aa_preflop").params == multiway_bot.DEFAULTS
     with pytest.raises(ValueError):
-        make_policy("range_multiway@size=1+aa_preflop")
+        make_policy("range_multiway@width=1+aa_preflop")
 
 
 def test_with_hu_the_heads_up_flop_is_played_with_its_own_cuts(monkeypatch, table):
