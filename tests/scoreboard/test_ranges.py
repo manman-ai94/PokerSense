@@ -98,10 +98,11 @@ def _three_way_flop(flop):
     return observation
 
 
-def test_a_range_kept_in_one_hand_is_not_cut_by_that_hands_board_in_another(monkeypatch):
+def test_a_range_kept_in_one_hand_is_not_cut_by_its_board_in_another(monkeypatch):
     from poker_engine.scoreboard import ranges
     model = PopulationBot(adjusted=True)
-    spades, low = _three_way_flop(("As", "Ks", "Qs")), _three_way_flop(("2c", "3d", "4h"))
+    spades = _three_way_flop(("As", "Ks", "Qs"))
+    low = _three_way_flop(("2c", "3d", "4h"))
     assert low["public_history"] == spades["public_history"]
     monkeypatch.setattr(ranges, "_KEPT", {})
     opponent_ranges(spades, model)
