@@ -27,9 +27,16 @@ The values (all relative to folding now, whose value is 0):
   If someone re-raises, the policy folds or calls, whichever is worth more.
   An all-in raise is not re-raised and is worth its equity in full.
 * call (or limp): the same against the players already in for the full bet
-  and every combination of players behind who call too. A raise behind (by
-  their raise shares) is assumed to make the policy fold and lose the call.
+  or all in for less, and every combination of players behind who call too.
+  A raise behind (by their raise shares) is assumed to make the policy fold
+  and lose the call.
 * check (when free): ``R x equity x pot``.
+
+A player already all in cannot fold: whatever the policy does, that player
+stays in to the showdown. The pot is split as the table splits it: the main
+pot (with the antes) is shared by everyone in, each side pot above an
+all in only by the players who covered it, and chips nobody can match go
+back to their owner. Equity is taken against the players in each pot.
 
 Equity against several players combines the heads-up equities (see
 ``multiway``).
@@ -338,6 +345,47 @@ class Table:
         """Chips back from a pot the hand wins ``share`` of (less rake)."""
         return share * (pot - rake(self.o, pot) + self.bonus)
 
+    def pots(self, mine, levels):
+        """The main pot and side pots once the hand has bet ``mine`` this round
+        and each player in ``levels`` ({seat: bet}) has bet that much, as
+        [(chips, players in who can win them, chips only one player put in)],
+        lowest first, as the table settles them. Everyone else has folded and
+        left its bet; the antes are in the main pot."""
+        bets = {**self.bets, **levels, self.me: mine}
+        everyone = {**levels, self.me: mine}
+        pots = [(self.pot - sum(self.bets.values()), list(everyone), False)]
+        floor = 0.0
+        for step in sorted(set(bets.values()) - {0.0}):
+            chips = sum(min(bet, step) - min(bet, floor) for bet in bets.values())
+            payers = sum(1 for bet in bets.values() if bet > floor)
+            pots.append((chips, [seat for seat, bet in everyone.items() if bet >= step],
+                         payers == 1))
+            floor = step
+        return [pot for pot in pots if pot[0] > 0]
+
+    def showdown(self, mine, levels, odds, realize):
+        """Chips back for the hand from every pot it can win (see ``pots``).
+
+        ``odds``: each player's odds against the hand (see ``multiway``);
+        ``realize``: the hand's equity realisation. Rake comes off every pot
+        in proportion, as at the table; chips only the hand put in come back."""
+        pots = self.pots(mine, levels)
+        raked = sum(chips for chips, _, alone in pots if not alone)
+        taken = rake(self.o, raked)
+        back = 0.0
+        for index, (chips, players, alone) in enumerate(pots):
+            if self.me not in players:
+                continue
+            if alone:
+                back += chips
+                continue
+            rivals = [seat for seat in players if seat != self.me]
+            share = (realize / (1 + sum(odds[seat] for seat in rivals))
+                     if rivals else 1.0)
+            back += share * (chips - taken * chips / raked
+                             + (self.bonus if index == 0 else 0.0))
+        return back
+
     def joins(self, seat, level):
         """Chips ``seat`` adds to call up to ``level`` (all of it if short)."""
         return min(level, self.bets[seat] + self.stacks[seat]) - self.bets[seat]
@@ -354,15 +402,15 @@ class Table:
         if self.to_call:
             return 0.0
         # A free check closes the round: see the flop against everyone in.
-        return self.field({seat: self.band(seat) for seat in self.live}, [],
-                          self.pot, 0.0, False)
+        return self.field({seat: self.band(seat) for seat in self.live}, [], 0.0)
+
+    def all_in(self, seat):
+        return self.stacks.get(seat, 0) <= 0
 
     def call_value(self):
         price = min(self.to_call, self.stacks[self.me])
         fixed = {seat: self.band(seat) for seat in self.live
-                 if self.bets[seat] >= self.top}
-        all_in = price >= self.stacks[self.me] or all(
-            self.stacks.get(seat, 0) == 0 for seat in fixed)
+                 if self.bets[seat] >= self.top or self.all_in(seat)}
         after = self.history + [(self.me, "c")]
         clear, chances = 1.0, []
         for seat in self.behind():
@@ -377,7 +425,7 @@ class Table:
                 chances.append((seat, call_share / (1 - raise_share),
                                 (low + raise_share * width,
                                  low + (raise_share + call_share) * width), chips))
-        called = self.field(fixed, chances, self.pot + price, price, all_in)
+        called = self.field(fixed, chances, price)
         return clear * called - (1 - clear) * price
 
     def raise_action(self):
@@ -400,9 +448,10 @@ class Table:
         after = self.history + [(self.me, "r")]
         uncalled = self.pot + self.to_call
         won_now = self.won(uncalled, 1.0) - (uncalled - self.pot)
+        stuck = {seat: self.band(seat) for seat in self.live if self.all_in(seat)}
         no_raise, chances, reraises = 1.0, [], []
         for seat in self.live:
-            if self.stacks.get(seat, 0) <= 0:
+            if seat in stuck:
                 continue
             raise_share, call_share, _ = self.shares(seat, after)
             low, high = self.band(seat)
@@ -420,59 +469,71 @@ class Table:
             if call_share > MIN_CHANCE and raise_share < 1:
                 chips = self.joins(seat, target)
                 chances.append((seat, call_share / (1 - raise_share), cut, chips))
-        value = self.field({}, chances, self.pot + added, added, all_in, won_now)
+        # Players already all in stay in whoever calls: the raise is never
+        # simply won while one of them is in.
+        value = self.field(stuck, chances, added, won_now)
         if not reraises:
             return value
         weight = sum(share for share, _, _ in reraises)
-        facing = sum(share * self.reraised(seat, target, cut)
+        facing = sum(share * self.reraised(seat, target, cut, stuck)
                      for share, seat, cut in reraises) / weight
         return no_raise * value + (1 - no_raise) * facing
 
-    def field(self, fixed, chances, pot, cost, all_in, alone=0.0):
-        """Expected value of putting in ``cost`` more chips, for a pot of ``pot``.
+    def field(self, fixed, chances, cost, alone=0.0):
+        """Expected value of putting in ``cost`` more chips this round.
 
-        The players in ``fixed`` ({seat: band}) are in the pot; each of
-        ``chances`` ((seat, chance, band, chips)) joins it with its chance,
-        independently, adding its chips. Every combination of who joins is
-        counted; ``alone`` is the value if nobody is in.
+        The players in ``fixed`` ({seat: band}) are in the pot with what they
+        have bet; each of ``chances`` ((seat, chance, band, chips)) joins it
+        with its chance, independently, adding its chips. Every combination
+        of who joins is counted, with the pots split as in ``pots``;
+        ``alone`` is the value if nobody is in.
         """
         odds = {}
         for seat, cut in fixed.items():
             odds[seat] = _odds(self.equity(*cut))
         for seat, _, cut, _ in chances:
             odds[seat] = _odds(self.equity(*cut))
+        mine = self.bets[self.me] + cost
+        jammed = cost >= self.stacks[self.me]
         total = 0.0
         for mask in range(1 << len(chances)):
-            chance, extra, seats = 1.0, 0.0, list(fixed)
+            chance = 1.0
+            levels = {seat: self.bets[seat] for seat in fixed}
+            betting = [seat for seat in fixed if not self.all_in(seat)]
             for index, (seat, joins, _, chips) in enumerate(chances):
                 if mask >> index & 1:
                     chance *= joins
-                    extra += chips
-                    seats.append(seat)
+                    levels[seat] = self.bets[seat] + chips
+                    if self.stacks[seat] > chips:
+                        betting.append(seat)
                 else:
                     chance *= 1 - joins
             if chance < 1e-7:
                 continue
-            if not seats:
+            if not levels:
                 total += chance * alone
                 continue
-            share = 1 / (1 + sum(odds[seat] for seat in seats))
-            total += chance * (self.won(pot + extra,
-                                        self.realize(seats, all_in) * share) - cost)
+            # No betting after the flop once nobody else has chips left.
+            realize = self.realize(list(levels), jammed or not betting)
+            total += chance * (self.showdown(mine, levels, odds, realize) - cost)
         return total
 
-    def reraised(self, seat, target, cut):
-        """Value when ``seat`` re-raises: fold, or call if that is worth more."""
+    def reraised(self, seat, target, cut, stuck=None):
+        """Value when ``seat`` re-raises: fold, or call if that is worth more.
+
+        ``stuck`` ({seat: band}): players already all in, in the pot too."""
+        stuck = stuck or {}
         mine = self.bets[self.me]
         pot = self.pot + (target - mine) + (target - self.bets[seat])
         cap = min(self.bets[seat] + self.stacks[seat],
                   mine + self.stacks[self.me])
         again = min(cap, target + pot)            # a pot-size re-raise
-        total = (self.pot + (target - mine) + (again - self.bets[seat])
-                 + (again - target))
-        all_in = again >= cap
-        share = self.realize([seat], all_in) * self.equity(*cut)
-        calling = self.won(total, share) - (again - mine)
+        levels = {other: self.bets[other] for other in stuck}
+        levels[seat] = again
+        odds = {other: _odds(self.equity(*band)) for other, band in stuck.items()}
+        odds[seat] = _odds(self.equity(*cut))
+        realize = self.realize(list(levels), again >= cap)
+        calling = self.showdown(again, levels, odds, realize) - (again - mine)
         return max(-(target - mine), calling)
 
 
