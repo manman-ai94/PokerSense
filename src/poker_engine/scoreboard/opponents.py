@@ -30,14 +30,31 @@ quantiles are the population's, so a tighter player (stronger hands at the
 same spot) takes a share a little more often than its number says.
 
 ``tough`` (see ``runner.POOLS``) seats all three next to AA players.
+
+Every one of these plays exactly as its own rules say, as the population
+model the AI reads ranges with does: none slow-plays a big hand or calls
+down with one, so a reading that throws such hands out (``exclusion``)
+costs nothing there. ``noisy+<base>`` (``NoisyBot``) plays ``base`` but,
+after the flop, does not always follow it:
+
+* ``slow``: where ``base`` bets or raises, it checks or calls instead
+  (slow play, pot control);
+* ``sticky``: where ``base`` folds, it calls;
+* ``stab``: where ``base`` checks with nothing to call, it bets two thirds
+  of the pot.
+
+The shares can follow the name: ``noisy@slow=0.35:stab=0.1:sticky=0.25+aa_real``
+(the defaults, ``NOISE``). The "noisy" pool (``runner.POOLS``) is AA
+players playing this way: the table where reading off-model players is
+tested.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .bots import (MAX_EQUITY_OPPONENTS, POSTFLOP_TRIALS, _Policy, opponents_in_hand,
-                   passive, raise_toward)
+from .bots import (MAX_EQUITY_OPPONENTS, POSTFLOP_TRIALS, _Policy, _rng,
+                   opponents_in_hand, passive, raise_toward)
 from .population import (MAX_CONTINUE, actions, population_stats, postflop_situation,
                          preflop_shares as population_shares, stats_position, threshold)
 from .spots import preflop_spot
@@ -45,6 +62,8 @@ from .strength import combo_percentile, equity
 
 THREE_BET_SPOTS = ("vs_open", "vs_3bet_cold")
 MAX_BET = 0.95              # postflop shares stay below this
+NOISE = {"slow": 0.35, "stab": 0.10, "sticky": 0.25}
+STAB_SIZE = 0.66
 
 
 @dataclass(frozen=True)
@@ -211,5 +230,51 @@ class ToughBot(_Policy):
         return passive(observation)
 
 
-__all__ = ["PROFILES", "Profile", "ToughBot", "minimum_defence", "postflop_plan",
-           "preflop_band", "preflop_shares"]
+class NoisyBot(_Policy):
+    """``base`` that after the flop does not always do what it would (see the
+    module notes). Its own draw decides, from the game's salt and the public
+    state, so the same observation always gets the same action."""
+
+    def __init__(self, base, name="noisy", slow=NOISE["slow"], stab=NOISE["stab"],
+                 sticky=NOISE["sticky"]):
+        self.base, self.name = base, name
+        self.slow, self.stab, self.sticky = slow, stab, sticky
+
+    def for_game(self, salt):
+        inner = self.base.for_game(salt)
+
+        def policy(observation):
+            return self.noisy(observation, inner(observation),
+                              _rng(salt + "|noise", observation))
+        return policy
+
+    def decide(self, observation, rng):
+        return self.noisy(observation, self.base.decide(observation, rng), rng)
+
+    def noisy(self, observation, action, rng):
+        if observation["street"] == "preflop":
+            return action
+        roll = rng.random()
+        if action not in ("check_call", "fold"):          # base bets or raises
+            return "check_call" if roll < self.slow else action
+        if action == "fold":
+            return "check_call" if roll < self.sticky else action
+        if float(observation["to_call"] or 0) == 0 and roll < self.stab:
+            return raise_toward(observation, STAB_SIZE) or action
+        return action
+
+
+def noisy_from_name(name, make_policy):
+    """``noisy[@slow=..:stab=..:sticky=..]+base`` as a policy."""
+    head, _, base = name.partition("+")
+    params = {}
+    for item in filter(None, head.partition("@")[2].split(":")):
+        key, _, value = item.partition("=")
+        if key not in NOISE:
+            raise ValueError(f"unknown parameter {key!r} of {name}")
+        params[key] = float(value)
+    return NoisyBot(make_policy(base), name, **params)
+
+
+__all__ = ["NOISE", "NoisyBot", "PROFILES", "Profile", "ToughBot", "minimum_defence",
+           "noisy_from_name", "postflop_plan", "preflop_band", "preflop_shares"]

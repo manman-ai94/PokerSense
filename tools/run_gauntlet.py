@@ -2,8 +2,8 @@
 
     PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 2000 \\
         --strategies range_multiway+aa_preflop [--reference aa_preflop] \\
-        [--pools aa,population,reg,maniac,nit,tough] [--mushroom 3] \\
-        [--seed 1] [--workers 8] [--out <directory>]
+        [--pools aa,population,reg,maniac,nit,tough,noisy] [--mushroom 3] \\
+        [--exclusion [SEATS]] [--seed 1] [--workers 8] [--out <directory>]
 
 Each pool is a full scoreboard run (``run_scoreboard.py --pool <name>``) on
 the same deals, so a strategy's rows can be compared across pools. The table
@@ -33,6 +33,13 @@ tight players, where the small blind wins half the pots, the default share
 ever leaves in the pool; and one share for all strategies flattered the one
 that wins the small blind more often by about 3-7 bb/100.
 
+The "noisy" pool is the AA players playing off the model after the flop
+(slow plays, stabs, calls instead of folds): the AI's range reading throws
+out hands the model would have played otherwise, and real players do. With
+``--exclusion`` each pool also reports how often an opponent still in at the
+end held a hand the strategy's reading had thrown out (``exclusion``): a
+change to the reading should lower that on "noisy" without costing bb/100.
+
 With ``--out`` every pool's full report is saved as <pool>.json next to
 summary.json; ``--resume`` reuses the pools a stopped run already saved there
 with the same settings.
@@ -55,7 +62,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
                  / "configs/game/aa-scoreboard-rules-v2.json")
-DEFAULT_POOLS = "aa,population,reg,maniac,nit,tough"
+DEFAULT_POOLS = "aa,population,reg,maniac,nit,tough,noisy"
 LOSING_PARTS = 2          # parts listed where a strategy does not win
 
 
@@ -104,6 +111,10 @@ def summarize(reports, strategies, reference):
             bomb = row.get("by_kind", {}).get("bomb")
             if bomb and bomb["share"]:
                 cell["bomb"] = bomb
+            if "range_exclusion" in row:
+                whole = row["range_exclusion"]["whole_hand"]
+                cell["range_exclusion"] = {part: whole[part] for part in (
+                    "all", "narrowed", "river")}
             if versus is not None:
                 cell["vs_reference"] = {"delta_bb_per_100": versus["delta_bb_per_100"],
                                         "ci95": versus["ci95"],
@@ -136,6 +147,7 @@ def finished(args, pool, strategies, rules):
             and post == args.mushroom
             and (report.get("reads") or {}).get("hands") == (args.reads or None)
             and report.get("bomb") == bomb_settings(args)
+            and (report.get("exclusion") or {}).get("seats_per_deal") == args.exclusion
             and (args.mushroom_take is None or post is None
                  or report["mushroom"]["take"] == args.mushroom_take))
     return report if same else None
@@ -159,11 +171,25 @@ def table(summary, pools, reference, takes=None):
                 text += (f"  [bomb pots {cell['bomb']['bb_per_100']:+.1f} of it, "
                          f"{cell['bomb']['share']:.0%} of hands]")
             lines.append(text)
+            if "range_exclusion" in cell:
+                found = cell["range_exclusion"]
+                lines.append("              real hand out of the range read: "
+                             + " | ".join(f"{label} {share(found[part])}"
+                                          for part, label in (
+                                              ("all", "all"), ("narrowed", "range cut"),
+                                              ("river", "to the river"))))
             if cell["verdict"] != "wins" and cell["weakest"]:
                 lines.append(f"              below {pools[0]} most: " + ", ".join(
                     f"{part} {value:+.1f} ({share:.0%} of hands)"
                     for part, value, share in cell["weakest"]))
     return "\n".join(lines)
+
+
+def share(part):
+    if part["rate"] is None:
+        return "-"
+    low, high = part["ci95"]
+    return f"{part['rate']:.1%} [{low:.0%}, {high:.0%}] of {part['hands']}"
 
 
 def progress(pool, done, total, seconds):
@@ -198,11 +224,16 @@ def main(argv=None):
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from "
                         "this many hands (noreads+name ignores them)")
+    parser.add_argument("--exclusion", type=int, nargs="?", const=1, metavar="SEATS",
+                        help="measure how often the range reading threw out an "
+                        "opponent's real hand, on this many seats per deal (1-8)")
     parser.add_argument("--calibration-deals", type=int, default=CALIBRATION_DEALS)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--resume", action="store_true",
                         help="reuse pools already saved in --out by the same settings")
     args = parser.parse_args(argv)
+    if args.exclusion is not None and args.exclusion < 1:
+        parser.error("--exclusion needs at least one seat")
     strategies = args.strategies.split(",")
     args.reference = args.reference or strategies[0]
     if args.reference not in strategies:
@@ -246,7 +277,7 @@ def main(argv=None):
             rules, strategies, deals=args.deals, pool=POOLS[pool],
             workers=args.workers, base_seed=args.seed,
             reference=args.reference, mushroom=mushroom,
-            reads=args.reads, bomb=bomb,
+            reads=args.reads, bomb=bomb, exclusion=args.exclusion,
             progress=lambda done, total, seconds, pool=pool: progress(
                 pool, done, total, seconds))
         if args.out:
@@ -257,7 +288,7 @@ def main(argv=None):
         (args.out / "summary.json").write_text(json.dumps({
             "deals": args.deals, "seed": args.seed, "pools": pools,
             "reference": args.reference, "reads": args.reads,
-            "bomb": bomb_settings(args),
+            "bomb": bomb_settings(args), "exclusion": args.exclusion,
             "mushroom": None if args.mushroom is None else {
                 "post_big_blinds": args.mushroom, "take": takes},
             "strategies": summary}, indent=1), encoding="utf-8")

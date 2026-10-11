@@ -2,10 +2,10 @@
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
-        [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
+        [--pool population|aa|aa_real|noisy|styles|reg|maniac|nit|tough|...] \\
         [--mushroom 3 [--mushroom-take 0.135 | --calibration-deals 400]] \\
-        [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--workers 10] \\
-        [--out result.json]
+        [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--exclusion [SEATS]] \\
+        [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
@@ -19,6 +19,13 @@ is first measured for each strategy on other deals (``--calibration-deals``)
 unless ``--mushroom-take`` gives one share. ``--bomb 7`` makes 7% of the deals
 bomb pots where every player puts in 7 big blinds and the hand starts on the
 flop (``--bomb-share 1`` for bomb pots only; see ``scoreboard/bomb.py``).
+"noisy" is the AA players with play off the model after the flop (slow
+plays, stabs, calls instead of folds; ``scoreboard/opponents.py``).
+``--exclusion`` also measures, on that many of the eight seats of every
+deal (1 without a number), how often an opponent still in at the end held
+a hand the strategy's range reading had thrown out (``scoreboard/exclusion.py``):
+the share over all such hands, the hands whose range was cut, the hands
+that reached the river, and by street.
 """
 
 from __future__ import annotations
@@ -77,9 +84,38 @@ def table(report):
         lines.append("mushroom pool: the dealer puts in "
                      f"{report['mushroom']['post_big_blinds']:g} big blinds; the "
                      f"small blind is drawn as taking it in: {took} of hands")
+    lines += exclusion_lines(report, rows)
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
+
+
+def share(part):
+    if part["rate"] is None:
+        return "-"
+    low, high = part["ci95"]
+    return (f"{part['rate']:.1%} [{low:.0%}, {high:.0%}] "
+            f"({part['excluded']}/{part['hands']})")
+
+
+def exclusion_lines(report, rows):
+    """The real hands the range reading had thrown out, per strategy."""
+    if not report.get("exclusion"):
+        return []
+    lines = [f"real hand out of the range read for it (opponents still in at the end, "
+             f"{report['exclusion']['seats_per_deal']} seat(s) per deal):"]
+    for name, row in rows:
+        whole = row["range_exclusion"]["whole_hand"]
+        lines.append(f"  {name}: all {share(whole['all'])} | range cut "
+                     f"{share(whole['narrowed'])} | to the river "
+                     f"{share(whole['river'])}")
+        lines.append("    by street: " + " | ".join(
+            f"{street} {share(part)}" for street, part in whole["by_street"].items()))
+        first = list(whole["first"].items())[:4]
+        if first:
+            lines.append("    first out at: " + ", ".join(
+                f"{label} {count}" for label, count in first))
+    return lines
 
 
 def split_lines(report, rows, key, title):
@@ -135,8 +171,13 @@ def main(argv=None):
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from this "
                         "many hands (aa_preflop uses them; noreads+name ignores them)")
+    parser.add_argument("--exclusion", type=int, nargs="?", const=1, metavar="SEATS",
+                        help="measure how often the range reading threw out an "
+                        "opponent's real hand, on this many seats per deal (1-8)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    if args.exclusion is not None and args.exclusion < 1:
+        parser.error("--exclusion needs at least one seat")
     rules = AARuleProfileV2.from_dict(
         json.loads(args.rules.read_text(encoding="utf-8")))
     strategies = args.strategies.split(",")
@@ -157,7 +198,8 @@ def main(argv=None):
                             workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
-                            mushroom=mushroom, reads=args.reads, bomb=bomb)
+                            mushroom=mushroom, reads=args.reads, bomb=bomb,
+                            exclusion=args.exclusion)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
