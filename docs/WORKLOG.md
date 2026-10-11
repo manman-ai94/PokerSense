@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-11 · `feat/range-exclusion-metric`（真牌排除率指标 + 不照模型打的 noisy 必考桌，给以后的读牌改动验收用）**
+- 做了什么：AI 读对手范围是“一票否决”，对手一个动作不像模型，他的真牌就被永久排除；录像核实过亮牌对手的真牌被排除 59%（读到河牌 84%），但记分牌的模拟对手全照模型打，量不出来。现在复盘（`aa_session_report`、`aa_strategy_review`、新的 `aa_range_exclusion`）和记分牌（`--exclusion`）都输出“真牌排除率”：全部亮牌 / 范围被收窄过的 / 读到河牌的、按街、每手第一次被排除的街和动作；新对手池 `noisy`（AA 真人桌翻后慢打 35%、乱下注 10%、该弃不弃 25%）。
+- 怎么做的：`ranges.opponent_ranges` 加可选的 `cache` / `trace`（默认不变），`scoreboard/exclusion.py` 按实际读牌代码逐个动作回放，用自己的缓存；录像上按窗口的模型和本场读数重放。
+- 怎么验证的：新测试 16 个（合成的“先跟后加 AA”在翻前跟注时被排除、照模型打的 AA 不被排除等），全量 6130 通过；main 和本分支单进程跑标准记分牌（aa_real、aa 各 400 局，开着全座位测量）结果逐位相同。基线 `range_multiway@hu=1+aa_preflop` 2000 局×2 种子：aa_real +156.4 / +120.1，排除率 24.2% / 24.5%；noisy +202.7 / +184.6，排除率 55.4% / 54.9%（到河牌 63.7% / 63.3%）。
+- 还剩什么：录像上的 59% / 69% / 84% 要在 Mac 上用 `tools/aa_range_exclusion.py --no-reads` 重算对照；读牌本身还没改。
+
 **2026-10-10 · `claude/fix-windows-ci-ezhdu6`（修好 Windows 打包检查）**
 - 做了什么：每次合并到 main 后自动跑的“Windows 打包”（Build AA Windows Preview）从新仓库建好起 22 次全红：打出来的 PokerSense-AA.exe 一启动就报错退出。PR 上的三项检查不跑它，所以一直没人发现。
 - 怎么做的：缺两样东西。① 建议要用的牌力计算库 phevaluator 只在 solver-tools 里，打包不装它 → 加进 desktop 依赖（同样精确锁 0.6.0）；② 打包版找不到 `configs/game/aa-scoreboard-rules-v2.json` 和包里的 JSON 数据 → spec 把它们打进包，`aa_stakes.py` 打包时从 `_MEIPASS` 找规则文件（和界面文件同一个办法）。

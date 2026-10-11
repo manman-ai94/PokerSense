@@ -72,10 +72,10 @@ PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 --pool aa
 # 加 --mushroom 3：按 AA 规则收蘑菇（庄位 3BB，小盲赢底池拿走蘑菇池）；“nomushroom+甲”是看不见蘑菇池的甲
 # 实时窗口读蘑菇池金额用的数字样本库（私有数据，不提交）：从录像里按“每手加 6、小盲赢了清零”自动标注
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_mushroom_bank.py --recording <录像目录> [...] --sheet
-# 加难度体检：同一批牌把策略放到每种牌桌上（AA 人群、AA 真人桌、2009 人群、紧凶、疯子、岩石、混合难桌、AI 自己），
-# 每桌给出 赢/输/说不准 和比 AA 牌桌差得最多的部分；加 --mushroom 3 时先在另一批牌上量出每个策略自己的小盲拿走率（--mushroom-take 给固定数）；--resume 接着跑没跑完的
+# 加难度体检：同一批牌把策略放到每种牌桌上（AA 人群、AA 真人桌、2009 人群、紧凶、疯子、岩石、混合难桌、AI 自己、noisy＝翻后不照模型打的 AA 真人），
+# 每桌给出 赢/输/说不准 和比 AA 牌桌差得最多的部分；加 --mushroom 3 时先在另一批牌上量出每个策略自己的小盲拿走率（--mushroom-take 给固定数）；--resume 接着跑没跑完的；--exclusion 量“真牌排除率”（亮牌对手的真牌是否已被读的范围排除），读牌改动要看 noisy 桌上它降没降、bb/100 变没变差
 PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 1000 --strategies range_multiway+aa_preflop \
-    --reference aa_preflop --mushroom 3 --pools aa,aa_real,population,reg,maniac,nit,tough,mirror --out <目录>
+    --reference aa_preflop --mushroom 3 --pools aa,aa_real,population,reg,maniac,nit,tough,mirror,noisy --out <目录>
 # 加 --bomb 7：一部分牌（默认 7%，--bomb-share 改，1 是只打暴击局）是暴击局，每人先投 7BB、直接发翻牌；成绩按“普通 / 暴击局”拆开
 # 加 --reads 100：每个决策带上“已经看了 100 手”的对手读数（入池率、加注率），aa_preflop 按人调整翻前范围；“noreads+甲”是不记对手的甲
 # AA 真人桌用的数字：AA 真人打法统计出新版后，把需要的汇总次数存进包里
@@ -108,7 +108,7 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测�
 # 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒）；加 --streets 连街道也重算（改了 aa_street.py 时用）
 PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl \
     --out <新目录>/frames.jsonl [--streets]
-# 每场实战后必做（不去 AA 里截图，靠窗口录像时写在录像文件夹里的 frames.jsonl 和录像）：逐手报告建议覆盖、没建议的原因、认错和卡顿
+# 每场实战后必做（不去 AA 里截图，靠窗口录像时写在录像文件夹里的 frames.jsonl 和录像）：逐手报告建议覆盖、没建议的原因、认错和卡顿、真牌排除率（只算它用 tools/aa_range_exclusion.py，--compare 比读牌改动前后）
 PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py --frames <录像文件夹>/frames.jsonl [...] --out <目录>/report.json
 ```
 
@@ -127,7 +127,7 @@ PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py --frames <录像文
 | `src/poker_engine/orchestrator/` | Fast/Slow 双路径编排，旧结果不覆盖新状态 |
 | `src/poker_engine/desktop/` | AA 本地服务 `aa_server.py`（FastAPI）、会话 `aa_session.py`、画面来源 `aa_sources.py` / `aa_video_source.py`（录像当采集卡）、观察时直接录采集卡画面 `aa_recorder.py`、8 个座位的在局状态 `aa_seat_states.py`、轮到你时的按钮和跟注额 `aa_hero_controls.py`、按公共牌张数判断的街道 `aa_street.py`、屏幕左上角的蘑菇池金额 `aa_mushroom.py`、本桌盲注级别 `aa_stakes.py`（每手从开局桌上的前注和盲注读出，如 2/4/8(4)，建议、评分和大盲换算都按它）、当前这手牌的行动记录 `aa_action_history.py`（动作、金额、街道；全下从筹码变化推断）、把这手牌接成求解器输入（在模拟牌桌上重放）`aa_solver_input.py`（行动记录漏读的动作按牌桌推断补上）、轮到你时的策略建议 `aa_solver_advice.py`（翻前用 `aa_preflop` 当场算各选择值多少，带上 `aa_reads.py` 记的本场每个对手入池率、加注率和翻后下注加注的比例；单挑转牌/河牌在后台用求解器；单挑翻牌和多人底池在后台算你对各对手范围的胜率，再按 `range_multiway` 的规则给建议；求解器算不了时也用这个规则；轮到你 0.6 秒还没有建议就只看屏幕给标“粗略”的建议，它单独一个线程算，不排在求解器后面）、你行动后给这一步打分和本场记录 `aa_grading.py`、牌桌数学 `aa_math.py`（胜率、底池赔率、SPR）、回合截止、分析和复查 |
 | `ui/aa-live/` | AA 前端（原生 HTML/JS，无构建步骤）：首页是“信号灯”窗口 `signal.html`（`signal_view.js` 算出要显示什么，`signal.js` 画出来，见 [设计说明](docs/design/signal-window.md)）；旧观察页 `index.html` 在 `/classic` |
-| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围；`ranges.py` 推算每个对手的范围和你对他们的胜率，`multiway_bot.py` 的 `range_multiway` 用它打多人底池（`hu=1` 时也打单挑翻牌）；蘑菇池 `mushroom.py`）；翻前策略 `preflop_policy.py`（`aa_preflop`：按当前底池、价格、筹码和后面的人怎么应对算每个选择值多少筹码，随盲注结构、人数、蘑菇池自动变化；用 169 类起手牌对战胜率表 `preflop_equity_v1.json`）；`population.py` 里的 `aa_population` 按 `aa_preflop_stats_v1.json`（AA 真人翻前频率）调松；更难缠的对手 `opponents.py`（reg / maniac / nit），AA 真人桌 `aa_real.py`（`aa_real_stats_v1.json`）；对手读数 `reads.py`（入池率、加注率，`aa_preflop` 按它调整每个对手的翻前范围；翻后下注加注的比例，`ranges.py` 给明显爱下注的人多留牌）；暴击局 `bomb.py`（牌桌 `reset(seed, bomb=筹码)`） |
+| `src/poker_engine/scoreboard/` | 策略记分牌：模拟 AA 8 人桌给策略打分（每 100 手赢多少大盲）；风格机器人 `bots.py`、照公开真人牌谱统计打法的“真人人群”机器人 `population.py`（局面分类 `spots.py` 和统计工具共用）、全下按胜率结算 `allin_ev.py`、同牌全座位轮打 `runner.py`、单挑翻后用求解器的策略 `solver_bot.py`（`solver_river` / `solver_turn` / `solver_flop`，靠 `replay.py` 重放公开行动推算双方范围；`ranges.py` 推算每个对手的范围和你对他们的胜率，`multiway_bot.py` 的 `range_multiway` 用它打多人底池（`hu=1` 时也打单挑翻牌）；蘑菇池 `mushroom.py`）；翻前策略 `preflop_policy.py`（`aa_preflop`：按当前底池、价格、筹码和后面的人怎么应对算每个选择值多少筹码，随盲注结构、人数、蘑菇池自动变化；用 169 类起手牌对战胜率表 `preflop_equity_v1.json`）；`population.py` 里的 `aa_population` 按 `aa_preflop_stats_v1.json`（AA 真人翻前频率）调松；更难缠的对手 `opponents.py`（reg / maniac / nit，以及不照模型打的 `noisy+甲`），真牌排除率 `exclusion.py`（亮牌对手的真牌是否已被读的范围排除），AA 真人桌 `aa_real.py`（`aa_real_stats_v1.json`）；对手读数 `reads.py`（入池率、加注率，`aa_preflop` 按它调整每个对手的翻前范围；翻后下注加注的比例，`ranges.py` 给明显爱下注的人多留牌）；暴击局 `bomb.py`（牌桌 `reset(seed, bomb=筹码)`） |
 | `src/poker_engine/solver/` | 调用本机编译的 TexasSolver（常驻后台，一次算一条街）；求解器本身不在仓库里，用 `tools/setup_texassolver.sh` 安装 |
 | `research/` | `hu_root`（单挑已保存策略查询）、`coverage_bridge` |
 | `tools/` | 离线命令行工具，其中不少是一次性研究脚本 |

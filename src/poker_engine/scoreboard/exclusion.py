@@ -21,7 +21,8 @@ turns traces into rates:
 * ``river``: the hands whose betting reached the river;
 * ``you_in``: the hands where the observer (you) was still in at the end;
 * ``by_street``: of the hands whose betting reached a street, the share
-  whose real hand was out by the end of that street;
+  whose real hand was out by the end of that street (a bomb pot, with no
+  betting before the flop, counts as reaching the flop with nothing out);
 * ``first``: where the excluded hands went out, as "street action".
 
 ``before_end`` leaves out the action that ended the hand (the last call at
