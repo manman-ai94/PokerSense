@@ -172,7 +172,7 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
 
     Also returns, per strategy that keeps them, the counts of how it decided
     (for example how often a solver strategy fell back to its base policy),
-    and per strategy the ``exclusion`` traces ({} without it).
+    and with ``exclusion`` a third item: each strategy's ``exclusion`` traces.
     """
     rules = AARuleProfileV2.from_dict(rules_dict)
     arena = AAFullHandArena(rules)
@@ -234,7 +234,7 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
         rows.append((seed, row))
     counts = {name: dict(heroes[name].counts) for name in strategies
               if getattr(heroes[name], "counts", None)}
-    return rows, counts, traces
+    return (rows, counts, traces) if exclusion else (rows, counts)
 
 
 def _interval(values):
@@ -364,10 +364,10 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     else:
         for arg in args:
             finished(score_deals(*arg))
-    rows = sorted((row for part, _, _ in results for row in part), key=lambda r: r[0])
+    rows = sorted((row for result in results for row in result[0]), key=lambda r: r[0])
     counts = {}
-    for _, part, _ in results:
-        for name, values in part.items():
+    for result in results:
+        for name, values in result[1].items():
             merged = counts.setdefault(name, {})
             for key, value in values.items():
                 merged[key] = merged.get(key, 0) + value
@@ -392,7 +392,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
             versus[name][key] = parts
     if exclusion:
         for name in strategies:
-            traces = sorted((trace for _, _, part in results for trace in part[name]),
+            traces = sorted((trace for result in results for trace in result[2][name]),
                             key=lambda trace: (trace["deal"], trace["hero"],
                                                trace["seat"]))
             summary[name]["range_exclusion"] = exclusion_report(traces)
