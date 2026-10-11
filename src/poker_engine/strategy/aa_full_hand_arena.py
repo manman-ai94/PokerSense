@@ -108,7 +108,7 @@ class AAFullHandArena:
         self._seats = (self.occupied_seats[dealer_index + 1:]
                        + self.occupied_seats[:dealer_index + 1])
         self._straddler = plan.straddler_seat
-        self._forced = plan.contributions
+        self._forced = dict(plan.contributions)
         if starting_stacks is None:
             starting_stacks = {seat: rules.big_blind * 100
                                for seat in self.occupied_seats}
