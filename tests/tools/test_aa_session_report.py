@@ -115,8 +115,10 @@ def test_cards_shown_with_the_seat_s_actions():
         "unknown": ["2"]}
     report = session_report([("log", rows)])
     hand = report["hands"][0]
+    # The hand was joined midway: it does not replay, so no range was read.
     assert hand["shown_cards"] == [{"seat": 5, "cards": ["Qh", "Qs"], "actions": {
-        "preflop": ["call 2"], "flop": ["check", "call 6"]}}]
+        "preflop": ["call 2"], "flop": ["check", "call 6"]},
+        "range_read": {"skipped": "no_replay"}}]
     assert hand["shown_unknown"] == [2]
     assert report["summary"]["shown_cards"] == {"hands": 1, "seats": 1,
                                                 "seats_unknown": 1}

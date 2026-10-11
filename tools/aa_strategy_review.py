@@ -27,6 +27,12 @@ The summary counts the flags by street, the decisions and your chips in bomb
 pots apart, and lists the flagged decisions by pot size, the biggest first:
 a mistake in a bigger pot costs more.
 
+Its ``range_exclusion`` says how often the range read for an opponent who
+then showed his cards had already thrown out the hand he held (all shown
+hands, those whose range was cut, those that reached the river, by street;
+``tools/aa_range_exclusion.py``), with each such hand and the action that
+threw it out (``excluded``): a ``sure_with_one_pair`` usually has one.
+
     PYTHONPATH=src:. .venv/bin/python tools/aa_strategy_review.py \\
         --frames <recording>/frames.jsonl [--frames ...] [--replay-advice] \\
         [--out review.json]
@@ -203,7 +209,8 @@ def review(logs, *, replay_advice=False):
             advice = [row["fields"].get("solver_advice")
                       or row["fields"].get("solver_advice_v1") or {} for row in rows]
         turns += decisions(name, rows, advice)
-    hands = session_report(logs)["hands"]
+    session = session_report(logs)
+    hands = session["hands"]
     bombs = {(hand["log"], hand["hand_id"]) for hand in hands if hand.get("bomb_pot")}
     for turn in turns:
         turn["bomb_pot"] = (turn["log"], turn["hand_id"]) in bombs
@@ -213,7 +220,27 @@ def review(logs, *, replay_advice=False):
             part = "bomb_pot" if hand.get("bomb_pot") else "normal"
             chips[part] += hand["your_chips"]
             chips[part + "_hands"] += 1
-    return {"summary": summarize(turns, chips), "decisions": turns}
+    summary = summarize(turns, chips)
+    summary["range_exclusion"] = {**session["summary"]["range_exclusion"],
+                                  "excluded": excluded_hands(hands)}
+    return {"summary": summary, "decisions": turns}
+
+
+def excluded_hands(hands):
+    """The shown hands the range reading had thrown out, in the order played:
+    where to look in the video and the action that threw it out."""
+    found = []
+    for hand in hands:
+        for seat in hand["shown_cards"]:
+            read = seat.get("range_read") or {}
+            if read.get("out"):
+                found.append({"log": hand["log"], "hand_id": hand["hand_id"],
+                              "video_seconds": hand.get("video_seconds"),
+                              "seat": seat["seat"], "cards": " ".join(seat["cards"]),
+                              "out": read["out"],
+                              "out_before_end": read["out_before_end"],
+                              "street": read["street"]})
+    return found
 
 
 def summarize(turns, chips):
@@ -255,10 +282,13 @@ def ledger(path, label, summary):
                 .splitlines() if line.strip()]
     rows = [row for row in rows if row["label"] != label]
     chips = summary["chips"]
+    shown = summary.get("range_exclusion", {}).get("whole_hand", {}).get("all", {})
     rows.append({"label": label, "decisions": summary["decisions"],
                  "followed": summary["followed"], "followed_of": summary["followed_of"],
                  **{key: chips.get(key, 0) for key in (
-                     "normal", "normal_hands", "bomb_pot", "bomb_pot_hands")}})
+                     "normal", "normal_hands", "bomb_pot", "bomb_pot_hands")},
+                 "shown_read": shown.get("hands", 0),
+                 "shown_excluded": shown.get("excluded", 0)})
     path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n"
                             for row in rows), encoding="utf-8")
     total = Counter()
@@ -271,7 +301,11 @@ def ledger(path, label, summary):
             "followed": total["followed"], "followed_of": total["followed_of"],
             "bb_per_100": per_100(total["normal"] + total["bomb_pot"], hands),
             "normal_bb_per_100": per_100(total["normal"], total["normal_hands"]),
-            "bomb_pot_bb_per_100": per_100(total["bomb_pot"], total["bomb_pot_hands"])}
+            "bomb_pot_bb_per_100": per_100(total["bomb_pot"], total["bomb_pot_hands"]),
+            "shown_read": total["shown_read"],
+            "shown_excluded_share": round(
+                total["shown_excluded"] / total["shown_read"], 3)
+            if total["shown_read"] else None}
 
 
 def main(argv=None):
