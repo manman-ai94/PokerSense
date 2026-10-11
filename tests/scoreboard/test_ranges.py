@@ -7,6 +7,7 @@ import random
 from poker_engine.scoreboard.bots import _rng, make_policy, opponents_in_hand
 from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity, read_floors
+from poker_engine.scoreboard.replay import replay_deck
 from poker_engine.scoreboard.strength import equity
 from poker_engine.solver.texassolver import all_combos
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
@@ -77,6 +78,66 @@ def test_ranges_kept_from_earlier_decisions_are_the_same_as_read_again():
     kept = opponent_ranges(last, model)
     ranges._KEPT.clear()
     assert kept == opponent_ranges(last, model)
+
+
+def _three_way_flop(flop):
+    """The first decision on ``flop`` after the same preflop line every time:
+    the first player raises, the next two call, everyone else folds."""
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    arena = AAFullHandArena(rules)
+    arena.reset(0, deck=replay_deck([{"cards": list(flop)}], len(arena.occupied_seats)))
+    arena.step(next(a["id"] for a in arena.observe(arena.actor)["legal_actions"]
+                    if a["kind"] == "raise_to"))
+    callers = 0
+    while arena.street == "preflop":
+        arena.step("check_call" if callers < 2 else "fold")
+        callers += 1
+    observation = arena.observe(arena.actor)
+    assert list(observation["board"]) == list(flop)
+    assert opponents_in_hand(observation) == 2
+    return observation
+
+
+def test_a_range_kept_in_one_hand_is_not_cut_by_that_hands_board_in_another(monkeypatch):
+    from poker_engine.scoreboard import ranges
+    model = PopulationBot(adjusted=True)
+    spades, low = _three_way_flop(("As", "Ks", "Qs")), _three_way_flop(("2c", "3d", "4h"))
+    assert low["public_history"] == spades["public_history"]
+    monkeypatch.setattr(ranges, "_KEPT", {})
+    opponent_ranges(spades, model)
+    after_other_hand = opponent_ranges(low, model)
+    monkeypatch.setattr(ranges, "_KEPT", {})
+    alone = opponent_ranges(low, model)
+    assert all(any("As" in (combo[:2], combo[2:]) for combo in weights)
+               for weights in alone.values())
+    assert after_other_hand == alone
+
+
+def test_a_shared_cache_reads_every_postflop_range_as_a_fresh_one(monkeypatch):
+    from poker_engine.scoreboard import ranges
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    arena = AAFullHandArena(rules)
+    model = PopulationBot(adjusted=True)
+    shared = {}
+    reads = differ = 0
+    for seed in range(5, 10):
+        arena.reset(seed)
+        bots = {seat: make_policy("aa_population").for_game(f"{seed}-{seat}")
+                for seat in arena.occupied_seats}
+        while not arena.terminal:
+            observation = arena.observe(arena.actor)
+            if observation["street"] != "preflop":
+                monkeypatch.setattr(ranges, "_KEPT", shared)
+                kept = opponent_ranges(observation, model)
+                monkeypatch.setattr(ranges, "_KEPT", {})
+                fresh = opponent_ranges(observation, model)
+                reads += 1
+                differ += kept != fresh
+                assert not any({combo[:2], combo[2:]} & set(observation["board"])
+                               for weights in kept.values() for combo in weights)
+            arena.step(bots[arena.actor](observation))
+    assert reads >= 30
+    assert differ == 0
 
 
 def _bet_into():
