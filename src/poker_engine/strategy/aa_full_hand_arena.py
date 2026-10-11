@@ -108,27 +108,33 @@ class AAFullHandArena:
         self._seats = (self.occupied_seats[dealer_index + 1:]
                        + self.occupied_seats[:dealer_index + 1])
         self._straddler = plan.straddler_seat
+        self._forced = plan.contributions
         if starting_stacks is None:
             starting_stacks = {seat: rules.big_blind * 100
                                for seat in self.occupied_seats}
-        elif not isinstance(starting_stacks, Mapping):
+        self._table_stacks = self._checked_stacks(starting_stacks)
+        self.starting_stacks = self._table_stacks
+        self._state = None
+        self._history = []
+        self._board_history = []
+        self._settlement = None
+
+    def _checked_stacks(self, starting_stacks):
+        if not isinstance(starting_stacks, Mapping):
             starting_stacks = tuple(starting_stacks)
             if len(starting_stacks) != len(self.occupied_seats):
                 raise ValueError("starting stacks require exactly the occupied seats")
             starting_stacks = dict(zip(self.occupied_seats, starting_stacks))
         if set(starting_stacks) != set(self.occupied_seats):
             raise ValueError("starting stacks require exactly the occupied seats")
-        self.starting_stacks = {seat: _decimal(starting_stacks[seat])
-                                for seat in self.occupied_seats}
-        for seat, amount in self.starting_stacks.items():
-            if amount <= rules.ante or amount % rules.minimum_chip:
+        stacks = {seat: _decimal(starting_stacks[seat])
+                  for seat in self.occupied_seats}
+        for seat, amount in stacks.items():
+            if amount <= self.rules.ante or amount % self.rules.minimum_chip:
                 raise ValueError("stack must cover ante and align to minimum chip")
-            if amount < plan.contributions[seat]:
+            if amount < self._forced[seat]:
                 raise ValueError("short forced blind/straddle is not supported")
-        self._state = None
-        self._history = []
-        self._board_history = []
-        self._settlement = None
+        return stacks
 
     def _units(self, amount):
         amount = _decimal(amount)
@@ -139,16 +145,22 @@ class AAFullHandArena:
     def _chips(self, units):
         return Decimal(units) * self.rules.minimum_chip
 
-    def reset(self, seed, *, deck=None, bomb=None):
+    def reset(self, seed, *, deck=None, bomb=None, stacks=None):
         """Reset with local RNG. Explicit 52-card deck is a synthetic test hook.
 
         ``bomb`` (chips) deals a bomb pot (暴击): every player puts in that
         amount instead of the antes, blinds and straddle, and the hand starts
         on the flop with no preflop betting.
+
+        ``stacks`` ({seat: chips}, or one per occupied seat in order) are this
+        hand's starting stacks; without them the table's own (the
+        constructor's) are used.
         """
         from pokerkit import Automation, Card, Deck, NoLimitTexasHoldem
         if type(seed) is not int:
             raise ValueError("seed must be an integer")
+        self.starting_stacks = (self._table_stacks if stacks is None
+                                else self._checked_stacks(stacks))
         if deck is None:
             cards = list(Deck.STANDARD)
             random.Random(seed).shuffle(cards)

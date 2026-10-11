@@ -35,6 +35,11 @@ With ``reads`` (a number of hands) each strategy's decisions carry what a
 player would have seen of every opponent in that many hands
 (``observation["reads"]``, see ``reads``); ``aa_preflop`` adjusts the
 ranges it expects by them.
+
+With ``stacks`` (a ``stacks.Stacks``) every deal starts each seat with its
+own stack instead of 100 big blinds, the same for every strategy and seat
+of the deal, so all-ins for different amounts and side pots come up.
+Without it every result is exactly what it was before the option existed.
 """
 
 from __future__ import annotations
@@ -55,6 +60,7 @@ from .bomb import KINDS, Bomb
 from .bots import make_policy
 from .mushroom import TAKE, Mushroom, main_pot_shares, pool_result, small_blind
 from . import reads as opponent_reads
+from .stacks import Stacks
 
 # Opponent pools by name. "population" plays like real players (see
 # population.py) and is the default; "aa" like them but as loose before the
@@ -109,13 +115,14 @@ class Hand(NamedTuple):
 
 
 def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
-              reads=None, bomb=None):
+              reads=None, bomb=None, stacks=None):
     """One hand from ``hero``'s seat, as a ``Hand``.
 
     ``reads``: added to ``hero``'s observations as ``observation["reads"]``.
     ``bomb``: chips every player puts in when the hand is a bomb pot.
+    ``stacks``: {seat: chips} to start the hand with (else the arena's own).
     """
-    arena.reset(seed, bomb=bomb)
+    arena.reset(seed, bomb=bomb, stacks=stacks)
     if mushroom is not None:
         post, carried = mushroom.pool(seed, float(arena.rules.big_blind))
         pool = f"{carried + post:g}"
@@ -152,11 +159,12 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
-                mushroom=None, reads=None, bomb=None):
+                mushroom=None, reads=None, bomb=None, stacks=None):
     """Per deal and strategy: (average result in big blinds, all-in hands).
 
     ``reads``: None, or {"hands": n, "shares": ``reads.measure`` result}.
     ``bomb``: None, or the arguments of a ``Bomb``.
+    ``stacks``: None, or ``Stacks.to_dict()``.
 
     Also returns, per strategy that keeps them, the counts of how it decided
     (for example how often a solver strategy fell back to its base policy).
@@ -167,6 +175,7 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
     big_blind = float(rules.big_blind)
     mushroom = None if mushroom is None else Mushroom(**mushroom)
     bomb = None if bomb is None else Bomb(**bomb)
+    stacks = None if stacks is None else Stacks.from_dict(stacks)
     bots = {name: make_policy(name) for name in pool}
     # The strategies get their own objects, so the counts they keep are of
     # their own decisions even when the pool plays the same policy.
@@ -177,6 +186,8 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
         bound = {seat: bots[styles[seat]].for_game(_salt(base_seed, seed, seat))
                  for seat in seats}
         posted = None if bomb is None else bomb.chips(seed, big_blind)
+        starting = None if stacks is None else stacks.chips(
+            seed, seats, rules.big_blind, rules.minimum_chip)
         row = {}
         for name in strategies:
             pool_rule = None if mushroom is None else mushroom.for_strategy(name)
@@ -190,7 +201,8 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                 seen = None if reads is None else opponent_reads.sample(
                     reads["shares"], styles, hero, seed, reads["hands"])
                 hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
-                                 mushroom=pool_rule, reads=seen, bomb=posted)
+                                 mushroom=pool_rule, reads=seen, bomb=posted,
+                                 stacks=starting)
                 total += hand.value
                 adjusted += hand.adjusted
                 taken += hand.small_blind
@@ -294,17 +306,21 @@ def pairwise(rows, strategies):
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
-                   progress=None, mushroom=None, reads=None, bomb=None):
+                   progress=None, mushroom=None, reads=None, bomb=None, stacks=None):
     """Score ``strategies`` over ``deals`` deals; same arguments, same result.
 
     ``mushroom``: None, or a ``Mushroom`` to play the AA mushroom pool.
     ``reads``: None, or the hands of reads on the opponents each decision has.
     ``bomb``: None, or a ``Bomb`` to make some deals bomb pots.
+    ``stacks``: None (everyone 100 big blinds), or a ``Stacks`` to start the
+    seats of every deal with stacks of their own.
 
     ``progress(done, total, seconds)`` is called after each batch of deals.
     """
     if not strategies or deals < 2:
         raise ValueError("need at least one strategy and two deals")
+    if stacks is not None and bomb is not None and stacks.smallest <= bomb.post:
+        raise ValueError("every stack must be deeper than the bomb pot post")
     rules_dict = rules.to_dict()
     seeds = [base_seed * 1_000_000 + i for i in range(deals)]
     # Small batches keep every worker busy to the end (slow strategies vary a lot).
@@ -318,7 +334,8 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "shares": opponent_reads.measure(rules, pool, base_seed=base_seed)}
     args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev,
              pool_rule, seen,
-             None if bomb is None else {"post": bomb.post, "share": bomb.share})
+             None if bomb is None else {"post": bomb.post, "share": bomb.share},
+             None if stacks is None else stacks.to_dict())
             for part in chunks]
     results = []
 
@@ -370,6 +387,7 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "all_in_ev": all_in_ev,
         "mushroom": None if mushroom is None else mushroom.to_dict(),
         "bomb": None if bomb is None else bomb.to_dict(),
+        "stacks": None if stacks is None else stacks.to_dict(),
         "base_seed": base_seed,
         "reads": seen,
         "strategies": summary,
@@ -404,7 +422,7 @@ def calibrate_takes(rules, strategies, pool, post, *, deals=CALIBRATION_DEALS,
     depends on the share and the share a little on the carry (a larger pool
     widens the small blind), so it is measured ``passes`` times, each run
     with the shares of the one before. ``options`` go to ``run_scoreboard``
-    (``reads``, ``bomb``).
+    (``reads``, ``bomb``, ``stacks``).
     """
     takes = {name: TAKE for name in strategies}
     for _ in range(passes):

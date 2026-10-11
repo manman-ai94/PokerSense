@@ -3,7 +3,7 @@
     PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 2000 \\
         --strategies range_multiway+aa_preflop [--reference aa_preflop] \\
         [--pools aa,population,reg,maniac,nit,tough] [--mushroom 3] \\
-        [--seed 1] [--workers 8] [--out <directory>]
+        [--stacks 25-250] [--seed 1] [--workers 8] [--out <directory>]
 
 Each pool is a full scoreboard run (``run_scoreboard.py --pool <name>``) on
 the same deals, so a strategy's rows can be compared across pools. The table
@@ -33,6 +33,10 @@ tight players, where the small blind wins half the pots, the default share
 ever leaves in the pool; and one share for all strategies flattered the one
 that wins the small blind more often by about 3-7 bb/100.
 
+``--stacks`` (as for ``run_scoreboard.py``: ``25-250`` or ``25,40,100,250``
+big blinds) starts every seat of every deal with its own stack instead of
+100 big blinds, on every pool and in the mushroom calibration.
+
 With ``--out`` every pool's full report is saved as <pool>.json next to
 summary.json; ``--resume`` reuses the pools a stopped run already saved there
 with the same settings.
@@ -52,6 +56,7 @@ from poker_engine.scoreboard.runner import (CALIBRATION_DEALS, POOLS, calibrate_
                                             run_scoreboard)
 from poker_engine.solver.texassolver import solver_binary
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
+from tools.run_scoreboard import parse_stacks, stacks_text
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
                  / "configs/game/aa-scoreboard-rules-v2.json")
@@ -120,6 +125,10 @@ def bomb_settings(args):
     return Bomb(args.bomb, args.bomb_share).to_dict()
 
 
+def stacks_settings(args):
+    return None if args.stacks is None else args.stacks.to_dict()
+
+
 def finished(args, pool, strategies, rules):
     """With ``--resume``, the pool's report already saved by the same run
     settings (an interrupted run picks up where it stopped), else None."""
@@ -136,6 +145,7 @@ def finished(args, pool, strategies, rules):
             and post == args.mushroom
             and (report.get("reads") or {}).get("hands") == (args.reads or None)
             and report.get("bomb") == bomb_settings(args)
+            and report.get("stacks") == stacks_settings(args)
             and (args.mushroom_take is None or post is None
                  or report["mushroom"]["take"] == args.mushroom_take))
     return report if same else None
@@ -198,6 +208,10 @@ def main(argv=None):
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from "
                         "this many hands (noreads+name ignores them)")
+    parser.add_argument("--stacks", type=parse_stacks, metavar="LOW-HIGH|A,B,C",
+                        help="starting stacks in big blinds, drawn per seat and "
+                        "deal: uniform between LOW and HIGH, or one of A,B,C "
+                        "(default: everyone 100)")
     parser.add_argument("--calibration-deals", type=int, default=CALIBRATION_DEALS)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--resume", action="store_true",
@@ -220,6 +234,9 @@ def main(argv=None):
         args.out.mkdir(parents=True, exist_ok=True)
     reports, takes = {}, {}
     bomb = None if args.bomb is None else Bomb(args.bomb, args.bomb_share)
+    if (bomb is not None and args.stacks is not None
+            and args.stacks.smallest <= bomb.post):
+        parser.error("every --stacks stack must be deeper than the --bomb post")
     for pool in pools:
         saved = finished(args, pool, strategies, rules)
         if saved is not None:
@@ -237,7 +254,7 @@ def main(argv=None):
                     rules, strategies, POOLS[pool], args.mushroom,
                     deals=min(args.deals, args.calibration_deals),
                     base_seed=args.seed, workers=args.workers,
-                    reads=args.reads, bomb=bomb,
+                    reads=args.reads, bomb=bomb, stacks=args.stacks,
                     progress=lambda done, total, seconds, pool=pool: progress(
                         f"{pool} (mushroom take)", done, total, seconds))
             takes[pool] = own
@@ -246,7 +263,7 @@ def main(argv=None):
             rules, strategies, deals=args.deals, pool=POOLS[pool],
             workers=args.workers, base_seed=args.seed,
             reference=args.reference, mushroom=mushroom,
-            reads=args.reads, bomb=bomb,
+            reads=args.reads, bomb=bomb, stacks=args.stacks,
             progress=lambda done, total, seconds, pool=pool: progress(
                 pool, done, total, seconds))
         if args.out:
@@ -258,6 +275,7 @@ def main(argv=None):
             "deals": args.deals, "seed": args.seed, "pools": pools,
             "reference": args.reference, "reads": args.reads,
             "bomb": bomb_settings(args),
+            "stacks": stacks_settings(args),
             "mushroom": None if args.mushroom is None else {
                 "post_big_blinds": args.mushroom, "take": takes},
             "strategies": summary}, indent=1), encoding="utf-8")
@@ -268,7 +286,9 @@ def main(argv=None):
              f", mushroom {args.mushroom:g} big blinds")
           + ("" if not args.reads else f", reads from {args.reads} hands")
           + ("" if args.bomb is None else
-             f", bomb pots {args.bomb_share:.0%} of deals ({args.bomb:g} big blinds)"))
+             f", bomb pots {args.bomb_share:.0%} of deals ({args.bomb:g} big blinds)")
+          + ("" if args.stacks is None else
+             ", " + stacks_text(args.stacks.to_dict())))
 
 
 if __name__ == "__main__":

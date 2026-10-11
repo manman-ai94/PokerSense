@@ -4,8 +4,8 @@
         [--strategies rfi_table,tag,always_call] \\
         [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
         [--mushroom 3 [--mushroom-take 0.135 | --calibration-deals 400]] \\
-        [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--workers 10] \\
-        [--out result.json]
+        [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--stacks 25-250] \\
+        [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
 shuffled lineup of pool opponents; ``hands`` = deals x 8 per strategy. The
@@ -19,6 +19,11 @@ is first measured for each strategy on other deals (``--calibration-deals``)
 unless ``--mushroom-take`` gives one share. ``--bomb 7`` makes 7% of the deals
 bomb pots where every player puts in 7 big blinds and the hand starts on the
 flop (``--bomb-share 1`` for bomb pots only; see ``scoreboard/bomb.py``).
+Every hand starts everyone with 100 big blinds unless ``--stacks`` says
+otherwise: ``--stacks 25-250`` gives each seat of each deal its own stack
+between 25 and 250 big blinds, ``--stacks 25,40,100,250`` one of those
+(drawn from the deal's seed; see ``scoreboard/stacks.py``), so all-ins for
+different amounts and side pots come up.
 """
 
 from __future__ import annotations
@@ -34,10 +39,29 @@ from poker_engine.scoreboard.bomb import SHARE, Bomb
 from poker_engine.scoreboard.mushroom import TAKE, Mushroom
 from poker_engine.scoreboard.runner import (CALIBRATION_DEALS, POOLS, calibrate_takes,
                                             run_scoreboard)
+from poker_engine.scoreboard.stacks import Stacks
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 DEFAULT_RULES = (Path(__file__).resolve().parents[1]
                  / "configs/game/aa-scoreboard-rules-v2.json")
+
+
+def stacks_text(stacks):
+    """How a report's ``stacks`` setting reads in a summary line."""
+    if "choices_big_blinds" in stacks:
+        return ("starting stacks one of "
+                + "/".join(f"{value:g}" for value in stacks["choices_big_blinds"])
+                + " big blinds per seat and deal")
+    return (f"starting stacks {stacks['low_big_blinds']:g}-"
+            f"{stacks['high_big_blinds']:g} big blinds per seat and deal")
+
+
+def parse_stacks(text):
+    try:
+        return Stacks.parse(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"{text!r}: give LOW-HIGH or A,B,C in big blinds ({error})")
 
 
 def table(report):
@@ -77,6 +101,8 @@ def table(report):
         lines.append("mushroom pool: the dealer puts in "
                      f"{report['mushroom']['post_big_blinds']:g} big blinds; the "
                      f"small blind is drawn as taking it in: {took} of hands")
+    if report.get("stacks"):
+        lines.append(stacks_text(report["stacks"]))
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
@@ -135,6 +161,10 @@ def main(argv=None):
     parser.add_argument("--reads", type=int, metavar="HANDS",
                         help="give every decision reads on the opponents from this "
                         "many hands (aa_preflop uses them; noreads+name ignores them)")
+    parser.add_argument("--stacks", type=parse_stacks, metavar="LOW-HIGH|A,B,C",
+                        help="starting stacks in big blinds, drawn per seat and "
+                        "deal: uniform between LOW and HIGH, or one of A,B,C "
+                        "(default: everyone 100)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     rules = AARuleProfileV2.from_dict(
@@ -142,6 +172,9 @@ def main(argv=None):
     strategies = args.strategies.split(",")
     pool = POOLS.get(args.pool) or tuple(args.pool.split(","))
     bomb = None if args.bomb is None else Bomb(args.bomb, args.bomb_share)
+    if (bomb is not None and args.stacks is not None
+            and args.stacks.smallest <= bomb.post):
+        parser.error("every --stacks stack must be deeper than the --bomb post")
     mushroom = None
     if args.mushroom is not None:
         if args.mushroom_take is not None:
@@ -152,12 +185,13 @@ def main(argv=None):
                 rules, strategies, pool, args.mushroom,
                 deals=min(args.deals, args.calibration_deals), base_seed=args.seed,
                 workers=args.workers, progress=show_progress, reads=args.reads,
-                bomb=bomb))
+                bomb=bomb, stacks=args.stacks))
     report = run_scoreboard(rules, strategies, deals=args.deals, pool=pool,
                             workers=args.workers,
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
-                            mushroom=mushroom, reads=args.reads, bomb=bomb)
+                            mushroom=mushroom, reads=args.reads, bomb=bomb,
+                            stacks=args.stacks)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
