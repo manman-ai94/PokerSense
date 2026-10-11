@@ -76,7 +76,7 @@ PYTHONPATH=src:. .venv/bin/python tools/build_aa_mushroom_bank.py --recording <�
 # 每桌给出 赢/输/说不准 和比 AA 牌桌差得最多的部分；加 --mushroom 3 时先在另一批牌上量出每个策略自己的小盲拿走率（--mushroom-take 给固定数）；--resume 接着跑没跑完的
 PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 1000 --strategies range_multiway+aa_preflop \
     --reference aa_preflop --mushroom 3 --pools aa,aa_real,population,reg,maniac,nit,tough,mirror --out <目录>
-# 加 --bomb 7：一部分牌（默认 7%，--bomb-share 改，1 是只打暴击局）是暴击局，每人先投 7BB、直接发翻牌；成绩按“普通 / 暴击局”拆开
+# 加 --bomb 7：一部分牌（默认 7%，--bomb-share 改，1 是只打暴击局）是暴击局，每人先投 7BB、直接发翻牌；成绩按“普通 / 暴击局”拆开。加 --stacks 25-250：每局每个座位的起始筹码按种子在 25–250BB 间抽（或 --stacks 25,40,100,250 从中选），才有不同额度的全下和边池；不加是人人 100BB，结果和以前逐位一样（体检工具同样支持）
 # 加 --reads 100：每个决策带上“已经看了 100 手”的对手读数（入池率、加注率），aa_preflop 按人调整翻前范围；“noreads+甲”是不记对手的甲
 # AA 真人桌用的数字：AA 真人打法统计出新版后，把需要的汇总次数存进包里
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_real_stats.py <aa_population_stats_v1.json>
