@@ -82,7 +82,7 @@ def window_status(exe, state, url, screenshot=None):
             with urlopen(base + "update_banner.js", timeout=5) as response:
                 assert b"update-banner" in response.read()
             if screenshot:
-                take_screenshot(base, screenshot)
+                status["screenshot"] = take_screenshot(base, screenshot)
             return status
         finally:
             process.terminate()
@@ -90,14 +90,27 @@ def window_status(exe, state, url, screenshot=None):
 
 
 def take_screenshot(url, path):
-    edge = Path(os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")) / (
-        "Microsoft/Edge/Application/msedge.exe")
-    if not edge.exists():
-        return
-    subprocess.run([str(edge), "--headless=new", "--disable-gpu",
-                    "--hide-scrollbars", "--window-size=1366,800",
-                    "--virtual-time-budget=8000", f"--screenshot={path}", url],
-                   capture_output=True, timeout=120)
+    """The window as Edge (or Chrome) shows it, headless; best effort."""
+    candidates = [Path(os.environ.get(name, "")) / tail for name, tail in (
+        ("ProgramFiles(x86)", "Microsoft/Edge/Application/msedge.exe"),
+        ("ProgramFiles", "Microsoft/Edge/Application/msedge.exe"),
+        ("ProgramFiles", "Google/Chrome/Application/chrome.exe"))]
+    browser = next((c for c in candidates if c.is_file()), None)
+    if browser is None:
+        return {"saved": False, "error": "no browser"}
+    path = Path(path).resolve()
+    with tempfile.TemporaryDirectory(prefix="pokersense-shot-") as profile:
+        try:
+            result = subprocess.run(
+                [str(browser), "--headless=new", "--disable-gpu", "--no-first-run",
+                 f"--user-data-dir={profile}", "--hide-scrollbars",
+                 "--window-size=1366,820", "--virtual-time-budget=10000",
+                 f"--screenshot={path}", url],
+                capture_output=True, text=True, errors="replace", timeout=120)
+        except subprocess.TimeoutExpired:
+            return {"saved": path.is_file(), "error": "timeout"}
+    return {"saved": path.is_file(), "browser": browser.name,
+            "returncode": result.returncode, "stderr": result.stderr[-400:]}
 
 
 def smoke(exe, installer, screenshot=None):
@@ -138,8 +151,8 @@ def smoke(exe, installer, screenshot=None):
             status = window_status(exe, window, base + "latest.json", screenshot)
             assert status["status"] == "AVAILABLE", status
             assert status["latest"] == NEWER and status["can_install"] is True, status
-            report["window"] = {key: status[key] for key in
-                                ("status", "latest", "can_install")}
+            report["window"] = {key: status.get(key) for key in
+                                ("status", "latest", "can_install", "screenshot")}
 
             # The installer empties _internal before copying (pokersense.iss).
             marker = exe.parent / "_internal" / "update-smoke-marker"
