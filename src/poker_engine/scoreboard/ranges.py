@@ -18,8 +18,9 @@ reads only the new actions. Each action is read from the hands the board of
 that moment leaves; the cards dealt since are taken out only at the end.
 Until 2026-10-11 the hands were cut by the board of the decision that first
 read the action, and another hand with the same actions but other cards got
-that range (476 of 776 postflop readings differed from reading afresh), so
-results depended on which hands a process had played before.
+that range (96 of 265 postflop readings on an AA population table differed
+from reading afresh), so results depended on which hands a process had
+played before.
 
 The model's players are the AA population. With reads on the opponents
 (``observation["reads"]``, see ``reads``) each seat is read as the player
