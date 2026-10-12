@@ -11,7 +11,7 @@ from poker_engine.scoreboard.bots import make_policy, position, raise_toward
 from poker_engine.scoreboard.population import (MAX_CONTINUE, MIN_AA_DECISIONS,
                                                 aa_factors, preflop_shares)
 from poker_engine.scoreboard.preflop_policy import (AAPreflopPolicy, PreflopParams,
-                                                    equity_table, from_name,
+                                                    Table, equity_table, from_name,
                                                     multiway, rake)
 from poker_engine.scoreboard.strength import DECK, class_combos, hand_class
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
@@ -109,6 +109,107 @@ def test_weak_hands_fold_to_an_all_in_and_aces_call():
     policy = AAPreflopPolicy()
     assert policy.choose(with_hand(facing, "72o"))["action"] == "fold"
     assert policy.choose(with_hand(facing, "AA"))["action"] == "check_call"
+
+
+def jam_first(stacks, then=()):
+    """The first player (seat 3) goes all in; ``then``: the next actions."""
+    arena = AAFullHandArena(AARuleProfileV2.from_dict(RAKED), starting_stacks=stacks)
+    arena.reset(3)
+    observation = arena.observe(arena.actor)
+    jam = max((a for a in observation["legal_actions"] if a["kind"] == "raise_to"),
+              key=lambda a: float(a["raise_to"]))
+    arena.step(jam["id"])
+    for step in then:
+        observation = arena.observe(arena.actor)
+        arena.step(step(observation) if callable(step) else step)
+    return arena.observe(arena.actor)
+
+
+DEEP_BEHIND_JAM = {seat: 500 for seat in range(8)} | {3: 222}     # 111 bb jam, 250 bb
+SHORT_JAMS = [{seat: 200 for seat in range(8)} | {3: short} for short in (24, 40)]
+
+
+@pytest.mark.parametrize("stacks", [DEEP_BEHIND_JAM, *SHORT_JAMS])
+@pytest.mark.parametrize("hand", ["Q7o", "72o", "64o"])
+def test_weak_hands_do_not_raise_over_an_all_in(stacks, hand):
+    facing = with_hand(jam_first(stacks, ["fold"]), hand)
+    assert facing["observing_seat"] == 5 and facing["stacks"]["3"] == "0"
+    choice = AAPreflopPolicy().choose(facing)
+    # The raise is possible, but the all-in player is still in the pot.
+    assert choice["raise_to"] is not None
+    assert choice["values"]["raise"] < 0
+    assert choice["action"] == "fold"
+
+
+@pytest.mark.parametrize("stacks", [DEEP_BEHIND_JAM, *SHORT_JAMS])
+def test_aces_still_play_for_stacks_over_an_all_in(stacks):
+    facing = with_hand(jam_first(stacks, ["fold"]), "AA")
+    choice = AAPreflopPolicy().choose(facing)
+    assert choice["values"]["call"] > 0 and choice["values"]["raise"] > 0
+    assert choice["action"].startswith("raise_to")
+
+
+def test_a_raise_over_an_all_in_is_not_won_outright():
+    facing = with_hand(jam_first(DEEP_BEHIND_JAM, ["fold"]), "72o")
+    table = Table(facing, PreflopParams())
+    target = table.raise_action()[1]
+    # Even if everyone behind folds, the hand still has to beat the jammer.
+    nobody_calls = table.field({3: table.band(3)}, [], target - table.bets[5])
+    assert nobody_calls < 0 < table.won(table.pot + table.to_call, 1.0)
+
+
+def short_all_in_raised_over(hand="AA"):
+    stacks = {seat: 200 for seat in range(8)} | {3: 44, 4: 600}
+    return with_hand(jam_first(stacks, [lambda o: raise_toward(o, 1.0)]), hand)
+
+
+def test_a_call_counts_a_short_all_in_that_was_raised_over():
+    facing = short_all_in_raised_over()
+    assert facing["stacks"]["3"] == "0" and facing["bets"]["3"] == "42"
+    assert float(facing["stacks"]["4"]) > 0
+    table = Table(facing, PreflopParams())
+    assert 3 not in table.behind() and table.bets[3] < table.top
+    seen = []
+    showdown = table.showdown
+    table.showdown = lambda mine, levels, *rest: (seen.append(set(levels)),
+                                                  showdown(mine, levels, *rest))[1]
+    with_short = table.call_value()
+    assert seen and all({3, 4} <= players for players in seen)
+    # The same chips in the middle with the short player folded instead:
+    # one opponent fewer to beat, so the call is worth more.
+    folded = {**facing, "folded": [*facing["folded"], 3]}
+    assert Table(folded, PreflopParams()).call_value() > with_short + 1
+
+
+def test_side_pots_go_only_to_the_players_who_covered_them():
+    facing = short_all_in_raised_over()
+    table = Table(facing, PreflopParams())
+    top = table.top
+    dead = table.pot - sum(table.bets.values())
+    assert dead == 16                                   # the eight antes
+    # Seats 0-2 (blinds and straddle) fold; the hand calls the raise.
+    pots = table.pots(top, {3: 42.0, 4: top})
+    assert all(players == [3, 4, 5] for _, players, _ in pots[:4])
+    main = sum(chips for chips, players, _ in pots if 3 in players)
+    side = sum(chips for chips, players, _ in pots if 3 not in players)
+    assert main == dead + 1 + 2 + 4 + 3 * 42
+    assert side == 2 * (top - 42) and pots[-1][1] == [4, 5]
+    assert not any(refund for _, _, refund in pots)
+    # A short player sure to win takes only the main pot: the hand still
+    # gets half the side pot from an even opponent, less its part of the rake.
+    total = main + side
+    back = table.showdown(top, {3: 42.0, 4: top}, {3: 1e9, 4: 1.0}, 1.0)
+    assert back == pytest.approx(0.5 * (side - rake(facing, total) * side / total),
+                                 rel=1e-6)
+    # Raising 100 more with only the short player in (seat 4 folds): its
+    # chips are won outright, the 100 nobody matched come back without rake.
+    pots = table.pots(top + 100, {3: 42.0})
+    assert pots[-1] == (100.0, [5], True)
+    assert pots[-2] == (2 * (top - 42), [5], False)
+    raked = main + 2 * (top - 42)
+    back = table.showdown(top + 100, {3: 42.0}, {3: 1e9}, 1.0)
+    assert back == pytest.approx(
+        100 + 2 * (top - 42) * (1 - rake(facing, raked) / raked), rel=1e-6)
 
 
 def test_more_dead_money_opens_more_hands():
