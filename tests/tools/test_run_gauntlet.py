@@ -107,3 +107,26 @@ def test_bomb_pots_are_scored_and_count_for_resume(tmp_path, monkeypatch):
     assert played == []
     main(args + ["--resume"])                         # another share: rerun
     assert played == [run_gauntlet.Bomb(7, 0.07)]
+
+
+def test_stacks_are_played_and_count_for_resume(tmp_path, monkeypatch, capsys):
+    args = ["--deals", "2", "--workers", "1", "--strategies", "tag", "--pools", "nit",
+            "--out", str(tmp_path)]
+    main(args + ["--stacks", "25-250"])
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert summary["stacks"] == {"low_big_blinds": 25.0, "high_big_blinds": 250.0}
+    report = json.loads((tmp_path / "nit.json").read_text(encoding="utf-8"))
+    assert report["stacks"] == summary["stacks"]
+    assert "starting stacks 25-250 big blinds" in capsys.readouterr().out
+    played = []
+    real = run_gauntlet.run_scoreboard
+    monkeypatch.setattr(run_gauntlet, "run_scoreboard",
+                        lambda *a, **k: played.append(k["stacks"]) or real(*a, **k))
+    main(args + ["--stacks", "25-250", "--resume"])
+    assert played == []
+    main(args + ["--resume"])                         # everyone 100 big blinds: rerun
+    assert played == [None]
+    with pytest.raises(SystemExit):
+        main(args + ["--stacks", "lots"])
+    with pytest.raises(SystemExit):                   # bomb post above a stack
+        main(args + ["--stacks", "5-50", "--bomb", "7"])
