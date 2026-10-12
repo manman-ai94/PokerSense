@@ -15,7 +15,7 @@ needs TexasSolver installed and takes about a minute per flop. The range
 rule's answer next to a solve is shown either way.
 
     PYTHONPATH=src:. .venv/bin/python tools/aa_compare_advice.py \\
-        --frames <recording>/frames.jsonl [--frames ...] \\
+        --frames <recording>/frames.jsonl [--frames ...] [--recordings <folder>] \\
         [--hero "A♦ 9♠" --hero QsJc ...] [--hand hand_123 ...] [--all] \\
         [--out compare.json]
 
@@ -178,7 +178,9 @@ def report(items):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--frames", type=Path, action="append", required=True)
+    parser.add_argument("--frames", type=Path, action="append", default=[])
+    parser.add_argument("--recordings", type=Path, action="append", default=[],
+                        help="a folder: every frames.jsonl under it (repeatable)")
     parser.add_argument("--hero", action="append", default=[],
                         help='your two cards, e.g. "A♦ 9♠" or Ad9s (repeatable)')
     parser.add_argument("--hand", action="append", default=[],
@@ -190,7 +192,12 @@ def main(argv=None):
                         help="run TexasSolver for heads-up turns and rivers")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
-    logs = [(str(path.parent.name), load(path)) for path in args.frames]
+    paths = list(args.frames)
+    for folder in args.recordings:
+        paths += sorted(Path(folder).expanduser().rglob("frames.jsonl"))
+    if not paths:
+        parser.error("no frames.jsonl: give --frames or --recordings")
+    logs = [(str(path.parent.name), load(path)) for path in paths]
     items = compare(logs, heroes=args.hero, hands=args.hand, every=args.all,
                     solver=args.solver)
     print(report(items) or "no decision chosen")
