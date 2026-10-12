@@ -1,11 +1,11 @@
-name: Build AA Windows Preview and Legacy macOS
+name: Build Legacy macOS
 
-# Windows packages the AA offline preview. macOS keeps the legacy development
-# shell and is explicitly named legacy; no AA real-capture acceptance is implied.
+# macOS keeps the legacy development shell and is explicitly named legacy; no
+# AA real-capture acceptance is implied. The Windows installer, its tests and
+# releases are in windows-release.yml (releases are never GitHub Releases).
 #
 # Runs on every push to main (so build breakage is caught immediately) and
-# can be triggered manually. Tag pushes (v*) additionally attach the built
-# artifacts to a GitHub Release.
+# can be triggered manually.
 #
 # macOS code signing + notarization (optional): only runs if the
 # MACOS_CERTIFICATE secret is set. To enable it, add these repo secrets
@@ -19,14 +19,10 @@ name: Build AA Windows Preview and Legacy macOS
 # Without these secrets, the workflow still runs and produces an unsigned
 # build (fine for local testing; macOS will show a Gatekeeper warning on
 # first launch of an unsigned/un-notarized app).
-#
-# Windows code signing is not wired up yet (no certificate configured) --
-# the .exe is unsigned, so Windows SmartScreen will warn on first run.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -117,55 +113,3 @@ jobs:
         with:
           name: PokerSense-legacy-macos
           path: dist/PokerSense-legacy-macos.dmg
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-
-      - name: Install
-        run: python -m pip install -e ".[desktop,perceptual,packaging]"
-
-      - name: Verify Windows capture dependency
-        run: python -c "import mss; print(mss.__version__)"
-
-      - name: Build .exe
-        run: python -m PyInstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
-
-      - name: Check frozen AA package offline
-        run: python packaging/smoke_aa_package.py dist/PokerSense-AA/PokerSense-AA.exe --output dist/aa-package-smoke.json
-
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-
-      - name: Build installer
-        # choco installs ISCC.exe to Program Files but doesn't reliably put
-        # it on PATH within the same job -- call it by its known location.
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\pokersense.iss'
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PokerSense-AA-windows
-          path: |
-            dist/PokerSense-AA-Setup.exe
-            dist/aa-package-smoke.json
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-macos, build-windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/PokerSense-legacy-macos/PokerSense-legacy-macos.dmg
-            artifacts/PokerSense-AA-windows/PokerSense-AA-Setup.exe

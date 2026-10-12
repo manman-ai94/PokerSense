@@ -91,9 +91,9 @@ def test_versions_and_canonical_windows_installer_agree():
     assert project["project"]["version"] == __version__
     dispatch = (ROOT / "packaging/pokersense.spec").read_text("utf-8")
     assert "'aa_live.spec' if sys.platform == 'win32'" in dispatch
-    installer = (ROOT / "packaging/pokersense.iss").read_text("utf-8")
+    installer = (ROOT / "packaging/pokersense.iss").read_text("utf-8-sig")
     assert '#define MyAppExeName "PokerSense-AA.exe"' in installer
-    assert '#define MyAppVersion "0.2.0-dev1"' in installer
+    assert '  #define MyAppVersion "' + __version__ + '"' in installer
     assert "AllowNoIcons=yes" in installer
     assert 'Source: "..\\dist\\PokerSense-AA\\*"' in installer
     windows = (ROOT / "packaging/windows-version.txt").read_text("utf-8")
@@ -212,3 +212,159 @@ def test_a_second_launch_takes_the_port_of_the_first(tmp_path):
                 process.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 process.kill()
+
+
+def test_installed_builds_keep_one_data_folder_across_updates(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert entry.default_state() == tmp_path / "PokerSense-AA" / __version__
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert entry.default_state() == tmp_path / "PokerSense-AA" / "data"
+
+
+def test_a_recognition_bundle_in_the_data_folder_turns_on_the_capture_card(
+        tmp_path, monkeypatch, capsys):
+    state = tmp_path / "state"
+    digest = "a" * 64
+    (state / "recognition" / digest).mkdir(parents=True)
+    (state / "recognition" / digest / "profile.json").write_text("{}", "utf-8")
+    (state / "recognition" / "current.json").write_text(
+        json.dumps({"manifest_sha256": digest}), "utf-8")
+    monkeypatch.setattr(entry.app_update, "install_root", lambda: tmp_path / "app")
+    monkeypatch.delenv(entry.DATA_ROOT_ENV, raising=False)
+    monkeypatch.delenv(entry.app_update.URL_ENV, raising=False)
+    assert entry.main(["--self-check", "--state", str(state)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["capture_enabled"] is True
+    assert report["recognition_bundle"] == "INSTALLED"
+    assert report["external_model"] == "CONFIGURED_NOT_VALIDATED"
+    # Recordings go to the user's data folder, not the old G: drive.
+    assert entry.os.environ[entry.DATA_ROOT_ENV] == str(state)
+    monkeypatch.delenv(entry.DATA_ROOT_ENV)
+    assert entry.main(["--self-check", "--no-recognition", "--state", str(state)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["capture_enabled"] is False
+    assert report["recognition_bundle"] == "NOT_INSTALLED"
+    monkeypatch.delenv(entry.DATA_ROOT_ENV)
+
+
+def published_bundle(tmp_path):
+    """A release manifest listing an exported, packed (synthetic) bundle."""
+    from tests.desktop import test_aa_bundle
+    from poker_engine.desktop.aa_bundle import export_bundle
+    packer = importlib.util.spec_from_file_location(
+        "pack_aa_recognition", ROOT / "tools/pack_aa_recognition.py")
+    pack = importlib.util.module_from_spec(packer)
+    packer.loader.exec_module(pack)
+    (tmp_path / "private").mkdir()
+    profile = test_aa_bundle.source.__wrapped__(tmp_path / "private")
+    export_bundle(profile, tmp_path / "bundle")
+    sidecar = pack.pack(tmp_path / "bundle", tmp_path / "cloud")
+    manifest = {"schema": "pokersense-update-v1", "product": "PokerSense-AA",
+                "version": __version__, "installer": {
+                    "url": str(tmp_path / "setup.exe"), "sha256": "0" * 64,
+                    "bytes": 1},
+                "recognition": {"url": str(tmp_path / "cloud" / pack.ZIP_NAME),
+                                "sha256": sidecar["zip_sha256"],
+                                "bytes": sidecar["zip_bytes"],
+                                "manifest_sha256": sidecar["manifest_sha256"]}}
+    (tmp_path / "latest.json").write_text(json.dumps(manifest), "utf-8")
+    return tmp_path / "latest.json", sidecar
+
+
+def test_first_start_fetches_the_recognition_bundle_the_release_lists(tmp_path):
+    url, sidecar = published_bundle(tmp_path)
+    lines = []
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    profile, digest = entry.use_recognition(args, out=lines.append)
+    assert digest == sidecar["manifest_sha256"] and profile.is_file()
+    assert (args.profile, args.bundle_sha256, args.allow_capture) == (
+        profile, digest, True)
+    assert any("已下载" in line for line in lines)
+    lines.clear()
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    assert entry.use_recognition(args, out=lines.append)[1] == digest
+    assert lines[-1] == "[识别资源] 已经是最新的。"
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/build").json()["recognition_bundle"] == "INSTALLED"
+        status = client.get("/api/status").json()
+        assert status["capture_available"] is True
+        assert status["profile"]["ready"] is True
+
+
+def test_no_fetch_for_a_self_check_an_explicit_profile_or_no_recognition(tmp_path):
+    url, _ = published_bundle(tmp_path)
+    for flags in (["--self-check"], ["--no-recognition"], ["--no-update-check"],
+                  ["--profile", str(tmp_path / "mine.json")]):
+        args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                          "--update-url", str(url), *flags])
+        assert entry.use_recognition(args, out=pytest.fail) is None
+    assert not (tmp_path / "state").exists()
+
+
+def test_a_failed_fetch_keeps_the_window_working_without_the_capture_card(tmp_path):
+    url, _ = published_bundle(tmp_path)
+    manifest = json.loads(url.read_text("utf-8"))
+    manifest["recognition"]["sha256"] = "0" * 64
+    url.write_text(json.dumps(manifest), "utf-8")
+    lines = []
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    assert entry.use_recognition(args, out=lines.append) is None
+    assert args.allow_capture is False and args.profile is None
+    assert any("sha256" in line for line in lines)
+    assert "下次打开程序会再试" in lines[-1]
+
+
+def test_the_window_reports_and_refuses_updates_when_running_from_source(tmp_path):
+    import hashlib
+    data = b"MZ" * 100
+    (tmp_path / "setup.exe").write_bytes(data)
+    (tmp_path / "latest.json").write_text(json.dumps({
+        "schema": "pokersense-update-v1", "product": "PokerSense-AA",
+        "version": "99.0.0", "installer": {
+            "url": str(tmp_path / "setup.exe"),
+            "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}}), "utf-8")
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(tmp_path / "latest.json")])
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/update").json()["status"] == "NOT_CHECKED"
+        assert client.get("/update_banner.js").status_code == 200
+        assert client.post("/api/update/check", json={}).status_code == 403
+        state = client.post("/api/update/check", json={},
+                            headers={"X-AA-Live": "1"}).json()
+        assert (state["status"], state["latest"], state["can_install"]) == (
+            "AVAILABLE", "99.0.0", False)
+        response = client.post("/api/update/install", json={},
+                               headers={"X-AA-Live": "1"})
+        assert response.status_code == 409
+    args = entry.parser().parse_args(["--state", str(tmp_path / "plain")])
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/update").json()["status"] == "UNCONFIGURED"
+
+
+def test_the_check_for_updates_shortcut_without_an_address(tmp_path, capsys):
+    args = entry.parser().parse_args(["--update-now", "--state", str(tmp_path)])
+    assert entry.console_update(args, keep_open=False) == 3
+    assert "没有配置更新地址" in capsys.readouterr().out
+
+
+def test_the_self_test_runs_the_core_calculations_and_recognition_imports(capsys):
+    assert entry.main(["--self-test"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["result"] == "SELF_TEST_PASS" and report["missing_modules"] == []
+    assert report["scoreboard_hands"] > 0 and report["rough_advice"] in (
+        "check", "call", "fold", "bet", "raise")
+
+
+def test_chinese_messages_survive_output_to_a_pipe():
+    import io
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252")
+    with pytest.raises(UnicodeEncodeError):
+        print("[更新] 已经是最新版", file=stream, flush=True)
+    entry.utf8_output([stream, None])
+    print("[更新] 已经是最新版", file=stream, flush=True)
+    assert "[更新] 已经是最新版".encode("utf-8") in raw.getvalue()
