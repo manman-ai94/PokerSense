@@ -135,7 +135,7 @@ PYTHONPATH=src:. .venv/bin/python tools/aa_session_report.py --frames <录像文
 | `third_party/` | 只放第三方许可证和来源说明，不放源码或二进制 |
 
 入口：`packaging/aa_live_entry.py` → `poker_engine.desktop.aa_server`。
-Windows 上由 `launch/aa/START-AA.cmd` 启动，Mac 上由 `launch/mac/start-aa-replay.command` 启动。
+Windows 上由 `launch/aa/START-AA.cmd` 启动（给同事的安装包和自动更新见 [docs/windows-distribution.md](docs/windows-distribution.md)），Mac 上由 `launch/mac/start-aa-replay.command` 启动。
 私有数据位置统一由 `src/poker_engine/data_paths.py` 决定。
 
 子系统合同见 `docs/`：`core-contracts.md`、`state-engine.md`、`confidence-gate.md`、

@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-12 · `feat/windows-installer-updater`（同事用的 Windows 安装包和自动更新；草稿，未合并）**
+- 做了什么：Inno Setup 安装包装到用户目录（不要管理员）、建桌面和“检查更新”快捷方式；程序启动时读一个可配置地址的版本清单，有新版在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 时传到云盘，没有就跳过。
+- 怎么做的：`desktop/app_update.py`（清单、版本比较、云盘分享链接换直链、校验下载）、入口加 `--update-now`/`--self-test`、安装版数据固定在 `%LOCALAPPDATA%\PokerSense-AA\data`；新工作流 `windows-release.yml`；识别资源包由 `tools/pack_aa_recognition.py` 在 Mac 上打包、发版时放进安装目录。
+- 怎么验证的：新测试（更新器 25 个、发版步骤和入口 13 个）；Linux 上 PyInstaller 打包后离线冒烟和自检通过；Windows CI 上打包、静默安装、端到端更新测试（见 PR）。
+- 还剩什么：主人要配云盘和 `RCLONE_CONFIG`、决定识别资源包能不能发给同事；Windows 实机的采集卡读牌、录像按钮还没验；见 `docs/windows-distribution.md`。
+
 **2026-10-11 · `fix/allin-raise-call-value`（翻前有人已全下时，加注和跟注按主池边池算）**
 - 做了什么：翻前策略 `aa_preflop` 算“加注值多少”时跳过已全下（筹码为 0）的人，以为后面的人一弃牌就能拿整个底池，弱牌面对全下也会再全下（合成局：72o、100bb 面对 20bb 全下，加注算 +9.7bb，改后 −19.8bb，弃牌）；算“跟注值多少”时，短码全下后又有人加注，这个短码两边都不算。现在已全下的人一直留在比牌里。
 - 怎么做的：`preflop_policy.Table` 新增 `pots` / `showdown`，按各家下注额分出主池和边池（和模拟牌桌结算一致：只有一个人投入的那层原样退回、不抽水，其余按比例抽水），每个池只和盖得住它的人比；`raise_value`、`reraised`、`call_value`、`passive_value` 都改用它；没有对手还能下注时按胜率全额算。
