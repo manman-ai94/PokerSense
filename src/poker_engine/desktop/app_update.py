@@ -78,7 +78,12 @@ def is_newer(candidate, current):
 
 def direct_url(url):
     """A download address for a share link: Google Drive and Dropbox pages
-    become their direct-download form; anything else is returned as given."""
+    become their direct-download form; anything else is returned as given.
+
+    ``rclone link`` on Google Drive often yields ``…/open?id=…``, which is a
+    viewer page (browsers may 404/400). Releases should store the usercontent
+    form in ``latest.json``; downloads still call this before HTTP so older
+    manifests with ``open?id=`` keep working."""
     parts = urlsplit(url)
     host = parts.netloc.lower()
     query = parse_qs(parts.query)
@@ -209,7 +214,7 @@ def fetch_verified(url, target, sha256, size, opener=open_url, progress=None,
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(target.name + ".part")
     digest, received = hashlib.sha256(), 0
-    response = opener(url)
+    response = opener(direct_url(url))
     try:
         _not_a_web_page(response)
         with partial.open("wb") as handle:
