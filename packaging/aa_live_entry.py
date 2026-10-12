@@ -66,10 +66,6 @@ REQUIRED_RESOURCES = (
 IDLE_STOP_SECONDS = 180
 
 
-# The recognition bundle a release build puts next to the program, and the
-# trusted digest of its manifest, kept outside the bundle (aa_bundle).
-RECOGNITION_DIR = "recognition"
-RECOGNITION_DIGEST = "recognition.sha256"
 # Imported by the frozen self-test: the reader's lazily imported modules
 # (aa_reader) must be inside the package for live recognition to start.
 RECOGNITION_MODULES = (
@@ -93,17 +89,51 @@ def default_state():
     return root / ("data" if getattr(sys, "frozen", False) else __version__)
 
 
-def recognition_bundle(root):
-    """(profile.json, trusted manifest digest) of the bundle installed next to
-    the program, or None."""
-    if root is None:
+def progress_printer(label, out):
+    shown = [-10]
+
+    def progress(received, total):
+        percent = received * 100 // total
+        if percent >= shown[0] + 10 or received == total:
+            shown[0] = percent
+            out(f"{label} 已下载 {percent}%")
+    return progress
+
+
+def sync_recognition(args, url, out):
+    """Fetch the recognition bundle the latest release lists, when it is not
+    the one in the data folder yet (first start, or a release with a new one)."""
+    out("[识别资源] 正在检查识别资源包……")
+    result = app_update.sync_recognition(
+        url, args.state, progress=progress_printer("[识别资源]", out))
+    have = app_update.installed_recognition(args.state) is not None
+    status = result["status"]
+    if status == "INSTALLED":
+        out("[识别资源] 已下载，sha256 和校验都通过：可以接采集卡实时读牌。")
+    elif status == "UP_TO_DATE":
+        out("[识别资源] 已经是最新的。")
+    elif status == "NOT_PUBLISHED" and not have:
+        out("[识别资源] 还没有发布识别资源包：暂时不能实时读牌，其余功能照常。")
+    elif status == "ERROR":
+        out(f"[识别资源] 这次没下载成功：{result['error']}")
+        out("[识别资源] 继续用已经有的那份。" if have else
+            "[识别资源] 暂时不能实时读牌；下次打开程序会再试。")
+    return result
+
+
+def use_recognition(args, out=print):
+    """Before the window opens: bring the recognition bundle up to date (when
+    an update address is configured) and use it for the capture card."""
+    if args.no_recognition or args.profile:
         return None
-    profile = Path(root) / RECOGNITION_DIR / "profile.json"
-    try:
-        digest = (Path(root) / RECOGNITION_DIGEST).read_text("utf-8").strip()
-    except OSError:
-        return None
-    return (profile, digest) if profile.is_file() and digest else None
+    url = app_update.configured_url(args.update_url)
+    if url and not args.self_check and not args.no_update_check:
+        sync_recognition(args, url, out)
+    bundle = app_update.installed_recognition(args.state)
+    if bundle is not None:
+        args.profile, args.bundle_sha256 = bundle
+        args.allow_capture = True
+    return bundle
 
 
 def parser():
@@ -149,7 +179,7 @@ def parser():
     result.add_argument("--no-update-check", action="store_true",
                         help="Do not check for updates at startup")
     result.add_argument("--no-recognition", action="store_true",
-                        help="Ignore a recognition bundle installed with the program")
+                        help="Do not fetch or use the recognition bundle")
     result.add_argument("--self-test", action="store_true",
                         help="Run the core calculations and recognition imports; "
                              "no server")
@@ -402,10 +432,16 @@ def serve(args):
 
 
 def console_update(args, *, keep_open=None):
-    """The Start-menu "check for updates" shortcut."""
+    """The Start-menu "check for updates" shortcut: the recognition bundle,
+    then the program."""
+    url = app_update.configured_url(args.update_url)
+
+    def out(line):
+        print(line, flush=True)
+    if url and not args.no_recognition:
+        sync_recognition(args, url, out)
     code, started = app_update.run_console_update(
-        app_update.configured_url(args.update_url), __version__,
-        args.state / "updates", out=lambda line: print(line, flush=True))
+        url, __version__, args.state / "updates", out=out)
     if keep_open is None:
         keep_open = sys.stdin is not None and sys.stdin.isatty()
     if started:
@@ -440,10 +476,7 @@ def main(argv=None):
         report = self_test()
         print(json.dumps(report, ensure_ascii=True, indent=2))
         return 0 if report["result"] == "SELF_TEST_PASS" else 1
-    bundle = None if args.no_recognition or args.profile else recognition_bundle(root)
-    if bundle is not None:
-        args.profile, args.bundle_sha256 = bundle
-        args.allow_capture = True
+    use_recognition(args, out=lambda line: print(line, flush=True))
     if root is not None and not os.environ.get(DATA_ROOT_ENV):
         # Recordings and other private data stay in the user's data folder
         # (the source default on Windows is the old G: drive).

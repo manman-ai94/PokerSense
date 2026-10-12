@@ -8,6 +8,9 @@ name: Windows installer
 # commit on main. A release also uploads the installer and the version
 # manifest (latest.json) to the cloud folder with rclone -- only when the
 # RCLONE_CONFIG secret is configured; without it the upload steps are skipped.
+# The private recognition bundle is uploaded separately from a Mac
+# (tools/pack_aa_recognition.py -> <folder>/recognition/); a release checks it
+# and lists it in latest.json. It is never put inside the installer.
 #
 # Settings (Settings -> Secrets and variables -> Actions):
 #   secret   RCLONE_CONFIG            contents of rclone.conf (remote "pokersense")
@@ -122,6 +125,21 @@ jobs:
           python packaging/release_build.py newer --current $current --version "${{ steps.mode.outputs.version }}"
           if ($LASTEXITCODE -ne 0) { throw "版本号必须比云盘上已经发布的新" }
 
+      - name: Check the recognition bundle in the cloud folder
+        id: recognition
+        if: steps.mode.outputs.upload == 'true'
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP "recognition"
+          rclone copy "$env:REMOTE_DIR/recognition" $src --include "PokerSense-AA-recognition.*" 2>$null
+          if (Test-Path (Join-Path $src "PokerSense-AA-recognition.json")) {
+            python packaging/release_build.py recognition-check --source $src
+            if ($LASTEXITCODE -ne 0) { throw "识别资源包校验失败，不发版" }
+            "dir=$src" >> $env:GITHUB_OUTPUT
+          } else {
+            "::warning::云盘 recognition/ 里没有识别资源包：这一版不能实时读牌，其余功能照常"
+          }
+          exit 0
+
       - name: Version manifest address
         id: url
         if: steps.mode.outputs.release == 'true'
@@ -156,19 +174,6 @@ jobs:
       - name: Put the update address next to the program
         if: steps.url.outputs.url != ''
         run: python packaging/release_build.py config --manifest-url "${{ steps.url.outputs.url }}" --out dist/PokerSense-AA/update-config.json
-
-      - name: Add the recognition bundle (if uploaded to the cloud folder)
-        if: steps.mode.outputs.upload == 'true'
-        run: |
-          $src = Join-Path $env:RUNNER_TEMP "recognition"
-          rclone copy "$env:REMOTE_DIR/recognition" $src --include "PokerSense-AA-recognition.*" 2>$null
-          if (Test-Path (Join-Path $src "PokerSense-AA-recognition.json")) {
-            python packaging/release_build.py recognition --source $src --app dist/PokerSense-AA
-            if ($LASTEXITCODE -ne 0) { throw "识别资源包校验失败" }
-          } else {
-            "::notice::云盘 recognition/ 里没有识别资源包：这个版本不能实时读牌，其余功能照常"
-          }
-          exit 0
 
       - name: Install Inno Setup (and its Simplified Chinese messages)
         run: |
@@ -250,10 +255,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "上传失败" }
           $installerUrl = (rclone link "$env:REMOTE_DIR/PokerSense-AA-Setup.exe" | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $installerUrl) { throw "拿不到安装包的共享链接" }
+          $recognition = @()
+          $recognitionDir = "${{ steps.recognition.outputs.dir }}"
+          if ($recognitionDir) {
+            $recognitionUrl = (rclone link "$env:REMOTE_DIR/recognition/PokerSense-AA-recognition.zip" | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $recognitionUrl) { throw "拿不到识别资源包的共享链接" }
+            $recognition = @("--recognition-dir", $recognitionDir, "--recognition-url", $recognitionUrl)
+          }
           python packaging/release_build.py manifest --version $version --installer dist\PokerSense-AA-Setup.exe `
-            --url $installerUrl --commit $env:GITHUB_SHA --notes "PokerSense AA $version" --out dist\latest.json
+            --url $installerUrl --commit $env:GITHUB_SHA --notes "PokerSense AA $version" @recognition --out dist\latest.json
           if ($LASTEXITCODE -ne 0) { throw "版本清单生成失败" }
           rclone copyto dist\latest.json "$env:REMOTE_DIR/latest.json"
           if ($LASTEXITCODE -ne 0) { throw "上传失败" }
-          "### 已发布 PokerSense AA $version" >> $env:GITHUB_STEP_SUMMARY
+          "### 已发布 PokerSense AA $version（识别资源包：$(if ($recognitionDir) { '已列入' } else { '没有' })）" >> $env:GITHUB_STEP_SUMMARY
           "员工的程序下次打开（或点开始菜单的 PokerSense AA 检查更新）就会看到新版。" >> $env:GITHUB_STEP_SUMMARY

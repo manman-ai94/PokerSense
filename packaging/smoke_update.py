@@ -5,6 +5,11 @@ refuse an installer whose sha256 does not match (nothing started), say it is
 up to date for its own version, show "update available" in the window's
 /api/update, and for a newer version download, verify and start the
 installer, which waits for the program to exit and installs again.
+
+The recognition bundle the manifest lists (a synthetic one here, built the way
+tools/pack_aa_recognition.py packs the private one) must be fetched on first
+start and by "check for updates", refused on a wrong sha256, left alone when
+already current, and turn the capture card on.
 """
 
 import argparse
@@ -16,20 +21,75 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 from urllib.request import urlopen
 
+ROOT = Path(__file__).resolve().parents[1]
 NEWER = "99.0.0"
 
 
-def manifest(version, url, data, sha256=None):
-    return {"schema": "pokersense-update-v1", "product": "PokerSense-AA",
+def manifest(version, url, data, sha256=None, recognition=None):
+    body = {"schema": "pokersense-update-v1", "product": "PokerSense-AA",
             "version": version, "published": "2026-01-01T00:00:00Z",
             "commit": "smoke", "notes": "smoke test",
             "installer": {"url": url, "bytes": len(data),
                           "sha256": sha256 or hashlib.sha256(data).hexdigest()}}
+    if recognition is not None:
+        body["recognition"] = recognition
+    return body
+
+
+def _write_json(path, value):
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def synthetic_recognition(root, out):
+    """A bundle with the real layout and hashes but no private pixels (the
+    same shape as tests/desktop/test_aa_bundle.py), packed for upload."""
+    sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
+    from poker_engine.desktop.aa_bundle import FILES, export_bundle, required_frames
+    from tools.pack_aa_recognition import pack
+    spec = {"audit": "a" * 64}
+    for key, needed in required_frames().items():
+        folder = root / key
+        (folder / "frames").mkdir(parents=True)
+        spec[key] = str(folder)
+        frame_key = "source_frame" if key == "bomb_pool" else "global_frame"
+        frames = range(min(needed), max(needed) + 1) if key in (
+            "source", "context_source") else needed
+        rows = []
+        for frame in frames:
+            data = (key + str(frame)).encode()
+            row = {frame_key: frame, "file": f"frames/{frame}.png",
+                   "sha256": hashlib.sha256(data).hexdigest(),
+                   "pts_seconds": str(frame / 30),
+                   "split" if key == "bomb_pool" else "role": "development"}
+            rows.append(row)
+            if frame in needed:
+                (folder / row["file"]).write_bytes(data)
+        identity = "source_sha256" if key == "bomb_pool" else "audit_sha256"
+        _write_json(folder / "samples.json", {
+            identity: "b" * 64 if key == "bomb_pool" else "a" * 64, "samples": rows})
+    for key in FILES:
+        suffix = ".npz" if key in ("bank_path", "heads_path") else ".json"
+        path = root / (key + suffix)
+        _write_json(path, {})
+        spec[key] = str(path)
+        if key == "heads_path":
+            _write_json(path.with_suffix(".json"), {"format": "mlp-v1", "heads": {}})
+    _write_json(Path(spec["profile_path"]), {
+        "canvas": [498, 1080], "hero_slot": 4,
+        "slots": [{"slot": i} for i in range(8)]})
+    _write_json(Path(spec["reservations"]), {
+        "source_sha256": "b" * 64, "reserved_inclusive_intervals": [[9000, 9100]],
+        "known_exploration_frames": [], "known_development_inclusive_intervals": []})
+    profile = root / "reader.json"
+    _write_json(profile, spec)
+    export_bundle(profile, root / "bundle")
+    return pack(root / "bundle", out)
 
 
 def serve(folder):
@@ -56,8 +116,10 @@ def setup_running(name):
 
 
 def window_status(exe, state, url, screenshot=None):
-    """Start the window with the update address and read /api/update."""
+    """Start the window with the update address; /api/update, with what
+    /api/build and /api/status say and the console output."""
     ready = state / "ready.json"
+    ready.unlink(missing_ok=True)           # left by an earlier start
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     with (state / "server.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
@@ -65,28 +127,38 @@ def window_status(exe, state, url, screenshot=None):
              "--ready-file", str(ready), "--update-url", url],
             stdout=log, stderr=log, creationflags=flags)
         try:
-            deadline = time.monotonic() + 60
-            while not ready.exists():
-                if process.poll() is not None or time.monotonic() > deadline:
-                    raise RuntimeError((state / "server.log").read_text("utf-8"))
-                time.sleep(0.1)
-            base = json.loads(ready.read_text("utf-8"))["base"]
-            while True:
-                with urlopen(base + "api/update", timeout=5) as response:
-                    status = json.load(response)
-                if status["status"] != "NOT_CHECKED":
-                    break
-                if time.monotonic() > deadline:
-                    raise RuntimeError("update check never finished")
-                time.sleep(0.2)
-            with urlopen(base + "update_banner.js", timeout=5) as response:
-                assert b"update-banner" in response.read()
-            if screenshot:
-                status["screenshot"] = take_screenshot(base, screenshot)
-            return status
+            status = read_window(process, state, ready, screenshot)
         finally:
             process.terminate()
             process.wait(timeout=20)
+    status["log"] = (state / "server.log").read_text("utf-8", errors="replace")
+    return status
+
+
+def read_window(process, state, ready, screenshot):
+    deadline = time.monotonic() + 90
+    while not ready.exists():
+        if process.poll() is not None or time.monotonic() > deadline:
+            raise RuntimeError((state / "server.log").read_text("utf-8"))
+        time.sleep(0.1)
+    base = json.loads(ready.read_text("utf-8"))["base"]
+    while True:
+        with urlopen(base + "api/update", timeout=5) as response:
+            status = json.load(response)
+        if status["status"] != "NOT_CHECKED":
+            break
+        if time.monotonic() > deadline:
+            raise RuntimeError("update check never finished")
+        time.sleep(0.2)
+    with urlopen(base + "update_banner.js", timeout=5) as response:
+        assert b"update-banner" in response.read()
+    with urlopen(base + "api/build", timeout=5) as response:
+        status["build"] = json.load(response)
+    with urlopen(base + "api/status", timeout=5) as response:
+        status["window"] = json.load(response)
+    if screenshot:
+        status["screenshot"] = take_screenshot(base, screenshot)
+    return status
 
 
 def take_screenshot(url, path):
@@ -146,6 +218,47 @@ def smoke(exe, installer, screenshot=None):
             assert result.returncode == 0 and "最新" in result.stdout, result.stdout
             report["same_version"] = "UP_TO_DATE"
 
+            sidecar = synthetic_recognition(root / "private", files / "recognition")
+            zip_url = base + "recognition/PokerSense-AA-recognition.zip"
+            listed = {"url": zip_url, "sha256": sidecar["zip_sha256"],
+                      "bytes": sidecar["zip_bytes"],
+                      "manifest_sha256": sidecar["manifest_sha256"]}
+            _write_json(files / "rec.json", manifest(current, url, data,
+                                                     recognition=listed))
+            _write_json(files / "rec-bad.json", manifest(
+                current, url, data, recognition={**listed, "sha256": "0" * 64}))
+
+            state = root / "rec-bad-state"
+            state.mkdir()
+            status = window_status(exe, state, base + "rec-bad.json")
+            assert status["build"]["recognition_bundle"] == "NOT_INSTALLED", status
+            assert status["window"]["capture_available"] is False
+            assert "sha256" in status["log"], status["log"]
+            assert not (state / "recognition" / "current.json").exists()
+            report["recognition_bad_hash"] = "REFUSED_NOT_INSTALLED"
+
+            state = root / "rec-state"
+            state.mkdir()
+            status = window_status(exe, state, base + "rec.json")
+            assert status["build"]["recognition_bundle"] == "INSTALLED", status
+            assert status["build"]["capture_enabled"] is True
+            assert status["window"]["capture_available"] is True
+            assert status["window"]["profile"]["ready"] is True, status["window"]
+            assert "已下载" in status["log"], status["log"]
+            again = window_status(exe, state, base + "rec.json")
+            assert "已经是最新的" in again["log"], again["log"]
+            assert again["build"]["recognition_bundle"] == "INSTALLED"
+            report["recognition_first_start"] = "DOWNLOADED_VALIDATED_CAPTURE_ON"
+            report["recognition_next_start"] = "UP_TO_DATE"
+
+            state = root / "rec-console-state"
+            result = run(exe, "--update-now", "--update-url", base + "rec.json",
+                         "--state", str(state))
+            assert result.returncode == 0, result.stdout + result.stderr
+            assert "[识别资源] 已下载" in result.stdout, result.stdout
+            assert (state / "recognition" / "current.json").is_file()
+            report["recognition_check_for_updates"] = "DOWNLOADED"
+
             window = root / "window-state"
             window.mkdir()
             status = window_status(exe, window, base + "latest.json", screenshot)
@@ -153,6 +266,7 @@ def smoke(exe, installer, screenshot=None):
             assert status["latest"] == NEWER and status["can_install"] is True, status
             report["window"] = {key: status.get(key) for key in
                                 ("status", "latest", "can_install", "screenshot")}
+            assert status["build"]["recognition_bundle"] == "NOT_INSTALLED"
 
             # The installer empties _internal before copying (pokersense.iss).
             marker = exe.parent / "_internal" / "update-smoke-marker"

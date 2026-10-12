@@ -88,24 +88,42 @@ def bundle(tmp_path):
     return tmp_path / "bundle"
 
 
-def test_a_packed_bundle_is_installed_next_to_the_program_and_validates(
-        bundle, tmp_path):
+def test_an_uploaded_bundle_is_checked_and_listed_in_the_manifest(bundle, tmp_path):
     out = tmp_path / "upload"
     sidecar = packer.pack(bundle, out)
     again = packer.pack(bundle, tmp_path / "again")
     assert again["zip_sha256"] == sidecar["zip_sha256"]          # reproducible
-    app = tmp_path / "PokerSense-AA"
-    app.mkdir()
-    result = release.embed_recognition(out, app)
-    assert result["receipt"]["manifest_sha256"] == sidecar["manifest_sha256"]
-    assert (app / "recognition.sha256").read_text("utf-8").strip() == (
-        sidecar["manifest_sha256"])
-    assert (app / "recognition" / "profile.json").is_file()
-    entry = load("aa_entry_recognition", "packaging/aa_live_entry.py")
-    assert entry.recognition_bundle(app) == (
-        app / "recognition" / "profile.json", sidecar["manifest_sha256"])
-    assert entry.recognition_bundle(tmp_path) is None
-    assert entry.recognition_bundle(None) is None
+    checked = release.check_recognition(out)
+    assert checked["manifest_sha256"] == sidecar["manifest_sha256"]
+    assert checked["files"] == sidecar["files"] - 1   # all but the manifest itself
+    installer = tmp_path / "setup.exe"
+    installer.write_bytes(b"MZ")
+    manifest = release.build_manifest("0.3.0", installer, "https://cloud/setup.exe",
+                                      recognition=out,
+                                      recognition_url="https://cloud/rec.zip")
+    assert manifest["recognition"] == {
+        "url": "https://cloud/rec.zip", "sha256": sidecar["zip_sha256"],
+        "bytes": sidecar["zip_bytes"], "manifest_sha256": sidecar["manifest_sha256"],
+        "created": sidecar["created"]}
+    assert "recognition" not in release.build_manifest(
+        "0.3.0", installer, "https://cloud/setup.exe")
+
+
+def test_the_program_installs_what_the_release_lists(bundle, tmp_path):
+    out = tmp_path / "upload"
+    packer.pack(bundle, out)
+    installer = tmp_path / "setup.exe"
+    installer.write_bytes(b"MZ")
+    manifest = release.build_manifest("0.3.0", installer, str(installer),
+                                      recognition=out,
+                                      recognition_url=str(out / packer.ZIP_NAME))
+    state = tmp_path / "state"
+    result = app_update.sync_recognition(None, state, manifest=manifest)
+    assert result["status"] == "INSTALLED"           # real aa_bundle validation
+    profile, digest = app_update.installed_recognition(state)
+    assert digest == manifest["recognition"]["manifest_sha256"]
+    assert json.loads(profile.read_text("utf-8"))["bundle_manifest"] == (
+        "bundle-manifest.json")
 
 
 def test_a_changed_or_unsafe_recognition_zip_is_refused(bundle, tmp_path):
@@ -115,7 +133,7 @@ def test_a_changed_or_unsafe_recognition_zip_is_refused(bundle, tmp_path):
     with zipfile.ZipFile(archive, "a") as handle:
         handle.writestr("extra.txt", "changed")
     with pytest.raises(SystemExit, match="sidecar"):
-        release.embed_recognition(out, tmp_path / "app")
+        release.check_recognition(out)
     evil = tmp_path / "evil"
     evil.mkdir()
     with zipfile.ZipFile(evil / packer.ZIP_NAME, "w") as handle:
@@ -125,8 +143,8 @@ def test_a_changed_or_unsafe_recognition_zip_is_refused(bundle, tmp_path):
         "schema": packer.SCHEMA, "zip_bytes": len(data),
         "zip_sha256": release.hashlib.sha256(data).hexdigest(),
         "manifest_sha256": "0" * 64}), "utf-8")
-    with pytest.raises(SystemExit, match="unsafe"):
-        release.embed_recognition(evil, tmp_path / "app2")
+    with pytest.raises(SystemExit, match="不安全"):
+        release.check_recognition(evil)
     assert not (tmp_path / "outside.txt").exists()
 
 
@@ -154,6 +172,10 @@ def test_releases_come_only_from_main_and_uploads_need_the_secret():
     assert '$env:REF -ne "refs/heads/main"' in workflow
     assert "secrets.RCLONE_CONFIG" in workflow
     assert workflow.count("if: steps.mode.outputs.upload == 'true'") >= 4
+    # The recognition bundle is a separate upload, listed in latest.json.
+    assert "recognition-check" in workflow and "--recognition-url" in workflow
+    assert "release_build.py recognition --" not in workflow
+    assert "dist/PokerSense-AA/recognition" not in workflow
     assert "persist-credentials: false" in workflow
     assert "softprops/action-gh-release" not in workflow
     legacy = (ROOT / ".github/workflows/build-desktop.yml").read_text("utf-8")

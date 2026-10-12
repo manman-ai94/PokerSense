@@ -5,6 +5,7 @@ import http.server
 import io
 import json
 import threading
+import zipfile
 from functools import partial
 
 import pytest
@@ -254,3 +255,125 @@ def test_the_console_update_says_what_happened(tmp_path):
     assert code == (4, False) and len(started) == 1
     assert app_update.run_console_update(None, "0.2.0", tmp_path,
                                          out=lines.append) == (3, False)
+
+
+def bundle_zip(files):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as handle:
+        for name, data in files.items():
+            handle.writestr(name, data)
+    return buffer.getvalue()
+
+
+BUNDLE = bundle_zip({"profile.json": b"{}", "bundle-manifest.json": b"{}",
+                     "assets/heads_path.npz": b"model"})
+
+
+def with_recognition(data=BUNDLE, digest="d" * 64, **changes):
+    latest = manifest("0.3.0")
+    latest["recognition"] = {"url": "https://cloud/recognition.zip",
+                             "sha256": hashlib.sha256(data).hexdigest(),
+                             "bytes": len(data), "manifest_sha256": digest,
+                             **changes}
+    return latest
+
+
+def cloud(latest, data=BUNDLE):
+    files = folder_with(latest)
+    files.files["https://cloud/recognition.zip"] = data
+    return files
+
+
+class Validator:
+    def __init__(self, error=None):
+        self.calls, self.error = [], error
+
+    def __call__(self, profile, digest):
+        self.calls.append((profile.parent.name, digest))
+        assert profile.is_file()
+        if self.error:
+            raise ValueError(self.error)
+        return {"files": 3}
+
+
+@pytest.mark.parametrize("change", [
+    {"sha256": "x"}, {"manifest_sha256": "A" * 64}, {"bytes": 0}, {"url": ""},
+])
+def test_a_manifest_with_an_unusable_recognition_entry_is_refused(change):
+    with pytest.raises(UpdateError, match="识别资源包"):
+        app_update.validate_manifest(with_recognition(**change))
+
+
+def test_the_recognition_bundle_is_fetched_validated_and_made_current(tmp_path):
+    latest, check = with_recognition(), Validator()
+    assert app_update.installed_recognition(tmp_path) is None
+    result = app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                         opener=cloud(latest), validate=check)
+    assert result == {"status": "INSTALLED", "manifest_sha256": "d" * 64}
+    assert check.calls == [("d" * 64 + ".new", "d" * 64)]   # before made current
+    profile, digest = app_update.installed_recognition(tmp_path)
+    assert digest == "d" * 64 and profile == tmp_path / "recognition" / digest / (
+        "profile.json")
+    assert (profile.parent / "assets" / "heads_path.npz").read_bytes() == b"model"
+    assert sorted(p.name for p in (tmp_path / "recognition").iterdir()) == [
+        "current.json", "d" * 64]
+    again = app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                        opener=cloud(latest), validate=check)
+    assert again["status"] == "UP_TO_DATE" and len(check.calls) == 1
+
+
+def test_a_new_bundle_replaces_the_old_one(tmp_path):
+    app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                opener=cloud(with_recognition()), validate=Validator())
+    newer = bundle_zip({"profile.json": b"{}", "v": b"2"})
+    result = app_update.sync_recognition(
+        "https://cloud/latest.json", tmp_path,
+        opener=cloud(with_recognition(newer, "e" * 64), newer), validate=Validator())
+    assert result["status"] == "INSTALLED"
+    assert app_update.installed_recognition(tmp_path)[1] == "e" * 64
+    assert sorted(p.name for p in (tmp_path / "recognition").iterdir()) == [
+        "current.json", "e" * 64]
+
+
+@pytest.mark.parametrize("served, validator, message", [
+    (BUNDLE[:-1] + b"X", Validator(), "sha256"),
+    (BUNDLE, Validator("bundle_file_hash_mismatch:profile.json"), "校验没通过"),
+])
+def test_a_wrong_bundle_is_not_made_current_and_the_old_one_stays(
+        tmp_path, served, validator, message):
+    app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                opener=cloud(with_recognition()), validate=Validator())
+    other = with_recognition(digest="e" * 64)
+    result = app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                         opener=cloud(other, served),
+                                         validate=validator)
+    assert result["status"] == "ERROR" and message in result["error"]
+    assert app_update.installed_recognition(tmp_path)[1] == "d" * 64
+    assert sorted(p.name for p in (tmp_path / "recognition").iterdir()) == [
+        "current.json", "d" * 64]
+
+
+@pytest.mark.parametrize("name", ["../outside.txt", "/abs.txt", "C:/x.txt",
+                                  "a\\b.txt"])
+def test_a_bundle_with_unsafe_paths_is_refused(tmp_path, name):
+    evil = bundle_zip({"profile.json": b"{}", name: b"x"})
+    result = app_update.sync_recognition(
+        "https://cloud/latest.json", tmp_path / "state",
+        opener=cloud(with_recognition(evil), evil), validate=Validator())
+    assert result["status"] == "ERROR" and "不安全" in result["error"]
+    assert not (tmp_path / "outside.txt").exists()
+    assert app_update.installed_recognition(tmp_path / "state") is None
+
+
+def test_no_recognition_without_an_address_an_entry_or_a_reachable_manifest(tmp_path):
+    assert app_update.sync_recognition(None, tmp_path)["status"] == "UNCONFIGURED"
+    result = app_update.sync_recognition("https://cloud/latest.json", tmp_path,
+                                         opener=folder_with(manifest()))
+    assert result["status"] == "NOT_PUBLISHED"
+    result = app_update.sync_recognition("https://cloud/missing.json", tmp_path,
+                                         opener=folder_with(manifest()))
+    assert result["status"] == "ERROR"
+    assert app_update.installed_recognition(tmp_path) is None
+    (tmp_path / "recognition").mkdir()
+    (tmp_path / "recognition" / "current.json").write_text('{"manifest_sha256": "x"}')
+    assert app_update.installed_recognition(tmp_path) is None

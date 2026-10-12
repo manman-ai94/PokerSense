@@ -10,6 +10,17 @@ share link, an HTTPS URL or a local/UNC path)::
 The installer is downloaded next to the user's data, its size and sha256 are
 checked against the manifest, and only then is it started (Inno Setup, silent,
 waiting for this process to exit and reopening the program afterwards).
+
+A release may also list the private recognition bundle, uploaded separately
+(``tools/pack_aa_recognition.py``), never inside the installer::
+
+    "recognition": {"url": "...", "sha256": "<zip>", "bytes": 123,
+                    "manifest_sha256": "<bundle-manifest.json>"}
+
+``sync_recognition`` fetches it on first start and whenever a release lists
+another one: zip size and sha256 checked, unpacked into the user's data
+folder, the bundle validated against ``manifest_sha256`` (``aa_bundle``), and
+only then made current. The trusted digest is kept outside the bundle folder.
 Nothing here ever reads repository credentials; the manifest address is the
 only configuration.
 """
@@ -17,14 +28,16 @@ only configuration.
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from urllib.request import Request, url2pathname, urlopen
+import zipfile
 
 
 SCHEMA = "pokersense-update-v1"
@@ -33,6 +46,8 @@ CONFIG_NAME = "update-config.json"
 URL_ENV = "POKERSENSE_UPDATE_URL"
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_INSTALLER_BYTES = 2 * 1024 ** 3
+RECOGNITION_DIR = "recognition"
+RECOGNITION_CURRENT = "current.json"
 CHUNK = 1024 * 1024
 TIMEOUT = 20
 USER_AGENT = "PokerSense-AA-updater"
@@ -142,6 +157,17 @@ def validate_manifest(data):
             or type(installer.get("bytes")) is not int
             or not 0 < installer["bytes"] <= MAX_INSTALLER_BYTES):
         raise UpdateError("版本清单里安装包的地址、大小或 sha256 不对")
+    recognition = data.get("recognition")
+    if recognition is not None and (
+            not isinstance(recognition, dict)
+            or not isinstance(recognition.get("url"), str) or not recognition["url"]
+            or not isinstance(recognition.get("sha256"), str)
+            or not _HASH.fullmatch(recognition["sha256"])
+            or not isinstance(recognition.get("manifest_sha256"), str)
+            or not _HASH.fullmatch(recognition["manifest_sha256"])
+            or type(recognition.get("bytes")) is not int
+            or not 0 < recognition["bytes"] <= MAX_INSTALLER_BYTES):
+        raise UpdateError("版本清单里识别资源包的地址、大小或 sha256 不对")
     return data
 
 
@@ -175,17 +201,15 @@ def check(url, current, opener=open_url):
             "published": manifest.get("published", ""), "manifest": manifest}
 
 
-def download(manifest, folder, opener=open_url, progress=None):
-    """The installer saved under ``folder`` after its size and sha256 match
-    the manifest; a partial or wrong file is deleted, never returned."""
-    installer = validate_manifest(manifest)["installer"]
-    folder = Path(folder)
-    folder.mkdir(parents=True, exist_ok=True)
-    target = folder / f"PokerSense-AA-Setup-{manifest['version']}.exe"
+def fetch_verified(url, target, sha256, size, opener=open_url, progress=None,
+                   what="安装包"):
+    """``url`` saved as ``target`` once its size and sha256 match; a partial
+    or wrong file is deleted, never kept."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_name(target.name + ".part")
-    expected = installer["bytes"]
     digest, received = hashlib.sha256(), 0
-    response = opener(installer["url"])
+    response = opener(url)
     try:
         _not_a_web_page(response)
         with partial.open("wb") as handle:
@@ -194,28 +218,134 @@ def download(manifest, folder, opener=open_url, progress=None):
                 if not chunk:
                     break
                 received += len(chunk)
-                if received > expected:
+                if received > size:
                     raise UpdateError("下载的文件比清单里写的大")
                 digest.update(chunk)
                 handle.write(chunk)
                 if progress:
-                    progress(received, expected)
+                    progress(received, size)
     except BaseException:
         partial.unlink(missing_ok=True)
         raise
     finally:
         response.close()
-    if received != expected:
+    if received != size:
         partial.unlink(missing_ok=True)
-        raise UpdateError(f"下载不完整：{received} / {expected} 字节")
-    if digest.hexdigest() != installer["sha256"]:
+        raise UpdateError(f"下载不完整：{received} / {size} 字节")
+    if digest.hexdigest() != sha256:
         partial.unlink(missing_ok=True)
-        raise UpdateError("安装包的 sha256 和清单不一致，已删除，没有安装")
+        raise UpdateError(f"{what}的 sha256 和清单不一致，已删除，没有安装")
     os.replace(partial, target)
+    return target
+
+
+def download(manifest, folder, opener=open_url, progress=None):
+    """The installer saved under ``folder`` after its size and sha256 match
+    the manifest; a partial or wrong file is deleted, never returned."""
+    installer = validate_manifest(manifest)["installer"]
+    folder = Path(folder)
+    target = folder / f"PokerSense-AA-Setup-{manifest['version']}.exe"
+    fetch_verified(installer["url"], target, installer["sha256"], installer["bytes"],
+                   opener, progress)
     for old in folder.glob("PokerSense-AA-Setup-*.exe*"):
         if old != target:
             old.unlink(missing_ok=True)
     return target
+
+
+def safe_extract(archive, target):
+    """Unpack a zip into ``target`` (which must not exist), refusing absolute
+    paths, ``..``, drive letters and backslashes."""
+    target = Path(target)
+    if target.exists():
+        raise UpdateError(f"{target} 已经存在")
+    with zipfile.ZipFile(archive) as bundle:
+        members = bundle.infolist()
+        for info in members:
+            name = info.filename
+            parts = PurePosixPath(name).parts
+            if (not name or "\\" in name or ":" in name or name.startswith("/")
+                    or any(part in ("", ".", "..") for part in parts)):
+                raise UpdateError(f"资源包里有不安全的路径：{name!r}")
+        for info in members:
+            if info.is_dir():
+                continue
+            destination = target.joinpath(*PurePosixPath(info.filename).parts)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(bundle.read(info))
+    return target
+
+
+def installed_recognition(state):
+    """(profile.json, trusted manifest digest) of the recognition bundle made
+    current in the data folder ``state``, or None."""
+    root = Path(state) / RECOGNITION_DIR
+    try:
+        current = json.loads((root / RECOGNITION_CURRENT).read_text("utf-8"))
+        digest = current["manifest_sha256"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(digest, str) or not _HASH.fullmatch(digest):
+        return None
+    profile = root / digest / "profile.json"
+    return (profile, digest) if profile.is_file() else None
+
+
+def _validate_bundle(profile, digest):
+    from .aa_bundle import validate_bundle
+    return validate_bundle(profile, digest)
+
+
+def sync_recognition(url, state, *, opener=open_url, validate=_validate_bundle,
+                     progress=None, manifest=None):
+    """Make the recognition bundle the release lists current in ``state``.
+
+    Returns {"status": ...}: UNCONFIGURED, NOT_PUBLISHED, UP_TO_DATE,
+    INSTALLED or ERROR. On any error the bundle in use stays as it was."""
+    if not url and manifest is None:
+        return {"status": "UNCONFIGURED"}
+    try:
+        manifest = fetch_manifest(url, opener) if manifest is None else (
+            validate_manifest(manifest))
+    except UpdateError as error:
+        return {"status": "ERROR", "error": str(error)}
+    entry = manifest.get("recognition")
+    if entry is None:
+        return {"status": "NOT_PUBLISHED"}
+    digest = entry["manifest_sha256"]
+    current = installed_recognition(state)
+    if current is not None and current[1] == digest:
+        return {"status": "UP_TO_DATE", "manifest_sha256": digest}
+    root = Path(state) / RECOGNITION_DIR
+    archive = root / "download.zip"
+    staging = root / (digest + ".new")
+    try:
+        fetch_verified(entry["url"], archive, entry["sha256"], entry["bytes"],
+                       opener, progress, what="识别资源包")
+        if staging.exists():
+            shutil.rmtree(staging)
+        safe_extract(archive, staging)
+        try:
+            validate(staging / "profile.json", digest)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise UpdateError(f"识别资源包校验没通过：{error}") from error
+        final = root / digest
+        if final.exists():
+            shutil.rmtree(final)
+        os.replace(staging, final)
+        pointer = root / (RECOGNITION_CURRENT + ".part")
+        pointer.write_text(json.dumps({"manifest_sha256": digest,
+                                       "sha256": entry["sha256"]}) + "\n", "utf-8")
+        os.replace(pointer, root / RECOGNITION_CURRENT)
+    except (UpdateError, OSError, zipfile.BadZipFile) as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        return {"status": "ERROR", "error": str(error)}
+    finally:
+        archive.unlink(missing_ok=True)
+    for old in root.iterdir():
+        if old.is_dir() and old.name != digest:
+            shutil.rmtree(old, ignore_errors=True)
+    return {"status": "INSTALLED", "manifest_sha256": digest}
 
 
 def installer_command(installer, pid, relaunch=True):

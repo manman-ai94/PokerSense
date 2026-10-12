@@ -222,15 +222,17 @@ def test_installed_builds_keep_one_data_folder_across_updates(monkeypatch, tmp_p
     assert entry.default_state() == tmp_path / "PokerSense-AA" / "data"
 
 
-def test_an_installed_recognition_bundle_turns_on_the_capture_card(
+def test_a_recognition_bundle_in_the_data_folder_turns_on_the_capture_card(
         tmp_path, monkeypatch, capsys):
-    root = tmp_path / "install"
-    (root / "recognition").mkdir(parents=True)
-    (root / "recognition" / "profile.json").write_text("{}", "utf-8")
-    (root / "recognition.sha256").write_text("a" * 64 + "\n", "utf-8")
-    monkeypatch.setattr(entry.app_update, "install_root", lambda: root)
-    monkeypatch.delenv(entry.DATA_ROOT_ENV, raising=False)
     state = tmp_path / "state"
+    digest = "a" * 64
+    (state / "recognition" / digest).mkdir(parents=True)
+    (state / "recognition" / digest / "profile.json").write_text("{}", "utf-8")
+    (state / "recognition" / "current.json").write_text(
+        json.dumps({"manifest_sha256": digest}), "utf-8")
+    monkeypatch.setattr(entry.app_update, "install_root", lambda: tmp_path / "app")
+    monkeypatch.delenv(entry.DATA_ROOT_ENV, raising=False)
+    monkeypatch.delenv(entry.app_update.URL_ENV, raising=False)
     assert entry.main(["--self-check", "--state", str(state)]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["capture_enabled"] is True
@@ -244,6 +246,76 @@ def test_an_installed_recognition_bundle_turns_on_the_capture_card(
     assert report["capture_enabled"] is False
     assert report["recognition_bundle"] == "NOT_INSTALLED"
     monkeypatch.delenv(entry.DATA_ROOT_ENV)
+
+
+def published_bundle(tmp_path):
+    """A release manifest listing an exported, packed (synthetic) bundle."""
+    from tests.desktop import test_aa_bundle
+    from poker_engine.desktop.aa_bundle import export_bundle
+    packer = importlib.util.spec_from_file_location(
+        "pack_aa_recognition", ROOT / "tools/pack_aa_recognition.py")
+    pack = importlib.util.module_from_spec(packer)
+    packer.loader.exec_module(pack)
+    (tmp_path / "private").mkdir()
+    profile = test_aa_bundle.source.__wrapped__(tmp_path / "private")
+    export_bundle(profile, tmp_path / "bundle")
+    sidecar = pack.pack(tmp_path / "bundle", tmp_path / "cloud")
+    manifest = {"schema": "pokersense-update-v1", "product": "PokerSense-AA",
+                "version": __version__, "installer": {
+                    "url": str(tmp_path / "setup.exe"), "sha256": "0" * 64,
+                    "bytes": 1},
+                "recognition": {"url": str(tmp_path / "cloud" / pack.ZIP_NAME),
+                                "sha256": sidecar["zip_sha256"],
+                                "bytes": sidecar["zip_bytes"],
+                                "manifest_sha256": sidecar["manifest_sha256"]}}
+    (tmp_path / "latest.json").write_text(json.dumps(manifest), "utf-8")
+    return tmp_path / "latest.json", sidecar
+
+
+def test_first_start_fetches_the_recognition_bundle_the_release_lists(tmp_path):
+    url, sidecar = published_bundle(tmp_path)
+    lines = []
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    profile, digest = entry.use_recognition(args, out=lines.append)
+    assert digest == sidecar["manifest_sha256"] and profile.is_file()
+    assert (args.profile, args.bundle_sha256, args.allow_capture) == (
+        profile, digest, True)
+    assert any("已下载" in line for line in lines)
+    lines.clear()
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    assert entry.use_recognition(args, out=lines.append)[1] == digest
+    assert lines[-1] == "[识别资源] 已经是最新的。"
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/build").json()["recognition_bundle"] == "INSTALLED"
+        status = client.get("/api/status").json()
+        assert status["capture_available"] is True
+        assert status["profile"]["ready"] is True
+
+
+def test_no_fetch_for_a_self_check_an_explicit_profile_or_no_recognition(tmp_path):
+    url, _ = published_bundle(tmp_path)
+    for flags in (["--self-check"], ["--no-recognition"], ["--no-update-check"],
+                  ["--profile", str(tmp_path / "mine.json")]):
+        args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                          "--update-url", str(url), *flags])
+        assert entry.use_recognition(args, out=pytest.fail) is None
+    assert not (tmp_path / "state").exists()
+
+
+def test_a_failed_fetch_keeps_the_window_working_without_the_capture_card(tmp_path):
+    url, _ = published_bundle(tmp_path)
+    manifest = json.loads(url.read_text("utf-8"))
+    manifest["recognition"]["sha256"] = "0" * 64
+    url.write_text(json.dumps(manifest), "utf-8")
+    lines = []
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(url)])
+    assert entry.use_recognition(args, out=lines.append) is None
+    assert args.allow_capture is False and args.profile is None
+    assert any("sha256" in line for line in lines)
+    assert "下次打开程序会再试" in lines[-1]
 
 
 def test_the_window_reports_and_refuses_updates_when_running_from_source(tmp_path):

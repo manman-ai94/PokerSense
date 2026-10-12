@@ -8,9 +8,10 @@ Run on the machine that has the private data (the owner's Mac)::
 Writes ``PokerSense-AA-recognition.zip`` (the portable bundle of
 ``aa_bundle.export_bundle``) and ``PokerSense-AA-recognition.json`` (zip size
 and sha256, and the bundle manifest's sha256 the program trusts). Upload both
-to the ``recognition/`` folder next to the release files; the next release
-build checks them and installs the bundle next to the program. The files are
-private data: never commit them.
+to the ``recognition/`` folder next to the release files
+(docs/windows-distribution.md); the next release checks them and lists the zip
+in latest.json, and the installed program downloads it (never inside the
+installer). The files are private data: never commit them.
 """
 
 import argparse

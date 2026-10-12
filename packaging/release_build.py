@@ -4,8 +4,10 @@
     config      write update-config.json (the manifest address) next to the program
     manifest    write the version manifest for a built installer
     newer       fail unless a version is newer than the published manifest's
-    recognition put a recognition bundle zip (tools/pack_aa_recognition.py)
-                next to the program, after checking its hashes
+    recognition-check
+                check the recognition bundle zip uploaded next to the release
+                (tools/pack_aa_recognition.py) before the manifest lists it;
+                the bundle is never put inside the installer
 """
 
 import argparse
@@ -13,10 +15,10 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 import sys
-import zipfile
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT)]
@@ -75,7 +77,40 @@ def write_config(manifest_url, out):
     return out
 
 
-def build_manifest(version, installer, url, commit="", notes="", now=None):
+def read_recognition(source):
+    """The sidecar of the uploaded recognition zip, after checking the zip's
+    size and sha256 against it."""
+    source = Path(source)
+    sidecar = json.loads((source / RECOGNITION_JSON).read_text("utf-8"))
+    archive = source / RECOGNITION_ZIP
+    if sidecar.get("schema") != RECOGNITION_SCHEMA:
+        raise SystemExit("recognition sidecar schema mismatch")
+    if (archive.stat().st_size != sidecar["zip_bytes"]
+            or sha256_file(archive) != sidecar["zip_sha256"]):
+        raise SystemExit("recognition zip does not match its sidecar")
+    return sidecar
+
+
+def check_recognition(source):
+    """Unpack the uploaded zip as the program will and validate the bundle
+    against the manifest digest it will trust."""
+    from poker_engine.desktop.aa_bundle import validate_bundle
+    sidecar = read_recognition(source)
+    with tempfile.TemporaryDirectory(prefix="pokersense-recognition-") as folder:
+        target = Path(folder) / "bundle"
+        try:
+            app_update.safe_extract(Path(source) / RECOGNITION_ZIP, target)
+        except app_update.UpdateError as error:
+            raise SystemExit(str(error)) from error
+        receipt = validate_bundle(target / "profile.json", sidecar["manifest_sha256"])
+    return {"zip_sha256": sidecar["zip_sha256"], "zip_bytes": sidecar["zip_bytes"],
+            "manifest_sha256": sidecar["manifest_sha256"], "files": receipt["files"]}
+
+
+def build_manifest(version, installer, url, commit="", notes="", now=None,
+                   recognition=None, recognition_url=None):
+    """``recognition``: folder with the uploaded zip and its sidecar, listed
+    with ``recognition_url`` (its share link)."""
     installer = Path(installer)
     manifest = {
         "schema": app_update.SCHEMA, "product": app_update.PRODUCT,
@@ -86,6 +121,13 @@ def build_manifest(version, installer, url, commit="", notes="", now=None):
         "installer": {"url": url, "sha256": sha256_file(installer),
                       "bytes": installer.stat().st_size},
     }
+    if recognition is not None:
+        sidecar = read_recognition(recognition)
+        manifest["recognition"] = {
+            "url": recognition_url, "sha256": sidecar["zip_sha256"],
+            "bytes": sidecar["zip_bytes"],
+            "manifest_sha256": sidecar["manifest_sha256"],
+            "created": sidecar.get("created", "")}
     return app_update.validate_manifest(manifest)
 
 
@@ -97,46 +139,6 @@ def check_newer(current_path, version):
     except (OSError, ValueError, app_update.UpdateError):
         return True, None
     return app_update.is_newer(version, published), published
-
-
-def _safe_member(name):
-    path = PurePosixPath(name)
-    if (not name or "\\" in name or ":" in name or path.is_absolute()
-            or any(part in ("", ".", "..") for part in path.parts)):
-        raise SystemExit(f"unsafe path in recognition zip: {name!r}")
-    return path
-
-
-def embed_recognition(source, app, validate=True):
-    """Check the zip against its sidecar, unpack it to ``app/recognition`` and
-    write the trusted manifest digest to ``app/recognition.sha256``."""
-    source, app = Path(source), Path(app)
-    sidecar = json.loads((source / RECOGNITION_JSON).read_text("utf-8"))
-    archive = source / RECOGNITION_ZIP
-    if sidecar.get("schema") != RECOGNITION_SCHEMA:
-        raise SystemExit("recognition sidecar schema mismatch")
-    if (archive.stat().st_size != sidecar["zip_bytes"]
-            or sha256_file(archive) != sidecar["zip_sha256"]):
-        raise SystemExit("recognition zip does not match its sidecar")
-    target = app / "recognition"
-    if target.exists():
-        raise SystemExit(f"{target} already exists")
-    with zipfile.ZipFile(archive) as bundle:
-        for info in bundle.infolist():
-            path = _safe_member(info.filename)
-            if info.is_dir():
-                continue
-            destination = target.joinpath(*path.parts)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(bundle.read(info))
-    (app / "recognition.sha256").write_text(sidecar["manifest_sha256"] + "\n",
-                                            "utf-8")
-    receipt = None
-    if validate:
-        from poker_engine.desktop.aa_bundle import validate_bundle
-        receipt = validate_bundle(target / "profile.json", sidecar["manifest_sha256"])
-    return {"files": len(list(p for p in target.rglob("*") if p.is_file())),
-            "manifest_sha256": sidecar["manifest_sha256"], "receipt": receipt}
 
 
 def main(argv=None):
@@ -154,13 +156,14 @@ def main(argv=None):
     command.add_argument("--url", required=True)
     command.add_argument("--commit", default="")
     command.add_argument("--notes", default="")
+    command.add_argument("--recognition-dir", type=Path)
+    command.add_argument("--recognition-url")
     command.add_argument("--out", type=Path, required=True)
     command = commands.add_parser("newer")
     command.add_argument("--current", type=Path, required=True)
     command.add_argument("--version", required=True)
-    command = commands.add_parser("recognition")
+    command = commands.add_parser("recognition-check")
     command.add_argument("--source", type=Path, required=True)
-    command.add_argument("--app", type=Path, required=True)
     args = parser.parse_args(argv)
 
     if args.command == "stamp":
@@ -173,8 +176,12 @@ def main(argv=None):
     elif args.command == "config":
         print(write_config(args.manifest_url, args.out))
     elif args.command == "manifest":
+        if (args.recognition_dir is None) != (args.recognition_url is None):
+            parser.error("--recognition-dir and --recognition-url go together")
         manifest = build_manifest(args.version, args.installer, args.url,
-                                  args.commit, args.notes)
+                                  args.commit, args.notes,
+                                  recognition=args.recognition_dir,
+                                  recognition_url=args.recognition_url)
         args.out.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
                             "utf-8")
         print(json.dumps(manifest, ensure_ascii=False))
@@ -184,7 +191,7 @@ def main(argv=None):
                           "newer": newer}))
         return 0 if newer else 1
     else:
-        print(json.dumps(embed_recognition(args.source, args.app)))
+        print(json.dumps(check_recognition(args.source)))
     return 0
 
 

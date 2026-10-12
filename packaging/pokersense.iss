@@ -57,7 +57,6 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [InstallDelete]
 ; A new version's libraries replace the old ones entirely.
 Type: filesandordirs; Name: "{app}\_internal"
-Type: filesandordirs; Name: "{app}\recognition"
 
 [Files]
 Source: "..\dist\PokerSense-AA\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
