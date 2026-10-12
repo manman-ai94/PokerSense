@@ -26,6 +26,13 @@ then says where it starts in the video (``video_seconds``).
 A log measured without ``--advice`` has no solver advice for your heads-up
 turn and river; ``--replay-advice`` then works the advice out again from the
 log with the current code, taking any heads-up solve as done (no TexasSolver).
+
+Every opponent who showed his cards while still in also gets the range the
+advice read for him checked (``tools/aa_range_exclusion.py``): each entry
+of a hand's ``shown_cards`` has ``range_read`` (the action that first threw
+his real hand out of the range, or None), and the summary's
+``range_exclusion`` has the rates (all shown hands, those whose range was
+cut, those that reached the river, by street).
 """
 
 from __future__ import annotations
@@ -41,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from poker_engine.desktop.aa_solver_input import check_hand, hand_facts  # noqa: E402
+from tools.aa_range_exclusion import session_exclusion  # noqa: E402
 from tools.check_aa_action_history import (  # noqa: E402
     skipped_seats, unexplained_rises, unrecorded_folds)
 
@@ -289,7 +297,28 @@ def session_report(logs, *, replay_advice=False):
             ours.append({"log": name, **hand})
         chips(ours)
         hands += ours
-    return {"summary": summarize(hands), "hands": hands}
+    summary = summarize(hands)
+    summary["range_exclusion"] = range_reads(logs, hands)
+    return {"summary": summary, "hands": hands}
+
+
+def range_reads(logs, hands):
+    """Each shown seat's ``range_read`` and the session's exclusion rates."""
+    found = session_exclusion(logs)
+    reads = {}
+    for item in found["hands"]:
+        reads.setdefault((item["log"], item["hand_id"], item["seat"]), {
+            key: item[key] for key in ("street", "narrowed", "out", "out_before_end")})
+    for item in found["skipped_hands"]:
+        reads.setdefault((item["log"], item["hand_id"], item["seat"]),
+                         {"skipped": item["reason"]})
+    for hand in hands:
+        for seat in hand["shown_cards"]:
+            seat["range_read"] = reads.get((hand["log"], hand["hand_id"], seat["seat"]))
+    keep = ("all", "narrowed", "river", "you_in", "by_street", "first")
+    return {"reads": found["reads"], "skipped": found["skipped"],
+            **{view: {key: found[view][key] for key in keep}
+               for view in ("whole_hand", "before_end")}}
 
 
 def chips(hands):
