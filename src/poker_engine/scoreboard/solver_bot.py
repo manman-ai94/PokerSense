@@ -26,7 +26,7 @@ from poker_engine.solver.texassolver import (Spot, TexasSolver, Tree, all_combos
                                              solver_binary, strategy_of)
 
 from .bots import RfiTablePolicy, _Policy, _rng, opponents_in_hand
-from .population import PopulationBot
+from .preflop_reading import reading_model, reading_of
 from .replay import kind_of, public_replay, with_hole
 from .strength import hand_class
 
@@ -68,7 +68,7 @@ class SolverBot(_Policy):
         # (the AA preflop policy expects AA players), else as the 2009 players.
         # A policy wrapped around this one reads opponents the same way.
         self.adjusted = getattr(self.base, "adjusted", False)
-        self.model = PopulationBot(adjusted=self.adjusted)
+        self.model = reading_model(self.adjusted, reading_of(self.base))
         self.solves = dict(STREET_SOLVES if solves is None else solves)
         self.threads = threads
         self.max_flop_hands = MAX_FLOP_HANDS
@@ -274,6 +274,15 @@ def shared_solver(threads):
     return _SOLVERS[threads]
 
 
+def chance(choice, kind):
+    """How often ``choice`` is an action of ``kind``: an action id is or is
+    not; a reading model (``preflop_reading.PopulationReader``) gives
+    {kind: chance}."""
+    if isinstance(choice, dict):
+        return choice.get(kind, 0.0)
+    return float(kind_of(choice) == kind)
+
+
 def kept(weights, decision, decide, both_orders=False):
     """Weights times how often ``decide`` takes the action that was taken.
 
@@ -285,8 +294,8 @@ def kept(weights, decision, decide, both_orders=False):
     for key, weight in weights.items():
         orders = ((key[:2], key[2:]), (key[2:], key[:2])) if both_orders else \
             ((key[:2], key[2:]),)
-        share = sum(kind_of(decide(with_hole(decision.observation, cards)))
-                    == decision.kind for cards in orders) / len(orders)
+        share = sum(chance(decide(with_hole(decision.observation, cards)),
+                           decision.kind) for cards in orders) / len(orders)
         if share:
             result[key] = weight * share
     return result

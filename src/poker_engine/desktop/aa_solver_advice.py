@@ -135,8 +135,8 @@ from poker_engine.scoreboard.multiway_bot import DEFAULTS as MULTIWAY_LINES
 from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params
-from poker_engine.scoreboard.population import PopulationBot
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
+from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
@@ -601,7 +601,8 @@ class AASolverAdvice:
 
     def _range_model(self):
         if self._model is None:
-            self._model = PopulationBot(adjusted=self._preflop_policy().adjusted)
+            policy = self._preflop_policy()
+            self._model = reading_model(policy.adjusted, reading_of(policy))
         return self._model
 
     def _with_reads(self, observation):
