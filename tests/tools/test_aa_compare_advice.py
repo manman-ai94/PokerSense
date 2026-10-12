@@ -88,3 +88,6 @@ def test_hands_are_picked_by_cards_or_id_and_unchanged_ones_left_out(tmp_path):
     main(["--frames", str(frames), "--hero", "AdQd", "--out", str(out)])
     (item,) = json.loads(out.read_text(encoding="utf-8"))
     assert item["log"] == "20261011-rec" and item["you_did"] == "call"
+    # Every recording under a folder.
+    main(["--recordings", str(tmp_path), "--hero", "A♦ Q♦", "--out", str(out)])
+    assert len(json.loads(out.read_text(encoding="utf-8"))) == 1
