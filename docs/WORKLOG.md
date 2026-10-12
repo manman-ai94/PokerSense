@@ -13,8 +13,8 @@
 **2026-10-12 · `feat/windows-installer-updater`（同事用的 Windows 安装包、自动更新和识别资源包下载；草稿，未合并）**
 - 做了什么：Inno Setup 安装包装到用户目录（不要管理员），有桌面和“检查更新”快捷方式；程序每次启动读一个可配置地址的版本清单：识别资源包没有或换了新的就自动下载，有新版程序在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 才传 Google Drive，没有就跳过。
 - 怎么做的：`desktop/app_update.py`（清单、版本比较、分享链接换直链、校验下载、`sync_recognition`）、入口加 `--update-now`/`--self-test`、安装版数据和资源包在 `%LOCALAPPDATA%\PokerSense-AA\data`；新工作流 `windows-release.yml`，资源包由 `tools/pack_aa_recognition.py` 在 Mac 上打包单独上传，发版时核对并写进 `latest.json`，不进安装包。顺带修了 Windows CI 抓到的打包版缺 `pokerkit`、输出接管道时打印中文崩溃。
-- 怎么验证的：新测试（更新器、资源包下载、发版步骤、入口）；Windows CI 上打包、离线冒烟、静默安装、端到端更新（错哈希拒装、新版下载安装并重开）、资源包首次下载/错哈希拒用/下次启动不重下。
-- 还剩什么：主人配云盘和 `RCLONE_CONFIG`、从 Mac 上传资源包后发第一版；Windows 实机的采集卡读牌和录像按钮没验；见 `docs/windows-distribution.md`。
+- 怎么验证的：新测试（更新器、资源包下载、发版步骤、入口）；Windows CI 上打包、离线冒烟、静默安装、端到端更新（错哈希拒装、新版下载安装并重开）、资源包首次下载/错哈希拒用/下次启动不重下。Actions 额度用尽后：Linux+Wine 脚本 `packaging/build_windows_wine.sh` 打出 49MB 安装包，Wine 里冻结版 `--self-test` 通过（记分牌、pokerkit、14 个识别模块）；全量 pytest 6185 通过。
+- 还剩什么：主人配云盘和 `RCLONE_CONFIG`、从 Mac 上传资源包后发第一版；Windows 实机的采集卡读牌和录像按钮没验；Wine 交叉构建需临时降 numpy 1.26（crealf），正式仍以 Windows CI 为准；见 `docs/windows-distribution.md`。
 
 **2026-10-11 · `fix/allin-raise-call-value`（翻前有人已全下时，加注和跟注按主池边池算）**
 - 做了什么：翻前策略 `aa_preflop` 算“加注值多少”时跳过已全下（筹码为 0）的人，以为后面的人一弃牌就能拿整个底池，弱牌面对全下也会再全下（合成局：72o、100bb 面对 20bb 全下，加注算 +9.7bb，改后 −19.8bb，弃牌）；算“跟注值多少”时，短码全下后又有人加注，这个短码两边都不算。现在已全下的人一直留在比牌里。

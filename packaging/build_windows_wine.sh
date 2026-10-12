@@ -121,6 +121,9 @@ pip_install_project() {
   wine_python -m ensurepip --upgrade </dev/null || true
   wine_python -m pip install --disable-pip-version-check -U pip wheel </dev/null
   wine_python -m pip install --disable-pip-version-check -e ".[desktop,perceptual,packaging]" </dev/null
+  # NumPy 2.x pulls ucrtbase.crealf under Wine 9 and breaks PyInstaller/cv2 hooks.
+  log "Wine workaround: pin numpy 1.26.4 for PyInstaller (real Windows CI keeps 2.4.6)"
+  wine_python -m pip install --disable-pip-version-check "numpy==1.26.4" --force-reinstall </dev/null
   echo "$hash" >"$STAMP"
 }
 
