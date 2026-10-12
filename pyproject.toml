@@ -69,3 +69,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "timing: asserts a real wall-clock budget; best of 3 attempts, budgets times POKERSENSE_TIMING_SCALE (tests/timing.py)",
+]

@@ -8,8 +8,9 @@ These tests pin the two behaviours the realtime migration depends on:
 2. Device-level faults (``LiveCaptureError``) are transient and recover with
    backoff; programming/config faults are not retried.
 
-``asyncio.sleep`` is recorded rather than performed, so the pacing assertions
-are about *what the loop asked for* instead of wall-clock timing.
+``asyncio.sleep`` is recorded rather than performed and the loop's clock is a
+stand-in, so the pacing assertions are about *what the loop asked for* instead
+of wall-clock timing.
 """
 
 from __future__ import annotations
@@ -60,16 +61,28 @@ def _frames(count=3):
     )
 
 
+class _Clock:
+    """Stands in for ``live.time``: monotonic seconds that move only when a
+    source pull is charged to them, so recognition's real cost does not count."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self):
+        return self.now
+
+
 class _SlowSource:
-    """Yield synthetic frames, burning ``delay`` seconds per pull.
+    """Yield synthetic frames, costing ``delay`` seconds per pull on ``clock``.
 
     Stands in for a real capture device, whose pull cost is the dominant term
     in the frame period.
     """
 
-    def __init__(self, frames, delay=0.0):
+    def __init__(self, frames, delay=0.0, clock=None):
         self._frames = list(frames)
         self._delay = delay
+        self._clock = clock
         self._index = 0
         self.calls = 0
 
@@ -77,7 +90,9 @@ class _SlowSource:
         import time
 
         self.calls += 1
-        if self._delay:
+        if self._delay and self._clock is not None:
+            self._clock.now += self._delay
+        elif self._delay:
             time.sleep(self._delay)
         if self._index >= len(self._frames):
             return None
@@ -165,50 +180,46 @@ def test_zero_interval_adds_no_artificial_sleep(monkeypatch):
 def test_interval_is_a_minimum_period_not_a_fixed_sleep(monkeypatch):
     """Work already done is credited: sleep is only the remainder."""
     sleeps = _record_sleeps(monkeypatch)
+    clock = _Clock()
+    monkeypatch.setattr(live, "time", clock)
     monkeypatch.setattr(
         live,
         "build_pipeline",
-        lambda *a, **k: _pipeline(_SlowSource(_frames(), delay=0.20)),
+        lambda *a, **k: _pipeline(_SlowSource(_frames(), delay=0.20, clock=clock)),
     )
 
     async def run():
         return await _collect(
-            live.live_analysis_stream(interval_seconds=2.0), limit=2
+            live.live_analysis_stream(interval_seconds=2.0), limit=3
         )
 
     frames = asyncio.run(run())
-    assert len(frames) == 2
+    assert len(frames) == 3
     assert sleeps, "expected pacing sleeps to be recorded"
-    # A step with an explicit 0.20s source delay must leave at most ~1.80s of
-    # a 2.0s minimum period.  The generous period keeps slower CI processing
-    # from legitimately consuming the entire remainder, while a fixed 2.0s
-    # sleep still fails this contract.
-    for delay in sleeps:
-        assert 0 < delay <= 1.81, (
-            f"sleep {delay:.3f}s looks like a fixed period rather than a "
-            "remainder"
-        )
+    # A step whose source pull costs 0.20s leaves exactly the 1.80s remainder
+    # of a 2.0s minimum period; a fixed 2.0s sleep fails this contract.
+    assert sleeps == [pytest.approx(1.80)] * len(sleeps), (
+        f"sleeps {sleeps} look like a fixed period rather than a remainder")
 
 
 def test_interval_still_caps_the_rate_when_steps_are_fast(monkeypatch):
     """A minimum period is still honoured when the step costs nothing."""
     sleeps = _record_sleeps(monkeypatch)
+    monkeypatch.setattr(live, "time", _Clock())
     monkeypatch.setattr(
         live, "build_pipeline", lambda *a, **k: _pipeline(_SlowSource(_frames()))
     )
 
     async def run():
         return await _collect(
-            live.live_analysis_stream(interval_seconds=0.20), limit=2
+            live.live_analysis_stream(interval_seconds=0.20), limit=3
         )
 
     frames = asyncio.run(run())
-    assert len(frames) == 2
+    assert len(frames) == 3
     assert sleeps, "expected the loop to pace itself"
-    # Never more than the requested period, and roughly the period once the
-    # step is cheap relative to it.
-    assert all(delay <= 0.20 + 1e-9 for delay in sleeps)
-    assert any(delay == pytest.approx(0.20, abs=0.06) for delay in sleeps)
+    # A step that costs nothing waits out the whole period, never more.
+    assert sleeps == [pytest.approx(0.20)] * len(sleeps)
 
 
 def test_interval_rejects_negative_or_non_numeric(monkeypatch):

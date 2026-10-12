@@ -10,6 +10,7 @@ from poker_engine.strategy.aa_frozen_policy import canonical_hash
 from poker_engine.strategy.aa_learning_diagnostics import learning_summary, memory_usage
 from poker_engine.strategy.aa_mccfr import ExternalSamplingMCCFR, TrainingBudget
 from poker_engine.strategy import aa_mccfr as mccfr_module
+from tests.timing import Stopwatch, budget, over, timing, within_budget
 from tools import aa_policy_readiness_study as study
 
 
@@ -171,16 +172,51 @@ def test_legacy_checkpoint_without_telemetry_remains_restorable():
     assert restored.visits == {} and restored.update_regrets
 
 
-def test_real_external_timeout_kills_worker_before_it_can_write(tmp_path):
+def timed_out_worker(tmp_path):
+    """Seconds ``run_bounded`` took to kill a worker that sleeps past it."""
     marker = tmp_path / "should-not-exist.txt"
     command = [sys.executable, "-c",
                "import time,pathlib; time.sleep(4); "
                f"pathlib.Path({str(marker)!r}).write_text('late')"]
-    started = time.monotonic()
+    watch = Stopwatch()
     result = study.run_bounded(command, seconds=0.3)
+    elapsed = watch()
     assert result["status"] == "TIMED_OUT_KILLED"
-    assert time.monotonic() - started < 3
     assert not marker.exists()
+    return elapsed
+
+
+def test_real_external_timeout_kills_worker_before_it_can_write(tmp_path):
+    timed_out_worker(tmp_path)
+
+
+@timing
+def test_real_external_timeout_kills_worker_on_time(tmp_path):
+    within_budget(lambda: over("seconds", timed_out_worker(tmp_path), budget(3)))
+
+
+class _Exited:
+    pid = 4242
+
+    def __init__(self, returncode):
+        self.returncode = returncode
+
+    def poll(self):
+        return self.returncode
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX")
+def test_closing_a_group_whose_leader_exited_tolerates_macos_eperm(monkeypatch):
+    # macOS refuses to signal a group whose members have all exited (EPERM,
+    # not ESRCH): 2026-10 CI, the second close after a timeout kill.
+    def refuse(pid, sig):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(study.os, "killpg", refuse)
+    study._ProcessTree(_Exited(-9)).close()
+    # With the leader still running the refusal is real and is not hidden.
+    with pytest.raises(PermissionError):
+        study._ProcessTree(_Exited(None)).close()
 
 
 def test_outer_timeout_kills_descendant_process_too(tmp_path):
