@@ -23,8 +23,8 @@ RULES = AARuleProfileV2.from_dict(json.loads(
 FREE = AARuleProfileV2.from_dict(json.loads(
     (CONFIGS / "aa-scoreboard-rules-v1.json").read_text(encoding="utf-8")))
 
-# Per-deal results (big blinds per hand) of main at 8784e47, before the option
-# existed. Without ``stacks`` the scoreboard must give exactly these.
+# Per-deal results (big blinds per hand) of main at 8784e47 and 46f5b75 (the same),
+# before the option existed. Without ``stacks`` the scoreboard must give exactly these.
 BEFORE_RAKED = [
     [5000000, {"aa_preflop": -0.1875, "always_call": -63.898438}],
     [5000001, {"aa_preflop": 8.228101, "always_call": -26.341471}],
