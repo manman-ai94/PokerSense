@@ -177,8 +177,13 @@ jobs:
           $target = Join-Path $languages "ChineseSimplified.isl"
           if (-not (Test-Path $target)) {
             try {
+              # Linked from jrsoftware.org/files/istrans/; Inno reads it as UTF-8 with a BOM.
               Invoke-WebRequest -UseBasicParsing -OutFile $target `
-                "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl"
+                "https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Files/Languages/ChineseSimplified.isl"
+              $bytes = [IO.File]::ReadAllBytes($target)
+              if (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)) {
+                [IO.File]::WriteAllBytes($target, [byte[]](0xEF, 0xBB, 0xBF) + $bytes)
+              }
             } catch { "::warning::拿不到中文界面文件，安装器用英文：$_" }
           }
           Get-ChildItem $languages -Name
@@ -213,7 +218,7 @@ jobs:
           $desktop = [Environment]::GetFolderPath("Desktop")
           if (-not (Test-Path (Join-Path $desktop "PokerSense AA.lnk"))) { throw "没有桌面快捷方式" }
           $menu = Join-Path ([Environment]::GetFolderPath("Programs")) "PokerSense AA 检查更新.lnk"
-          if (-not (Test-Path $menu)) { throw "开始菜单里没有“检查更新”" }
+          if (-not (Test-Path $menu)) { throw "开始菜单里没有 PokerSense AA 检查更新" }
           New-Item -ItemType Directory -Force dist\screenshots | Out-Null
           python packaging/smoke_update.py --exe $exe --installer dist\PokerSense-AA-Setup.exe --screenshot dist\screenshots\window-update-banner.png --output dist\update-smoke.json
           if ($LASTEXITCODE -ne 0) { throw "update smoke failed" }
@@ -251,4 +256,4 @@ jobs:
           rclone copyto dist\latest.json "$env:REMOTE_DIR/latest.json"
           if ($LASTEXITCODE -ne 0) { throw "上传失败" }
           "### 已发布 PokerSense AA $version" >> $env:GITHUB_STEP_SUMMARY
-          "员工的程序下次打开（或点“检查更新”）就会看到新版。" >> $env:GITHUB_STEP_SUMMARY
+          "员工的程序下次打开（或点开始菜单的 PokerSense AA 检查更新）就会看到新版。" >> $env:GITHUB_STEP_SUMMARY
