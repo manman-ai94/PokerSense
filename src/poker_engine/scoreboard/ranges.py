@@ -13,8 +13,13 @@ Reading an action asks the model about every hand, so a hand with many
 actions (a bomb pot, where everyone sees the flop) took seconds per decision
 when every decision read the whole hand again. The range each action leaves
 its player with depends only on the public hand up to it, so it is kept
-(``CACHE_SIZE`` actions) and a later decision of the same hand reads only the
-new actions; hands that the board dealt since then are dropped.
+(``CACHE_SIZE`` actions, for every hand of the process) and a later decision
+reads only the new actions. Each action is read from the hands the board of
+that moment leaves; the cards dealt since are taken out only at the end.
+Until 2026-10-11 the hands were cut by the board of the decision that first
+read the action, and another hand with the same actions but other cards got
+that range (476 of 776 postflop readings differed from reading afresh), so
+results depended on which hands a process had played before.
 
 The model's players are the AA population. With reads on the opponents
 (``observation["reads"]``, see ``reads``) each seat is read as the player
@@ -89,6 +94,11 @@ def read_floors(observation, model, seats):
             for seat in seats}
 
 
+def _without(weights, cards):
+    return {combo: weight for combo, weight in weights.items()
+            if combo[:2] not in cards and combo[2:] not in cards}
+
+
 def opponent_ranges(observation, model, *, cache=None, trace=None):
     """{seat: {combo key: weight}} for each opponent still in the hand.
 
@@ -99,11 +109,10 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
     """
     kept_ranges = _KEPT if cache is None else cache
     me = observation["observing_seat"]
-    board = tuple(observation["board"])
     seats = [seat for seat in observation["occupied_seats"]
              if seat not in observation["folded"] and seat != me]
-    ranges = {seat: {key: 1.0 for key in all_combos(board)} for seat in seats}
-    dealt = set(board)
+    every = {key: 1.0 for key in all_combos()}
+    ranges = dict.fromkeys(seats, every)
     reads = read_factors(observation, model, seats)
     floors = read_floors(observation, model, seats)
     table = (type(model).__name__, getattr(model, "adjusted", None),
@@ -114,32 +123,32 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
         if decision.seat not in ranges:
             continue
         read = reads[decision.seat]
-        key = (table, read, floors[decision.seat], tuple(decision.observation["board"]),
+        board = tuple(decision.observation["board"])
+        key = (table, read, floors[decision.seat], board,
                tuple(row["id"] for row in observation["public_history"][:index + 1]))
-        if key in kept_ranges:
-            ranges[decision.seat] = {
-                combo: weight for combo, weight in kept_ranges[key].items()
-                if combo[:2] not in dealt and combo[2:] not in dealt}
-            if trace is not None:
-                trace(decision, ranges[decision.seat])
-            continue
-        before = ranges[decision.seat]
-        if read != (1.0, 1.0):
-            decision = replace(decision, observation={
-                **decision.observation, "read_factors": read})
-        after = kept(before, decision, lambda obs: model.decide(
-            obs, _rng(MODEL_SALT, obs))) or before
-        kept_share = floors[decision.seat] if decision.street != "preflop" else 0.0
-        if kept_share:
-            after = {combo: max(after.get(combo, 0.0), kept_share * weight)
-                     for combo, weight in before.items()}
+        after = kept_ranges.get(key)
+        if after is None:
+            # Only the board at the action, which the key holds, may cut the
+            # range kept for it: the same action line comes up in other hands
+            # and on later streets, with other cards dealt since.
+            before = _without(ranges[decision.seat], board)
+            if read != (1.0, 1.0):
+                decision = replace(decision, observation={
+                    **decision.observation, "read_factors": read})
+            after = kept(before, decision, lambda obs: model.decide(
+                obs, _rng(MODEL_SALT, obs))) or before
+            kept_share = floors[decision.seat] if decision.street != "preflop" else 0.0
+            if kept_share:
+                after = {combo: max(after.get(combo, 0.0), kept_share * weight)
+                         for combo, weight in before.items()}
+            if len(kept_ranges) >= CACHE_SIZE:
+                kept_ranges.clear()
+            kept_ranges[key] = after
         ranges[decision.seat] = after
-        if len(kept_ranges) >= CACHE_SIZE:
-            kept_ranges.clear()
-        kept_ranges[key] = ranges[decision.seat]
         if trace is not None:
             trace(decision, after)
-    return ranges
+    dealt = set(observation["board"])
+    return {seat: _without(weights, dealt) for seat, weights in ranges.items()}
 
 
 class _Range:
