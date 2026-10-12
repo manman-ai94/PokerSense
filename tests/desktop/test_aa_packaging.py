@@ -91,9 +91,9 @@ def test_versions_and_canonical_windows_installer_agree():
     assert project["project"]["version"] == __version__
     dispatch = (ROOT / "packaging/pokersense.spec").read_text("utf-8")
     assert "'aa_live.spec' if sys.platform == 'win32'" in dispatch
-    installer = (ROOT / "packaging/pokersense.iss").read_text("utf-8")
+    installer = (ROOT / "packaging/pokersense.iss").read_text("utf-8-sig")
     assert '#define MyAppExeName "PokerSense-AA.exe"' in installer
-    assert '#define MyAppVersion "0.2.0-dev1"' in installer
+    assert '  #define MyAppVersion "' + __version__ + '"' in installer
     assert "AllowNoIcons=yes" in installer
     assert 'Source: "..\\dist\\PokerSense-AA\\*"' in installer
     windows = (ROOT / "packaging/windows-version.txt").read_text("utf-8")
@@ -212,3 +212,76 @@ def test_a_second_launch_takes_the_port_of_the_first(tmp_path):
                 process.wait(timeout=20)
             except subprocess.TimeoutExpired:
                 process.kill()
+
+
+def test_installed_builds_keep_one_data_folder_across_updates(monkeypatch, tmp_path):
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert entry.default_state() == tmp_path / "PokerSense-AA" / __version__
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert entry.default_state() == tmp_path / "PokerSense-AA" / "data"
+
+
+def test_an_installed_recognition_bundle_turns_on_the_capture_card(
+        tmp_path, monkeypatch, capsys):
+    root = tmp_path / "install"
+    (root / "recognition").mkdir(parents=True)
+    (root / "recognition" / "profile.json").write_text("{}", "utf-8")
+    (root / "recognition.sha256").write_text("a" * 64 + "\n", "utf-8")
+    monkeypatch.setattr(entry.app_update, "install_root", lambda: root)
+    monkeypatch.delenv(entry.DATA_ROOT_ENV, raising=False)
+    state = tmp_path / "state"
+    assert entry.main(["--self-check", "--state", str(state)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["capture_enabled"] is True
+    assert report["recognition_bundle"] == "INSTALLED"
+    assert report["external_model"] == "CONFIGURED_NOT_VALIDATED"
+    # Recordings go to the user's data folder, not the old G: drive.
+    assert entry.os.environ[entry.DATA_ROOT_ENV] == str(state)
+    monkeypatch.delenv(entry.DATA_ROOT_ENV)
+    assert entry.main(["--self-check", "--no-recognition", "--state", str(state)]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["capture_enabled"] is False
+    assert report["recognition_bundle"] == "NOT_INSTALLED"
+    monkeypatch.delenv(entry.DATA_ROOT_ENV)
+
+
+def test_the_window_reports_and_refuses_updates_when_running_from_source(tmp_path):
+    import hashlib
+    data = b"MZ" * 100
+    (tmp_path / "setup.exe").write_bytes(data)
+    (tmp_path / "latest.json").write_text(json.dumps({
+        "schema": "pokersense-update-v1", "product": "PokerSense-AA",
+        "version": "99.0.0", "installer": {
+            "url": str(tmp_path / "setup.exe"),
+            "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}}), "utf-8")
+    args = entry.parser().parse_args(["--state", str(tmp_path / "state"),
+                                      "--update-url", str(tmp_path / "latest.json")])
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/update").json()["status"] == "NOT_CHECKED"
+        assert client.get("/update_banner.js").status_code == 200
+        assert client.post("/api/update/check", json={}).status_code == 403
+        state = client.post("/api/update/check", json={},
+                            headers={"X-AA-Live": "1"}).json()
+        assert (state["status"], state["latest"], state["can_install"]) == (
+            "AVAILABLE", "99.0.0", False)
+        response = client.post("/api/update/install", json={},
+                               headers={"X-AA-Live": "1"})
+        assert response.status_code == 409
+    args = entry.parser().parse_args(["--state", str(tmp_path / "plain")])
+    with TestClient(entry.create_app(args)) as client:
+        assert client.get("/api/update").json()["status"] == "UNCONFIGURED"
+
+
+def test_the_check_for_updates_shortcut_without_an_address(tmp_path, capsys):
+    args = entry.parser().parse_args(["--update-now", "--state", str(tmp_path)])
+    assert entry.console_update(args, keep_open=False) == 3
+    assert "没有配置更新地址" in capsys.readouterr().out
+
+
+def test_the_self_test_runs_the_core_calculations_and_recognition_imports(capsys):
+    assert entry.main(["--self-test"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["result"] == "SELF_TEST_PASS" and report["missing_modules"] == []
+    assert report["scoreboard_hands"] > 0 and report["rough_advice"] in (
+        "check", "call", "fold", "bet", "raise")

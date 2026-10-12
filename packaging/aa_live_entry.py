@@ -46,13 +46,15 @@ def configure_source_path():
 
 configure_source_path()
 from poker_engine import __version__  # noqa: E402
+from poker_engine.data_paths import DATA_ROOT_ENV  # noqa: E402
+from poker_engine.desktop import app_update  # noqa: E402
 
 
 REQUIRED_RESOURCES = (
     "ui/aa-live/index.html", "ui/aa-live/app.js", "ui/aa-live/style.css",
     "ui/aa-live/hand_input.js", "ui/aa-live/analysis_records.js",
     "ui/aa-live/signal.html", "ui/aa-live/signal.js", "ui/aa-live/signal_view.js",
-    "ui/aa-live/signal.css",
+    "ui/aa-live/signal.css", "ui/aa-live/update_banner.js",
     "configs/strategy/examples/terminal-multiway-river-manual.json",
     "configs/strategy/examples/threeway-river-response-manual.json",
 )
@@ -64,10 +66,44 @@ REQUIRED_RESOURCES = (
 IDLE_STOP_SECONDS = 180
 
 
+# The recognition bundle a release build puts next to the program, and the
+# trusted digest of its manifest, kept outside the bundle (aa_bundle).
+RECOGNITION_DIR = "recognition"
+RECOGNITION_DIGEST = "recognition.sha256"
+# Imported by the frozen self-test: the reader's lazily imported modules
+# (aa_reader) must be inside the package for live recognition to start.
+RECOGNITION_MODULES = (
+    "poker_engine.desktop.aa_reader", "poker_engine.desktop.aa_live_context",
+    "poker_engine.desktop.aa_live_context_v3",
+    "poker_engine.desktop.aa_critical_perception",
+    "tools.aa8_candidate_v2", "tools.aa8_cards_v2", "tools.aa8_action_transfer",
+    "tools.aa8_action_reader", "tools.aa8_special_modes",
+    "tools.aa8_glyph_transitions_v2", "tools.aa8_glyph_supplement_v3",
+    "tools.aa8_unmarked_money", "tools.aa_data_separation",
+    "tools.wpk_video_dataset",
+)
+
+
 def default_state():
+    """Installed builds keep one data folder across updates; a source
+    checkout keeps one per version."""
     base = os.environ.get("LOCALAPPDATA")
-    return (Path(base) if base else Path.home() / ".local" / "share") / (
-        "PokerSense-AA") / __version__
+    root = (Path(base) if base else Path.home() / ".local" / "share") / (
+        "PokerSense-AA")
+    return root / ("data" if getattr(sys, "frozen", False) else __version__)
+
+
+def recognition_bundle(root):
+    """(profile.json, trusted manifest digest) of the bundle installed next to
+    the program, or None."""
+    if root is None:
+        return None
+    profile = Path(root) / RECOGNITION_DIR / "profile.json"
+    try:
+        digest = (Path(root) / RECOGNITION_DIGEST).read_text("utf-8").strip()
+    except OSError:
+        return None
+    return (profile, digest) if profile.is_file() and digest else None
 
 
 def parser():
@@ -106,6 +142,17 @@ def parser():
     result.add_argument("--open-browser", action="store_true",
                         help="Compatibility flag; browser opens by default")
     result.add_argument("--ready-file", type=Path)
+    result.add_argument("--update-url",
+                        help="Version manifest address (overrides update-config.json)")
+    result.add_argument("--update-now", action="store_true",
+                        help="Check, download, verify and install an update, then exit")
+    result.add_argument("--no-update-check", action="store_true",
+                        help="Do not check for updates at startup")
+    result.add_argument("--no-recognition", action="store_true",
+                        help="Ignore a recognition bundle installed with the program")
+    result.add_argument("--self-test", action="store_true",
+                        help="Run the core calculations and recognition imports; "
+                             "no server")
     return result
 
 
@@ -123,10 +170,47 @@ def package_report(args):
             "NOT_CONFIGURED_OFFLINE_AVAILABLE"),
         "strategy_eligible": False, "real_hand_acceptance": "PENDING",
         "empirical_strategy": "NOT_ASSESSED",
+        "recognition_bundle": "INSTALLED" if args.bundle_sha256 else "NOT_INSTALLED",
+        "update_configured": bool(app_update.configured_url(args.update_url)),
     }
 
 
+def self_test():
+    """The calculations the window gives advice with, and the recognition
+    code, run inside this (possibly frozen) program."""
+    import importlib
+    from poker_engine.desktop.aa_solver_advice import rough_advice
+    from poker_engine.desktop.aa_stakes import RULES_PATH
+    from poker_engine.scoreboard.runner import run_scoreboard
+    from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
+
+    rules = AARuleProfileV2.from_dict(json.loads(RULES_PATH.read_text("utf-8")))
+    board = run_scoreboard(rules, ["aa_preflop"], deals=2, pool=("aa_population",))
+    fields = {"board": ["Ah", "Kd", "7c", "2s", None],
+              "participants": {"2": "active", "3": "folded", "4": "active"},
+              "pot": "35", "street_wagers": {"2": "10"},
+              "hero_controls": {"visible": True, "button": "call",
+                                "call_amount": "10"}, "stacks": {"4": "200"}}
+    rough = rough_advice(fields, ["Qs", "Qh"], "turn")
+    if board["hands_per_strategy"] <= 0 or rough is None:
+        raise RuntimeError("core calculations returned nothing")
+    missing = []
+    for name in RECOGNITION_MODULES:
+        try:
+            importlib.import_module(name)
+        except ImportError as error:
+            missing.append(f"{name}: {error}")
+    return {"product": "PokerSense-AA", "version": __version__,
+            "scoreboard_hands": board["hands_per_strategy"],
+            "rough_advice": rough["advice"][0]["action"],
+            "rough_equity": rough["range_equity"]["value"],
+            "recognition_modules": len(RECOGNITION_MODULES) - len(missing),
+            "missing_modules": missing,
+            "result": "SELF_TEST_PASS" if not missing else "SELF_TEST_FAIL"}
+
+
 def create_app(args):
+    from fastapi import HTTPException
     from poker_engine.desktop.aa_server import create_app as aa_app, video_options
 
     state = args.state.resolve()
@@ -146,7 +230,51 @@ def create_app(args):
     def build_identity():
         return package_report(args)
 
+    service = app.state.aa_session
+
+    def exit_soon():
+        def finish():
+            time.sleep(1.0)
+            try:
+                service.stop()          # finishes a recording first
+            finally:
+                os._exit(0)
+        threading.Thread(target=finish, daemon=True).start()
+
+    updater = app_update.Updater(
+        app_update.configured_url(args.update_url), __version__,
+        state / "updates", exit_soon=exit_soon)
+    app.state.updater = updater
+
+    @app.get("/api/update")
+    def update_status():
+        return updater.snapshot()
+
+    @app.post("/api/update/check")
+    def update_check():
+        return updater.refresh()
+
+    @app.post("/api/update/install")
+    def update_install():
+        try:
+            return updater.install()
+        except app_update.UpdateError as error:
+            raise HTTPException(409, str(error)) from error
+
     return app
+
+
+def announce_update(updater):
+    """One line on the console when the startup check finds a new version."""
+    def run():
+        result = updater.refresh()
+        if result["status"] == "AVAILABLE":
+            print(f"[更新] 有新版 {result['latest']}（现在 {result['current']}）："
+                  "在窗口右下角点“立即更新”，或在开始菜单里点“检查更新”。",
+                  flush=True)
+        elif result["status"] == "ERROR":
+            print(f"[更新] 没查到新版：{result['error']}", flush=True)
+    threading.Thread(target=run, daemon=True, name="pokersense-update-check").start()
 
 
 def stop_source(port):
@@ -233,6 +361,8 @@ def serve(args):
     import uvicorn
 
     app = create_app(args)
+    if not args.no_update_check:
+        announce_update(app.state.updater)
     closed = take_over(args.port) if args.port else []
     with open_listener(args.port, wait=40 if closed else 0) as listener:
         port = listener.getsockname()[1]
@@ -255,7 +385,9 @@ def serve(args):
         if args.ready_file:
             args.ready_file.write_text(json.dumps(ready), encoding="utf-8")
         print(json.dumps(ready, ensure_ascii=True), flush=True)
-        print("AA offline preview. Close this console to stop. "
+        print("PokerSense AA 已打开。关掉这个黑色窗口就是退出程序。"
+              if args.bundle_sha256 else
+              "AA offline preview. Close this console to stop. "
               "Private recognition models and live strategy are not included.",
               flush=True)
         if not args.no_browser:
@@ -269,11 +401,43 @@ def serve(args):
     return 0
 
 
+def console_update(args, *, keep_open=None):
+    """The Start-menu "check for updates" shortcut."""
+    code, started = app_update.run_console_update(
+        app_update.configured_url(args.update_url), __version__,
+        args.state / "updates", out=lambda line: print(line, flush=True))
+    if keep_open is None:
+        keep_open = sys.stdin is not None and sys.stdin.isatty()
+    if started:
+        time.sleep(2)
+    elif keep_open:
+        try:
+            input("按回车键关闭这个窗口……")
+        except EOFError:
+            pass
+    return code
+
+
 def main(argv=None):
     cli = parser()
     args = cli.parse_args(argv)
     if not 0 <= args.port <= 65535:
         cli.error("--port must be between 0 and 65535")
+    root = app_update.install_root()
+    if args.update_now:
+        return console_update(args)
+    if args.self_test:
+        report = self_test()
+        print(json.dumps(report, ensure_ascii=True, indent=2))
+        return 0 if report["result"] == "SELF_TEST_PASS" else 1
+    bundle = None if args.no_recognition or args.profile else recognition_bundle(root)
+    if bundle is not None:
+        args.profile, args.bundle_sha256 = bundle
+        args.allow_capture = True
+    if root is not None and not os.environ.get(DATA_ROOT_ENV):
+        # Recordings and other private data stay in the user's data folder
+        # (the source default on Windows is the old G: drive).
+        os.environ[DATA_ROOT_ENV] = str(args.state)
     if args.allow_capture and args.profile is None:
         cli.error("--allow-capture requires an explicit external --profile")
     report = package_report(args)

@@ -184,6 +184,11 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     def signal_style():
         return FileResponse(ui_root() / "signal.css", media_type="text/css")
 
+    @app.get("/update_banner.js")
+    def update_banner_script():
+        return FileResponse(ui_root() / "update_banner.js",
+                            media_type="text/javascript")
+
     @app.get("/classic")
     def index():
         return FileResponse(ui_root() / "index.html")
