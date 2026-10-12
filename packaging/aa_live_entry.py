@@ -418,7 +418,17 @@ def console_update(args, *, keep_open=None):
     return code
 
 
+def utf8_output(streams=None):
+    """Chinese messages must not crash the program when its output goes to a
+    pipe or file: Windows then encodes with the ANSI code page (cp1252)."""
+    for stream in streams if streams is not None else (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv=None):
+    if os.name == "nt":
+        utf8_output()
     cli = parser()
     args = cli.parse_args(argv)
     if not 0 <= args.port <= 65535:

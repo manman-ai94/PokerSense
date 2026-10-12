@@ -285,3 +285,14 @@ def test_the_self_test_runs_the_core_calculations_and_recognition_imports(capsys
     assert report["result"] == "SELF_TEST_PASS" and report["missing_modules"] == []
     assert report["scoreboard_hands"] > 0 and report["rough_advice"] in (
         "check", "call", "fold", "bet", "raise")
+
+
+def test_chinese_messages_survive_output_to_a_pipe():
+    import io
+    raw = io.BytesIO()
+    stream = io.TextIOWrapper(raw, encoding="cp1252")
+    with pytest.raises(UnicodeEncodeError):
+        print("[更新] 已经是最新版", file=stream, flush=True)
+    entry.utf8_output([stream, None])
+    print("[更新] 已经是最新版", file=stream, flush=True)
+    assert "[更新] 已经是最新版".encode("utf-8") in raw.getvalue()
