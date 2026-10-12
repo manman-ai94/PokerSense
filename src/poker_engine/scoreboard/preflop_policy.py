@@ -17,6 +17,10 @@ shares (``aa_population``: far looser than the 2009 games), ``aa_preflop_phh``
 the 2009 players' (``population``).
 The policy's own hand is compared with those ranges through a heads-up
 equity table between the 169 hand classes (``preflop_equity_v1.json``).
+Ranges are read with slow play and bluffs (``preflop_reading``): a call
+keeps some of the hands that would have raised, and a raise after calling
+holds them first, so a limp-raise is read as mostly big hands, not as the
+top of the limping range. ``slowplay=0:bluff=0`` reads as the model plays.
 
 The values (all relative to folding now, whose value is 0):
 
@@ -74,6 +78,7 @@ from poker_engine.core.enums import Position
 
 from .bots import _Policy, position, raise_toward, raises_this_street
 from .population import NAMES, PopulationBot, actions, preflop_shares, read_shares
+from .preflop_reading import BLUFF, SLOWPLAY, decision_parts, seat_range, split
 from .reads import MODEL, factors
 from .spots import preflop_spot
 from .strength import class_combos, hand_class, preflop_table
@@ -95,6 +100,8 @@ class PreflopParams:
     raise_size: float = 1.0     # re-raises
     jam_share: float = 0.4      # raise all in when a raise would put in this
     #                             share of the stack anyway
+    slowplay: float = SLOWPLAY  # how ranges are read (``preflop_reading``);
+    bluff: float = BLUFF        # both 0: as the population model plays
 
 
 class EquityTable:
@@ -141,6 +148,19 @@ class EquityTable:
         w1, v1 = self._cumulative(i, high)
         return (v1 - v0) / (w1 - w0) if w1 > w0 else 0.5
 
+    def versus_range(self, name, hands):
+        """Equity against a ``preflop_reading.Range`` (weighted bands)."""
+        if len(hands.parts) == 1:
+            return self.versus(name, *hands.parts[0][:2])
+        i = self.index[name]
+        weight = value = 0.0
+        for low, high, part in hands.parts:
+            w0, v0 = self._cumulative(i, low)
+            w1, v1 = self._cumulative(i, high)
+            weight += part * (w1 - w0)
+            value += part * (v1 - v0)
+        return value / weight if weight > 0 else 0.5
+
 
 @lru_cache(maxsize=1)
 def equity_table():
@@ -174,26 +194,15 @@ def stats_name(observation, seat):
     return NAMES[seat_position]
 
 
-def band(history, seat, name, adjusted=True, read=(1.0, 1.0)):
-    """The band of hand percentiles ``seat``'s preflop actions leave it with.
+def band(history, seat, name, adjusted=True, read=(1.0, 1.0),
+         reading=(SLOWPLAY, BLUFF)):
+    """The range (``preflop_reading.Range``) ``seat``'s preflop actions leave
+    it with.
 
     ``read``: the seat's (raise, call) factors from ``reads.factors``, for
-    its first decision.
+    its first decision; ``reading``: (slow play, bluff) of the reading.
     """
-    low, high = 0.0, 1.0
-    for index, (player, kind) in enumerate(history):
-        if player != seat:
-            continue
-        raise_share, call_share = read_shares(*preflop_shares(
-            name, preflop_spot(history[:index], seat), adjusted), read)
-        read = (1.0, 1.0)
-        width = high - low
-        if kind == "r":
-            high = low + raise_share * width
-        elif kind == "c":
-            low, high = (low + raise_share * width,
-                         low + (raise_share + call_share) * width)
-    return low, high
+    return seat_range(history, seat, name, adjusted, read, reading)
 
 
 def situation(observation):
@@ -308,6 +317,7 @@ class Table:
         reads = observation.get("reads") or {}
         self.reads = {seat: factors(reads.get(str(seat)), model)
                       for seat in observation["occupied_seats"]}
+        self.reading = (params.slowplay, params.bluff)
 
     # -- pieces ---------------------------------------------------------------
 
@@ -323,10 +333,15 @@ class Table:
 
     def band(self, seat):
         return band(self.history, seat, self.name(seat), self.adjusted,
-                    self.reads[seat])
+                    self.reads[seat], self.reading)
 
-    def equity(self, low, high):
-        return self.equities.versus(self.hand, low, high)
+    def parts(self, seat, history):
+        """{kind: Range} of how ``seat`` plays its decision after ``history``."""
+        return decision_parts(history, seat, self.name(seat), self.adjusted,
+                              self.reads[seat], self.reading)
+
+    def equity(self, hands):
+        return self.equities.versus_range(self.hand, hands)
 
     def realize(self, opponents, all_in=False):
         if all_in:
@@ -419,12 +434,9 @@ class Table:
             raise_share, call_share, _ = self.shares(seat, after)
             clear *= 1 - raise_share
             if call_share > MIN_CHANCE and raise_share < 1:
-                low, high = self.band(seat)
-                width = high - low
                 chips = self.joins(seat, self.top)
                 chances.append((seat, call_share / (1 - raise_share),
-                                (low + raise_share * width,
-                                 low + (raise_share + call_share) * width), chips))
+                                self.parts(seat, after)["c"], chips))
         called = self.field(fixed, chances, price)
         return clear * called - (1 - clear) * price
 
@@ -454,18 +466,15 @@ class Table:
             if seat in stuck:
                 continue
             raise_share, call_share, _ = self.shares(seat, after)
-            low, high = self.band(seat)
-            width = high - low
             if all_in:      # nobody re-raises an all in: both parts call
                 raise_share, call_share = 0.0, raise_share + call_share
-                cut = (low, low + call_share * width)
+                parts = split(self.band(seat), 0.0, call_share)
             else:
-                cut = (low + raise_share * width,
-                       low + (raise_share + call_share) * width)
+                parts = self.parts(seat, after)
+            cut = parts["c"]
             no_raise *= 1 - raise_share
             if raise_share > 0:
-                reraises.append((raise_share, seat,
-                                 (low, low + raise_share * width)))
+                reraises.append((raise_share, seat, parts["r"]))
             if call_share > MIN_CHANCE and raise_share < 1:
                 chips = self.joins(seat, target)
                 chances.append((seat, call_share / (1 - raise_share), cut, chips))
@@ -482,17 +491,17 @@ class Table:
     def field(self, fixed, chances, cost, alone=0.0):
         """Expected value of putting in ``cost`` more chips this round.
 
-        The players in ``fixed`` ({seat: band}) are in the pot with what they
-        have bet; each of ``chances`` ((seat, chance, band, chips)) joins it
+        The players in ``fixed`` ({seat: Range}) are in the pot with what they
+        have bet; each of ``chances`` ((seat, chance, Range, chips)) joins it
         with its chance, independently, adding its chips. Every combination
         of who joins is counted, with the pots split as in ``pots``;
         ``alone`` is the value if nobody is in.
         """
         odds = {}
         for seat, cut in fixed.items():
-            odds[seat] = _odds(self.equity(*cut))
+            odds[seat] = _odds(self.equity(cut))
         for seat, _, cut, _ in chances:
-            odds[seat] = _odds(self.equity(*cut))
+            odds[seat] = _odds(self.equity(cut))
         mine = self.bets[self.me] + cost
         jammed = cost >= self.stacks[self.me]
         total = 0.0
@@ -521,7 +530,7 @@ class Table:
     def reraised(self, seat, target, cut, stuck=None):
         """Value when ``seat`` re-raises: fold, or call if that is worth more.
 
-        ``stuck`` ({seat: band}): players already all in, in the pot too."""
+        ``stuck`` ({seat: Range}): players already all in, in the pot too."""
         stuck = stuck or {}
         mine = self.bets[self.me]
         pot = self.pot + (target - mine) + (target - self.bets[seat])
@@ -530,8 +539,8 @@ class Table:
         again = min(cap, target + pot)            # a pot-size re-raise
         levels = {other: self.bets[other] for other in stuck}
         levels[seat] = again
-        odds = {other: _odds(self.equity(*band)) for other, band in stuck.items()}
-        odds[seat] = _odds(self.equity(*cut))
+        odds = {other: _odds(self.equity(hands)) for other, hands in stuck.items()}
+        odds[seat] = _odds(self.equity(cut))
         realize = self.realize(list(levels), again >= cap)
         calling = self.showdown(again, levels, odds, realize) - (again - mine)
         return max(-(target - mine), calling)

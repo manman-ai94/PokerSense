@@ -41,7 +41,7 @@ from __future__ import annotations
 from collections import Counter
 
 from .bots import _Policy, _rng, opponents_in_hand, raise_toward
-from .population import PopulationBot
+from .preflop_reading import reading_model, reading_of
 from .ranges import opponent_ranges, ranges_equity
 
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
@@ -57,7 +57,7 @@ class RangeMultiwayBot(_Policy):
         self.base, self.name = base, name
         self.params = {**DEFAULTS, **params}
         self.adjusted = getattr(base, "adjusted", False)
-        self.model = PopulationBot(adjusted=self.adjusted)
+        self.model = reading_model(self.adjusted, reading_of(base))
         self.counts = Counter()
 
     def for_game(self, salt):
