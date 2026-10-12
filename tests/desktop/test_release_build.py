@@ -171,7 +171,11 @@ def test_releases_come_only_from_main_and_uploads_need_the_secret():
     assert "git merge-base --is-ancestor $env:GITHUB_SHA origin/main" in workflow
     assert '$env:REF -ne "refs/heads/main"' in workflow
     assert "secrets.RCLONE_CONFIG" in workflow
-    assert workflow.count("if: steps.mode.outputs.upload == 'true'") >= 4
+    assert "jobs:\n  windows:" in workflow or "  windows:" in workflow
+    assert "  release:" in workflow
+    assert "github.event_name != 'pull_request'" in workflow
+    assert "needs.windows.outputs.upload == 'true'" in workflow
+    assert "secrets.RCLONE_CONFIG" not in workflow.split("  release:")[0].split("jobs:")[1]
     # The recognition bundle is a separate upload, listed in latest.json.
     assert "recognition-check" in workflow and "--recognition-url" in workflow
     assert "release_build.py recognition --" not in workflow
