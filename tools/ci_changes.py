@@ -1,5 +1,9 @@
 """Does a change need the test jobs? CI skips them when only prose changed.
 
+Same intent as ``paths-ignore`` on doc-only commits, but implemented as a
+hygiene step so required checks still complete (a workflow skipped entirely by
+``paths-ignore`` leaves branch protection waiting forever).
+
 Prose is a Markdown file at the top level or under ``docs/``, except the
 Markdown files the tests read (``TEST_READ``). Anything else, a change that
 cannot be worked out (no base commit, a base not fetched) or an explicit run

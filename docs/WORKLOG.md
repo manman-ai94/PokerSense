@@ -10,11 +10,11 @@
 
 ## 记录
 
-**2026-10-12 · `fix/flaky-timing-tests`（按时间卡的偶发失败测试，草稿未合并）**
-- 做了什么：CI 上随机挂的 8 处计时测试（本地求解器协议、单人策略筛查的截止、粗略建议那一帧、实时循环节奏、录像回放首帧、研究页 JS、分析取消、策略进程截止）和 macOS 上 readiness 工具 kill 进程组的竞态。
-- 怎么做的：正确性和计时分开；能注入时钟就注入（实时循环、录像回放、粗略建议的等待）；真正的速度要求留成 `timing` 标记的测试，3 次里有一次达标即可，上限可用 `POKERSENSE_TIMING_SCALE` 放大；macOS 对组长已退出的进程组回 EPERM 时当作已结束。
-- 怎么验证的：用后台线程占住 GIL 模拟卡顿，修前复现出和 CI 一样的失败，修后相关 212 个测试在持续/间歇卡顿下都通过；CI 分钟数用完，没在 CI 上重跑。
-- 还剩什么：xdist 加 CPU 压力的重复跑、全量测试、CI 瘦身（见 PR 交接说明）。
+**2026-10-12 · `fix/flaky-timing-tests`（计时测试 + CI 瘦身，草稿未合并）**
+- 做了什么：CI 随机挂的计时测试和 readiness 进程组竞态；CI 工作流瘦身（macOS 仅正式 PR/推 main/手动、ubuntu-slim、纯文档跳过测试 job、concurrency 已有）。
+- 怎么做的：测试侧见上条；`tools/ci_changes.py` 判断纯文档则 `code=false` 跳过 test job（不用顶层 paths-ignore，避免必需检查 Pending）；拆成 `test (windows-latest)` / `test (macos-latest)`。
+- 怎么验证的：`tools/run_timing_stress.sh`（xdist -n4 + CPU 占满）3 轮全过 + timing 3 轮；全量 pytest 6134 通过；CI 分钟用完未跑。
+- 还剩什么：等 Actions 有额度后在 PR 上确认 macOS/Windows 绿；主人决定是否合并。
 
 **2026-10-10 · `claude/fix-windows-ci-ezhdu6`（修好 Windows 打包检查）**
 - 做了什么：每次合并到 main 后自动跑的“Windows 打包”（Build AA Windows Preview）从新仓库建好起 22 次全红：打出来的 PokerSense-AA.exe 一启动就报错退出。PR 上的三项检查不跑它，所以一直没人发现。
