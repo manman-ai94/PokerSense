@@ -175,7 +175,8 @@ def test_releases_come_only_from_main_and_uploads_need_the_secret():
     assert "  release:" in workflow
     assert "github.event_name != 'pull_request'" in workflow
     assert "needs.windows.outputs.upload == 'true'" in workflow
-    assert "secrets.RCLONE_CONFIG" not in workflow.split("  release:")[0].split("jobs:")[1]
+    windows_job = workflow.split("  release:")[0].split("jobs:")[1]
+    assert "secrets.RCLONE_CONFIG" not in windows_job
     # The recognition bundle is a separate upload, listed in latest.json.
     assert "recognition-check" in workflow and "--recognition-url" in workflow
     assert "release_build.py recognition --" not in workflow
