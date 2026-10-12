@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-12 · `fix/flaky-timing-tests`（按时间卡的偶发失败测试，草稿未合并）**
+- 做了什么：CI 上随机挂的 8 处计时测试（本地求解器协议、单人策略筛查的截止、粗略建议那一帧、实时循环节奏、录像回放首帧、研究页 JS、分析取消、策略进程截止）和 macOS 上 readiness 工具 kill 进程组的竞态。
+- 怎么做的：正确性和计时分开；能注入时钟就注入（实时循环、录像回放、粗略建议的等待）；真正的速度要求留成 `timing` 标记的测试，3 次里有一次达标即可，上限可用 `POKERSENSE_TIMING_SCALE` 放大；macOS 对组长已退出的进程组回 EPERM 时当作已结束。
+- 怎么验证的：用后台线程占住 GIL 模拟卡顿，修前复现出和 CI 一样的失败，修后相关 212 个测试在持续/间歇卡顿下都通过；CI 分钟数用完，没在 CI 上重跑。
+- 还剩什么：xdist 加 CPU 压力的重复跑、全量测试、CI 瘦身（见 PR 交接说明）。
+
 **2026-10-10 · `claude/fix-windows-ci-ezhdu6`（修好 Windows 打包检查）**
 - 做了什么：每次合并到 main 后自动跑的“Windows 打包”（Build AA Windows Preview）从新仓库建好起 22 次全红：打出来的 PokerSense-AA.exe 一启动就报错退出。PR 上的三项检查不跑它，所以一直没人发现。
 - 怎么做的：缺两样东西。① 建议要用的牌力计算库 phevaluator 只在 solver-tools 里，打包不装它 → 加进 desktop 依赖（同样精确锁 0.6.0）；② 打包版找不到 `configs/game/aa-scoreboard-rules-v2.json` 和包里的 JSON 数据 → spec 把它们打进包，`aa_stakes.py` 打包时从 `_MEIPASS` 找规则文件（和界面文件同一个办法）。
