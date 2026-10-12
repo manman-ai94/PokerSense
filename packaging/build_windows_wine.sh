@@ -85,7 +85,7 @@ install_inno_setup() {
   if [[ ! -f "$exe" ]]; then
     log "download Inno Setup 6.7.1"
     curl -fsSL -o "$exe" \
-      "https://files.jrsoftware.org/is/6/innosetup-6.7.1.exe"
+      "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe"
   fi
   log "silent install Inno Setup"
   wine_exe "$exe" /VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER "/DIR=${INNO_DIR}"
