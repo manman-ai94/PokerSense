@@ -148,7 +148,7 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（给同事的安装包和自动�
   数据目录下面是 `PokerSense_private/` 和 `PokerSense_archive/`，对应原 Windows 的 `G:\` 结构。
 - 旧配置里写的 `G:/...` 和旧仓库路径 `C:/Users/Administrator/WorkBuddy/扑克/PokerSense/...`，
   会被 `data_paths.resolve_legacy_path` 自动映射到本机。新代码请直接用 `data_paths`，不要再写死路径。
-- **仓库是公开的。**录像、截图、模型权重、第三方求解器源码或二进制、密钥、`.venv`
+- **仓库是私有的，但数据仍按公开仓库的标准管。**录像、截图、模型权重、第三方求解器源码或二进制、密钥、`.venv`
   一律不提交。测量产生的逐帧日志也放在数据目录里，报告只写汇总数字。
 - **保留区间不能碰**：9 月 9 日 AA 录像（`aa_phone_record_20260909_031030_54322c62`）的
   300–600 秒从未被看过，留作独立验收；600–820 秒以前评估时用过。开发、调参、测量时
@@ -179,7 +179,7 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（给同事的安装包和自动�
 
 ## Git 与 GitHub 规则
 
-- 仓库：<https://github.com/manman-ai94/PokerSense>（公开）。旧仓库 `xiaoyangpeng1994-create/PokerSense`
+- 仓库：<https://github.com/manman-ai94/PokerSense>（私有）。旧仓库 `xiaoyangpeng1994-create/PokerSense`
   的账号 2026-10-07 被暂停，2026-10-09 起改用这个新仓库，旧仓库不再推送。
 - `main` 是唯一的长期分支：不直接推送或强推，只通过 PR 合并；三项检查 `review-hygiene`、
   `test (macos-latest)`、`test (windows-latest)` 全绿、分支和 main 同步后再合并。
