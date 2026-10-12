@@ -813,6 +813,11 @@ class _ProcessTree:
                     self.process.kill()
             except ProcessLookupError:
                 pass
+            except PermissionError:
+                # macOS answers EPERM, not ESRCH, for a group with no live
+                # member left to signal once its leader has exited.
+                if self.process.poll() is None:
+                    raise
 
 
 def run_bounded(command, *, seconds, cwd=ROOT, log_path=None):
