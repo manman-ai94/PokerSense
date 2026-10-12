@@ -9,6 +9,7 @@ from poker_engine.desktop.aa_policy_worker import AAIsolatedPolicyWorker
 from poker_engine.desktop.aa_turn_runtime import (
     AATurnWindow, TurnEvidence, TurnIdentity,
 )
+from tests.timing import Stopwatch, budget, over, timing, within_budget
 
 
 IDENTITY = TurnIdentity("test-instance", 1, "hand1", "turn1")
@@ -60,23 +61,39 @@ def test_current_state_rechecked_and_policy_cannot_substitute_illegal_action(wor
     assert worker.lookup("unknown", **fields())["reason"] == "POLICY_COVERAGE_MISS"
 
 
-def test_deadline_kills_actual_hanging_process_without_restarting(monkeypatch):
+def hanging_lookup(monkeypatch, frozen=False):
+    """Seconds a lookup took against a worker that never answers. ``frozen``:
+    the turn's clock stands still, so a stall before the request is sent cannot
+    use the turn up first (the wait for the answer is still real)."""
     monkeypatch.setattr(aa_policy_worker, "_lookup_worker", hanging_worker)
     worker = AAIsolatedPolicyWorker({"information": {"call": 1.0}})
     worker.preload()
     try:
-        started = time.monotonic()
-        result = worker.lookup("information", **fields())
-        elapsed = time.monotonic() - started
+        request = fields()
+        if frozen:
+            request["clock"] = lambda: request["source_at"]
+        watch = Stopwatch()
+        result = worker.lookup("information", **request)
+        elapsed = watch()
         assert result["reason"] == "COMPUTATION_DEADLINE"
-        # Scheduling slack is reported as a test bound, not a production p99.
-        assert elapsed < 1.0
         later = worker.lookup("information", **fields())
         assert later["reason"] == "WORKER_NOT_PRELOADED"
         worker._process.join(timeout=1)
         assert not worker._process.is_alive()
+        return elapsed
     finally:
         worker.close()
+
+
+def test_deadline_kills_actual_hanging_process_without_restarting(monkeypatch):
+    hanging_lookup(monkeypatch, frozen=True)
+
+
+@timing
+def test_deadline_cuts_a_hanging_worker_off_on_time(monkeypatch):
+    # The turn gives the worker at most 0.3 s; the bound adds scheduling and
+    # kill slack, as a test bound, not a production p99.
+    within_budget(lambda: over("seconds", hanging_lookup(monkeypatch), budget(1.0)))
 
 
 def test_no_work_without_preload_or_fresh_source():

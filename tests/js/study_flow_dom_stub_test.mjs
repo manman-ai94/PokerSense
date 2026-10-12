@@ -64,18 +64,21 @@ const text = value => !known(value) ? "未知" : typeof value === "object" ? JSO
 
 const calls = [];
 const delays = [];
+let inFlight = 0;
 async function fetchStub(path, options = {}) {
   calls.push({path, method: (options.method || "GET").toUpperCase()});
+  inFlight += 1;
   const pending = delays.find(item => !item.used && path.includes(item.match));
-  if (pending) { pending.used = true; await sleep(pending.ms); }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
+  let timer;
   try {
+    if (pending) { pending.used = true; await sleep(pending.ms); }
+    timer = setTimeout(() => controller.abort(), 10000);
     const response = await fetch(base + path, {...options, signal: controller.signal});
     const body = await response.text();
     return {ok: response.ok, status: response.status, text: async () => body,
             json: async () => JSON.parse(body)};
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); inFlight -= 1; }
 }
 const context = vm.createContext({
   document, el, text, labels, headers: {"X-AA-Live": "1"}, statusData: {},
@@ -97,7 +100,11 @@ const feedback = () => el("study-feedback").textContent;
 const tagged = () => el("study-source-tag").textContent;
 
 check("wiring_ran", run("studyWired") === true, "studyWired");
-await sleep(300);
+// Wiring loads the example list, then the record list, over HTTP; on a busy
+// machine that is not done in any fixed time, so wait for both (at most 10 s).
+const wiringDone = () => el("study-example").children.length > 0
+  && calls.some(call => call.path === "/api/study/records") && inFlight === 0;
+for (const until = Date.now() + 10000; !wiringDone() && Date.now() < until;) await sleep(20);
 check("examples_loaded",
       el("study-example").children.length === 1
       && el("study-example").children[0].textContent.includes("合成示例")

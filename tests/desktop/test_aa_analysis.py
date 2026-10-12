@@ -8,6 +8,7 @@ import time
 import pytest
 
 from poker_engine.desktop.aa_analysis import AAConditionalAnalysis, _analysis_worker
+from tests.timing import Stopwatch, budget, over, timing, within_budget
 
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "configs/strategy/examples"
@@ -139,8 +140,11 @@ def test_timeout_terminates_without_status_polling_and_allows_new_job():
         value["_test_delay"] = 10
         first = service.start("terminal", value, binding=BINDING)
         process = service._process
-        # The watchdog must run while the caller does nothing at all.
-        time.sleep(1.6)
+        # The watchdog must run while the caller does nothing at all. The job
+        # itself would end after 10 s, as COMPLETE; the status tells them apart.
+        deadline = time.monotonic() + 8
+        while process.is_alive() and time.monotonic() < deadline:
+            time.sleep(0.025)
         assert not process.is_alive()
         expired = service.status()
         assert expired["status"] == "TIMED_OUT"
@@ -152,7 +156,8 @@ def test_timeout_terminates_without_status_polling_and_allows_new_job():
         service.cancel()
 
 
-def test_parallel_rejection_cancel_terminates_and_old_job_cannot_return():
+def parallel_rejection_and_cancel():
+    """Seconds cancelling a running job took; the old job never returns."""
     service = AAConditionalAnalysis(_test_worker=controlled_worker)
     try:
         value = document()
@@ -161,9 +166,9 @@ def test_parallel_rejection_cancel_terminates_and_old_job_cannot_return():
         process = service._process
         with pytest.raises(RuntimeError, match="already_running"):
             service.start("terminal", document(), binding=BINDING)
-        before = time.monotonic()
+        watch = Stopwatch()
         cancelled = service.cancel()
-        assert time.monotonic() - before < 1.5
+        took = watch()
         assert cancelled["status"] == "CANCELLED" and cancelled["result"] is None
         assert cancelled["revision"] > first["revision"]
         assert not process.is_alive()
@@ -173,8 +178,18 @@ def test_parallel_rejection_cancel_terminates_and_old_job_cannot_return():
         assert result["job_id"] == second["job_id"] != first["job_id"]
         service.cancel()
         assert service.status()["result"] is None
+        return took
     finally:
         service.cancel()
+
+
+def test_parallel_rejection_cancel_terminates_and_old_job_cannot_return():
+    parallel_rejection_and_cancel()
+
+
+@timing
+def test_cancel_stops_a_running_job_promptly():
+    within_budget(lambda: over("seconds", parallel_rejection_and_cancel(), budget(1.5)))
 
 
 @pytest.mark.parametrize("target", [crashing_worker, forged_worker, oversized_worker])

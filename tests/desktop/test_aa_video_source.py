@@ -1,9 +1,13 @@
 """Recorded capture-card video played at recorded pace, without real files."""
 
+import functools
+import threading
+
 import cv2
 import numpy as np
 import pytest
 
+from poker_engine.desktop import aa_video_source
 from poker_engine.desktop.aa_video_source import (
     AAVideoSource, PacedVideoCapture, VideoSegment, parse_windows, video_segments)
 
@@ -136,18 +140,49 @@ def test_invalid_skip_windows_are_rejected(bad):
         parse_windows([bad])
 
 
-def test_video_source_uses_capture_card_canvas_and_ends_cleanly(tmp_path):
+class ReadPace(FakeClock):
+    """The recorded pace's wait for the next frame, and the end of the video,
+    last until the test has read the frame before (``taken``): nothing comes
+    due before the reader looks, however slowly the machine runs the threads."""
+
+    def __init__(self):
+        super().__init__()
+        self.taken = threading.Semaphore(0)
+
+    def sleep(self, seconds):
+        self.wait_for_reader()
+        super().sleep(seconds)
+
+    def wait_for_reader(self):
+        assert self.taken.acquire(timeout=5), "the test stopped reading"
+
+
+class ReadPacedVideo(FakeVideo):
+    def __init__(self, pace, count, step):
+        super().__init__(count, step=step)
+        self.pace = pace
+
+    def read(self):
+        if self.position >= self.count:
+            self.pace.wait_for_reader()
+        return super().read()
+
+
+def test_video_source_uses_capture_card_canvas_and_ends_cleanly(tmp_path, monkeypatch):
     video = tmp_path / "rec.mkv"
     video.write_bytes(b"x")
-    source = AAVideoSource(video, opener=lambda path: FakeVideo(3, step=0.01))
+    pace = ReadPace()
+    monkeypatch.setattr(aa_video_source, "PacedVideoCapture", functools.partial(
+        PacedVideoCapture, clock=pace, sleep=pace.sleep))
+    source = AAVideoSource(video, opener=lambda path: ReadPacedVideo(pace, 3, 0.01))
     records = []
     while (record := source.read()) is not None:
         records.append(record)
+        pace.taken.release()
     source.close()
-    # Latest-frame semantics may drop a frame, never reorder or invent one.
     stamps = [round(r["source_video_pts"], 3) for r in records]
-    assert stamps and stamps[0] == 0.0
-    assert stamps == sorted(set(stamps)) and set(stamps) <= {0.0, 0.01, 0.02}
+    assert stamps == [0.0, 0.01, 0.02]
+    assert pace.sleeps == [0.01, 0.01]
     assert all(r["source_kind"] == "video-replay" for r in records)
     assert {r["source_id"] for r in records} == {"video-replay:0"}
     assert records[0]["image"].shape == (1080, 498, 3)
