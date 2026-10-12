@@ -1,7 +1,7 @@
 """Advice for your preflop decisions, solver advice for your heads-up turn
 and river decisions in the background, and the range rule's elsewhere."""
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait as real_wait
 from decimal import Decimal
 import sys
 import threading
@@ -16,6 +16,7 @@ from poker_engine.desktop.aa_solver_advice import (
     AASolverAdvice, multiway_row, pot_on_screen)
 from poker_engine.scoreboard.multiway_bot import DEFAULTS
 from poker_engine.scoreboard.solver_bot import Fallback
+from tests.timing import Stopwatch, budget, over, timing, within_budget
 
 # Six players, dealer 5 (blinds 0 and 1, straddle 2). You (seat 4) limp, seat 2
 # checks its option; the flop is checked; on the turn seat 2 bets 10 into 23.
@@ -608,40 +609,101 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
     assert (results[60]["status"], results[60]["kind"]) == ("ready", "rough")
 
 
+ROUGH_CALL = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
+
+
+def frame_wait(in_time, asked):
+    """``wait`` for the advice module: a wait with a timeout (the frame that
+    asks for the rough rule) is recorded in ``asked`` and then plays out as if
+    the job finished inside it (``in_time``) or did not, without real time."""
+    def wait(futures, timeout=None, **options):
+        if timeout is None:
+            return real_wait(futures, **options)
+        asked.append(timeout)
+        return real_wait(futures, timeout=5 if in_time else 0, **options)
+
+    return wait
+
+
 def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
     # 10/07 at real pace: after a stall the frame that made it due was the
     # turn's last, and the rough rule, done a moment later, never showed.
-    call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     gate = threading.Event()
 
     def answer(fields, cards, street, pot=None, stakes=None):
         gate.wait(5)
-        return call
+        return ROUGH_CALL
 
-    def quick(fields, cards, street, pot=None, stakes=None):
-        time.sleep(0.03)                                 # well inside ROUGH_WAIT
-        return call
-
-    monkeypatch.setattr(aa_solver_advice, "rough_advice", quick)
+    asked = []
+    monkeypatch.setattr(aa_solver_advice, "rough_advice",
+                        lambda fields, cards, street, pot=None, stakes=None: ROUGH_CALL)
+    monkeypatch.setattr(aa_solver_advice, "wait", frame_wait(True, asked))
     with ThreadPoolExecutor(max_workers=1) as own:
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                                 rough_executor=own, clock=still)
         results = run(advice, range(58))
         assert results[56]["status"] == "computing"
         assert (results[57]["status"], results[57]["kind"]) == ("ready", "rough")
+    assert asked == [aa_solver_advice.ROUGH_WAIT]     # the frame waits that long
     # Longer than that the frame goes on without it, and a later frame shows it.
+    asked.clear()
     monkeypatch.setattr(aa_solver_advice, "rough_advice", answer)
+    monkeypatch.setattr(aa_solver_advice, "wait", frame_wait(False, asked))
     with ThreadPoolExecutor(max_workers=1) as own:
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                                 rough_executor=own, clock=still)
-        started = time.monotonic()
         results = run(advice, range(58))
-        assert time.monotonic() - started < 2
         assert results[57]["status"] == "computing"
+        assert asked == [aa_solver_advice.ROUGH_WAIT]
         gate.set()
         own.submit(lambda: None).result(timeout=5)       # the rough job is done
         later = advice.observe(payload(58), 58)
         assert (later["status"], later["kind"]) == ("ready", "rough")
+    assert asked == [aa_solver_advice.ROUGH_WAIT]     # shown, not asked again
+
+
+@timing
+def test_the_rough_rule_shows_in_that_frame_at_real_pace(monkeypatch):
+    # The live window relies on this: a rough rule that is done well inside
+    # ROUGH_WAIT (live it takes under 0.1 s) shows in the frame that asked, on
+    # a real worker thread; one that is slow holds the frames up no longer.
+    def quick(fields, cards, street, pot=None, stakes=None):
+        time.sleep(0.03)
+        return ROUGH_CALL
+
+    def attempt():
+        monkeypatch.setattr(aa_solver_advice, "rough_advice", quick)
+        with ThreadPoolExecutor(max_workers=1) as own:
+            advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                                    rough_executor=own, clock=still)
+            results = run(advice, range(58))
+        assert results[56]["status"] == "computing"
+        if results[57]["status"] == "ready":
+            assert results[57]["kind"] == "rough"
+            missed = []
+        else:
+            assert results[57]["status"] == "computing"
+            missed = ["a 0.03 s rough rule did not show in the frame that asked"]
+        gate = threading.Event()
+
+        def answer(fields, cards, street, pot=None, stakes=None):
+            gate.wait(5)
+            return ROUGH_CALL
+
+        monkeypatch.setattr(aa_solver_advice, "rough_advice", answer)
+        with ThreadPoolExecutor(max_workers=1) as own:
+            advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
+                                    rough_executor=own, clock=still)
+            try:
+                watch = Stopwatch()
+                results = run(advice, range(58))
+                took = watch()
+            finally:
+                gate.set()
+        assert results[57]["status"] == "computing"
+        return missed + over("58 frames with a slow rough rule", took, budget(2))
+
+    within_budget(attempt)
 
 
 def rough(street="turn", hero=("Qs", "Qh"), button="call", price="10", pot="35",

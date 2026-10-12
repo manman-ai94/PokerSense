@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-12 · `fix/flaky-timing-tests`（计时测试 + CI 瘦身，草稿未合并）**
+- 做了什么：CI 随机挂的计时测试和 readiness 进程组竞态；CI 工作流瘦身（macOS 仅正式 PR/推 main/手动、ubuntu-slim、纯文档跳过测试 job、concurrency 已有）。
+- 怎么做的：测试侧见上条；`tools/ci_changes.py` 判断纯文档则 `code=false` 跳过 test job（不用顶层 paths-ignore，避免必需检查 Pending）；拆成 `test (windows-latest)` / `test (macos-latest)`。
+- 怎么验证的：`tools/run_timing_stress.sh`（xdist -n4 + CPU 占满）3 轮全过 + timing 3 轮；全量 pytest 6134 通过；CI 分钟用完未跑。
+- 还剩什么：等 Actions 有额度后在 PR 上确认 macOS/Windows 绿；主人决定是否合并。
+
 **2026-10-11 · `fix/allin-raise-call-value`（翻前有人已全下时，加注和跟注按主池边池算）**
 - 做了什么：翻前策略 `aa_preflop` 算“加注值多少”时跳过已全下（筹码为 0）的人，以为后面的人一弃牌就能拿整个底池，弱牌面对全下也会再全下（合成局：72o、100bb 面对 20bb 全下，加注算 +9.7bb，改后 −19.8bb，弃牌）；算“跟注值多少”时，短码全下后又有人加注，这个短码两边都不算。现在已全下的人一直留在比牌里。
 - 怎么做的：`preflop_policy.Table` 新增 `pots` / `showdown`，按各家下注额分出主池和边池（和模拟牌桌结算一致：只有一个人投入的那层原样退回、不抽水，其余按比例抽水），每个池只和盖得住它的人比；`raise_value`、`reraised`、`call_value`、`passive_value` 都改用它；没有对手还能下注时按胜率全额算。

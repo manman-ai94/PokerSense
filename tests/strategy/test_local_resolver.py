@@ -36,7 +36,13 @@ SCRIPT = (
 )
 
 
-def _context(player_count=2, *, lifetime_ms=1_000):
+# The protocol checks are not about speed: on a busy CI machine the fake
+# resolver's interpreter start alone took over the old 0.5 s. They get a budget
+# far from the point; the timeout tests below set tight ones of their own.
+ROOMY_MS = 30_000
+
+
+def _context(player_count=2, *, lifetime_ms=2 * ROOMY_MS):
     value = context(player_count)
     now = datetime.now(timezone.utc)
     request = RequestContext(
@@ -57,7 +63,7 @@ def _provider(mode="success", **kwargs):
         command=(sys.executable, str(SCRIPT), mode),
         capability=capability(),
         result_match_kind=MatchKind.INTERPOLATED,
-        timeout_ms=kwargs.pop("timeout_ms", 500),
+        timeout_ms=kwargs.pop("timeout_ms", ROOMY_MS),
         maximum_output_bytes=kwargs.pop("maximum_output_bytes", 50_000),
         **kwargs,
     ))
@@ -178,14 +184,14 @@ def test_capability_mismatch_does_not_start_invalid_command():
 
 
 def test_local_provider_runs_through_existing_async_slow_path():
-    ctx = _context(lifetime_ms=2_000)
+    ctx = _context()
     with ThreadPoolExecutor(max_workers=1) as executor:
         slow = ThreadedSlowResolver(_provider(), executor)
         orchestrator = StrategyOrchestrator(StrategyRouter(), slow)
         cycle = orchestrator.request(ctx, now=datetime.now(timezone.utc))
         assert cycle.fast_advice.status is AdviceStatus.ABSTAIN
         assert cycle.slow_handle is not None
-        cycle.slow_handle.future.result(timeout=1)
+        cycle.slow_handle.future.result(timeout=ROOMY_MS / 1000)
         refinement = orchestrator.collect(
             cycle.slow_handle,
             ctx,

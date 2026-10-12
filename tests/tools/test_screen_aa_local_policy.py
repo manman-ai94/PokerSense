@@ -16,6 +16,7 @@ import pytest
 pytest.importorskip("pokerkit")
 
 from poker_engine.strategy.aa_frozen_policy import canonical_hash  # noqa: E402
+from tests.timing import Stopwatch, budget, over, timing, within_budget  # noqa: E402
 from tools import screen_aa_local_policy as screen  # noqa: E402
 
 
@@ -237,16 +238,22 @@ def hanging_fake_worker(connection, model, upstream, runtime):
     time.sleep(60)
 
 
-def test_actual_owned_process_is_terminated_on_external_timeout():
+def hanging_query():
+    """Seconds a 0.05 s query to a worker that never answers took."""
     client = screen.WorkerClient({}, {}, target=hanging_fake_worker)
     try:
         assert client.receive(10)["status"] == "READY"
-        started = time.perf_counter()
+        watch = Stopwatch()
         assert client.query({"synthetic": True}, 0.05)["status"] == "TIMEOUT"
-        assert time.perf_counter() - started < 3
+        elapsed = watch()
         assert not client.process.is_alive()
+        return elapsed
     finally:
         client.close()
+
+
+def test_actual_owned_process_is_terminated_on_external_timeout():
+    hanging_query()
 
 
 def unread_fake_worker(connection, model, upstream, runtime):
@@ -254,18 +261,25 @@ def unread_fake_worker(connection, model, upstream, runtime):
     time.sleep(60)
 
 
-def test_unread_pipe_serialization_and_large_send_have_one_external_deadline():
+def unread_pipe_query():
     client = screen.WorkerClient({}, {}, target=unread_fake_worker)
     try:
         assert client.receive(10)["status"] == "READY"
-        result = client.query({"payload": b"x" * (8 * 1024 * 1024)}, 0.3)
-        assert result["status"] == "TIMEOUT"
-        assert 280 <= result["acceptance_stopped_ms"] < 750
-        assert result["elapsed_ms"] < 1500
-        assert result["cleanup_ms"] >= 0 and result["worker_terminated"]
-        assert not result["transport_thread_alive"]
+        return client.query({"payload": b"x" * (8 * 1024 * 1024)}, 0.3)
     finally:
         client.close()
+
+
+def assert_stopped_at_the_deadline(result):
+    assert result["status"] == "TIMEOUT"
+    assert result["acceptance_stopped_ms"] >= 280      # never before the deadline
+    assert result["elapsed_ms"] >= result["acceptance_stopped_ms"]
+    assert result["cleanup_ms"] >= 0 and result["worker_terminated"]
+    assert not result["transport_thread_alive"]
+
+
+def test_unread_pipe_serialization_and_large_send_have_one_external_deadline():
+    assert_stopped_at_the_deadline(unread_pipe_query())
 
 
 def partial_response_worker(sock):
@@ -277,7 +291,7 @@ def partial_response_worker(sock):
     time.sleep(60)
 
 
-def test_partial_response_recv_is_bounded_not_just_poll():
+def partial_response_query():
     left, right = socket.socketpair()
     client = screen.WorkerClient.__new__(screen.WorkerClient)
     client.connection = Connection(left.detach())
@@ -288,13 +302,32 @@ def test_partial_response_recv_is_bounded_not_just_poll():
     right.close()
     try:
         assert client.receive(10)["status"] == "READY"
-        result = client.query({"synthetic": True}, 0.3)
-        assert result["status"] == "TIMEOUT"
-        assert 280 <= result["acceptance_stopped_ms"] < 750
-        assert result["elapsed_ms"] < 1500 and result["worker_terminated"]
-        assert not result["transport_thread_alive"]
+        return client.query({"synthetic": True}, 0.3)
     finally:
         client.close()
+
+
+def test_partial_response_recv_is_bounded_not_just_poll():
+    assert_stopped_at_the_deadline(partial_response_query())
+
+
+@timing
+@pytest.mark.parametrize("query", [unread_pipe_query, partial_response_query],
+                         ids=["unread-pipe", "partial-response"])
+def test_owned_worker_deadline_stops_accepting_on_time(query):
+    def attempt():
+        result = query()
+        assert_stopped_at_the_deadline(result)
+        return (over("acceptance_stopped_ms", result["acceptance_stopped_ms"],
+                     budget(750))
+                + over("elapsed_ms", result["elapsed_ms"], budget(1500)))
+
+    within_budget(attempt)
+
+
+@timing
+def test_hanging_worker_is_cut_off_on_time():
+    within_budget(lambda: over("seconds", hanging_query(), budget(3)))
 
 
 @pytest.mark.parametrize("change", ["pokerkit_version", "runtime", "source"])
