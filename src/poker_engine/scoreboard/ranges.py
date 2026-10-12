@@ -89,8 +89,15 @@ def read_floors(observation, model, seats):
             for seat in seats}
 
 
-def opponent_ranges(observation, model):
-    """{seat: {combo key: weight}} for each opponent still in the hand."""
+def opponent_ranges(observation, model, *, cache=None, trace=None):
+    """{seat: {combo key: weight}} for each opponent still in the hand.
+
+    ``cache``: where each action's reading is kept (default: the one shared
+    by every reading in the process). ``trace(decision, weights)`` is called
+    after each of an opponent's actions with the range it leaves
+    (``exclusion``).
+    """
+    kept_ranges = _KEPT if cache is None else cache
     me = observation["observing_seat"]
     board = tuple(observation["board"])
     seats = [seat for seat in observation["occupied_seats"]
@@ -109,10 +116,12 @@ def opponent_ranges(observation, model):
         read = reads[decision.seat]
         key = (table, read, floors[decision.seat], tuple(decision.observation["board"]),
                tuple(row["id"] for row in observation["public_history"][:index + 1]))
-        if key in _KEPT:
+        if key in kept_ranges:
             ranges[decision.seat] = {
-                combo: weight for combo, weight in _KEPT[key].items()
+                combo: weight for combo, weight in kept_ranges[key].items()
                 if combo[:2] not in dealt and combo[2:] not in dealt}
+            if trace is not None:
+                trace(decision, ranges[decision.seat])
             continue
         before = ranges[decision.seat]
         if read != (1.0, 1.0):
@@ -125,9 +134,11 @@ def opponent_ranges(observation, model):
             after = {combo: max(after.get(combo, 0.0), kept_share * weight)
                      for combo, weight in before.items()}
         ranges[decision.seat] = after
-        if len(_KEPT) >= CACHE_SIZE:
-            _KEPT.clear()
-        _KEPT[key] = ranges[decision.seat]
+        if len(kept_ranges) >= CACHE_SIZE:
+            kept_ranges.clear()
+        kept_ranges[key] = ranges[decision.seat]
+        if trace is not None:
+            trace(decision, after)
     return ranges
 
 

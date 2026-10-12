@@ -40,6 +40,13 @@ With ``stacks`` (a ``stacks.Stacks``) every deal starts each seat with its
 own stack instead of 100 big blinds, the same for every strategy and seat
 of the deal, so all-ins for different amounts and side pots come up.
 Without it every result is exactly what it was before the option existed.
+
+With ``exclusion`` (a number of seats) each strategy's hands from that many
+of the eight seats of every deal are measured after they end: for every
+opponent still in at the end, whether the range the strategy reads for him
+(with its own model and reads) still held the hand he had (see
+``exclusion``). The measuring reads with a cache of its own, so the results
+are the same with or without it.
 """
 
 from __future__ import annotations
@@ -58,6 +65,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 from .allin_ev import runout_ev
 from .bomb import KINDS, Bomb
 from .bots import make_policy
+from . import exclusion as range_exclusion
 from .mushroom import TAKE, Mushroom, main_pot_shares, pool_result, small_blind
 from . import reads as opponent_reads
 from .stacks import Stacks
@@ -68,9 +76,12 @@ from .stacks import Stacks
 # (opponents.py): "reg", "maniac" and "nit" alone, "tough" all three next to
 # AA players; "mirror" is the AI itself; "solver" regulars that play heads-up
 # turns and rivers with TexasSolver (installed solver only, slow). "aa_real"
-# (aa_real.py) plays the shares and bet sizes measured on AA recordings.
+# (aa_real.py) plays the shares and bet sizes measured on AA recordings;
+# "noisy" (opponents.NoisyBot) like them, but after the flop it sometimes
+# slow-plays, bets when it would check or calls when it would fold, as real
+# players do and the model the AI reads ranges with never does.
 POOLS = {"population": ("population",), "aa": ("aa_population",),
-         "aa_real": ("aa_real",),
+         "aa_real": ("aa_real",), "noisy": ("noisy+aa_real",),
          "styles": ("tag", "lag", "rock", "station"),
          "reg": ("reg",), "maniac": ("maniac",), "nit": ("nit",),
          "tough": ("reg", "maniac", "nit", "aa_population"),
@@ -159,15 +170,17 @@ def play_hand(arena, seed, deciders, hero, *, all_in_ev=True, mushroom=None,
 
 
 def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
-                mushroom=None, reads=None, bomb=None, stacks=None):
+                mushroom=None, reads=None, bomb=None, stacks=None, exclusion=None):
     """Per deal and strategy: (average result in big blinds, all-in hands).
 
     ``reads``: None, or {"hands": n, "shares": ``reads.measure`` result}.
     ``bomb``: None, or the arguments of a ``Bomb``.
     ``stacks``: None, or ``Stacks.to_dict()``.
+    ``exclusion``: None, or the hero seats per deal to measure.
 
     Also returns, per strategy that keeps them, the counts of how it decided
-    (for example how often a solver strategy fell back to its base policy).
+    (for example how often a solver strategy fell back to its base policy),
+    and with ``exclusion`` a third item: each strategy's ``exclusion`` traces.
     """
     rules = AARuleProfileV2.from_dict(rules_dict)
     arena = AAFullHandArena(rules)
@@ -180,6 +193,9 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
     # The strategies get their own objects, so the counts they keep are of
     # their own decisions even when the pool plays the same policy.
     heroes = {name: make_policy(name) for name in strategies}
+    readers = ({name: range_exclusion.reading_model(heroes[name])
+                for name in strategies} if exclusion else {})
+    traces = {name: [] for name in readers}
     rows = []
     for seed in seeds:
         styles = lineup(seed, pool, seats)
@@ -188,6 +204,8 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
         posted = None if bomb is None else bomb.chips(seed, big_blind)
         starting = None if stacks is None else stacks.chips(
             seed, seats, rules.big_blind, rules.minimum_chip)
+        measured = (range_exclusion.measured_seats(seed, seats, exclusion)
+                    if exclusion else ())
         row = {}
         for name in strategies:
             pool_rule = None if mushroom is None else mushroom.for_strategy(name)
@@ -203,6 +221,12 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                 hand = play_hand(arena, seed, deciders, hero, all_in_ev=all_in_ev,
                                  mushroom=pool_rule, reads=seen, bomb=posted,
                                  stacks=starting)
+                if hero in measured:
+                    model, sees = readers[name]
+                    traces[name] += [
+                        {"deal": seed, "hero": hero, **trace}
+                        for trace in range_exclusion.showdown_traces(
+                            arena, hero, model, seen if sees else None)]
                 total += hand.value
                 adjusted += hand.adjusted
                 taken += hand.small_blind
@@ -222,7 +246,7 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
         rows.append((seed, row))
     counts = {name: dict(heroes[name].counts) for name in strategies
               if getattr(heroes[name], "counts", None)}
-    return rows, counts
+    return (rows, counts, traces) if exclusion else (rows, counts)
 
 
 def _interval(values):
@@ -306,7 +330,8 @@ def pairwise(rows, strategies):
 
 def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
                    base_seed=1, reference=None, all_in_ev=True, chunk=None,
-                   progress=None, mushroom=None, reads=None, bomb=None, stacks=None):
+                   progress=None, mushroom=None, reads=None, bomb=None,
+                   stacks=None, exclusion=None):
     """Score ``strategies`` over ``deals`` deals; same arguments, same result.
 
     ``mushroom``: None, or a ``Mushroom`` to play the AA mushroom pool.
@@ -314,6 +339,9 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     ``bomb``: None, or a ``Bomb`` to make some deals bomb pots.
     ``stacks``: None (everyone 100 big blinds), or a ``Stacks`` to start the
     seats of every deal with stacks of their own.
+    ``exclusion``: None, or the hero seats per deal (1-8) whose hands are
+    measured for ``exclusion``; each strategy's report then has
+    ``range_exclusion``.
 
     ``progress(done, total, seconds)`` is called after each batch of deals.
     """
@@ -335,7 +363,8 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     args = [(rules_dict, tuple(strategies), tuple(pool), part, base_seed, all_in_ev,
              pool_rule, seen,
              None if bomb is None else {"post": bomb.post, "share": bomb.share},
-             None if stacks is None else stacks.to_dict())
+             None if stacks is None else stacks.to_dict(),
+             exclusion)
             for part in chunks]
     results = []
 
@@ -352,10 +381,10 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
     else:
         for arg in args:
             finished(score_deals(*arg))
-    rows = sorted((row for part, _ in results for row in part), key=lambda r: r[0])
+    rows = sorted((row for result in results for row in result[0]), key=lambda r: r[0])
     counts = {}
-    for _, part in results:
-        for name, values in part.items():
+    for result in results:
+        for name, values in result[1].items():
             merged = counts.setdefault(name, {})
             for key, value in values.items():
                 merged[key] = merged.get(key, 0) + value
@@ -378,7 +407,13 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
             summary[name][key] = parts
         for name, parts in split_versus.items():
             versus[name][key] = parts
-    return {
+    if exclusion:
+        for name in strategies:
+            traces = sorted((trace for result in results for trace in result[2][name]),
+                            key=lambda trace: (trace["deal"], trace["hero"],
+                                               trace["seat"]))
+            summary[name]["range_exclusion"] = exclusion_report(traces)
+    report = {
         "schema_version": 1,
         "rules": rules_dict,
         "pool": list(pool),
@@ -404,6 +439,19 @@ def run_scoreboard(rules, strategies, *, deals, pool=DEFAULT_POOL, workers=1,
         "method": ("same deal from every seat against a shuffled lineup of the pool; "
                    "95% interval over deals (normal approximation)"),
     }
+    if exclusion:
+        report["exclusion"] = {"seats_per_deal": exclusion,
+                               "threshold": range_exclusion.EXCLUDED}
+    return report
+
+
+def exclusion_report(traces):
+    """A strategy's ``range_exclusion``: the rates over the whole hand and
+    before its last action, and every measured hand in one line."""
+    return {"whole_hand": range_exclusion.summarize(traces),
+            "before_end": range_exclusion.summarize(traces, before_end=True),
+            "hands": [range_exclusion.brief(trace, deal=trace["deal"],
+                                            hero=trace["hero"]) for trace in traces]}
 
 
 CALIBRATION_DEALS = 400
@@ -436,6 +484,6 @@ def calibrate_takes(rules, strategies, pool, post, *, deals=CALIBRATION_DEALS,
 
 
 __all__ = ["CALIBRATION_DEALS", "DEFAULT_POOL", "END", "FLOP", "POOLS", "Hand",
-           "calibrate_takes", "ended", "flop_split",
+           "calibrate_takes", "ended", "exclusion_report", "flop_split",
            "lineup", "pairwise", "play_hand", "run_scoreboard", "score_deals",
            "summarize"]

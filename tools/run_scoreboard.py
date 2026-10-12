@@ -2,9 +2,10 @@
 
     PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 \\
         [--strategies rfi_table,tag,always_call] \\
-        [--pool population|aa|aa_real|styles|reg|maniac|nit|tough|mirror|solver] \\
+        [--pool population|aa|aa_real|noisy|styles|reg|maniac|nit|tough|...] \\
         [--mushroom 3 [--mushroom-take 0.135 | --calibration-deals 400]] \\
         [--bomb 7 [--bomb-share 0.07]] [--reads 100] [--stacks 25-250] \\
+        [--exclusion [SEATS]] \\
         [--workers 10] [--out result.json]
 
 Each deal is played by every strategy from all eight seats against the same
@@ -24,6 +25,13 @@ otherwise: ``--stacks 25-250`` gives each seat of each deal its own stack
 between 25 and 250 big blinds, ``--stacks 25,40,100,250`` one of those
 (drawn from the deal's seed; see ``scoreboard/stacks.py``), so all-ins for
 different amounts and side pots come up.
+"noisy" is the AA players with play off the model after the flop (slow
+plays, stabs, calls instead of folds; ``scoreboard/opponents.py``).
+``--exclusion`` also measures, on that many of the eight seats of every
+deal (1 without a number), how often an opponent still in at the end held
+a hand the strategy's range reading had thrown out (``scoreboard/exclusion.py``):
+the share over all such hands, the hands whose range was cut, the hands
+that reached the river, and by street.
 """
 
 from __future__ import annotations
@@ -103,9 +111,38 @@ def table(report):
                      f"small blind is drawn as taking it in: {took} of hands")
     if report.get("stacks"):
         lines.append(stacks_text(report["stacks"]))
+    lines += exclusion_lines(report, rows)
     lines.append(f"{report['hands_per_strategy']} hands per strategy, "
                  f"{report['seconds']} s on {report['workers']} workers")
     return "\n".join(lines)
+
+
+def share(part):
+    if part["rate"] is None:
+        return "-"
+    low, high = part["ci95"]
+    return (f"{part['rate']:.1%} [{low:.0%}, {high:.0%}] "
+            f"({part['excluded']}/{part['hands']})")
+
+
+def exclusion_lines(report, rows):
+    """The real hands the range reading had thrown out, per strategy."""
+    if not report.get("exclusion"):
+        return []
+    lines = [f"real hand out of the range read for it (opponents still in at the end, "
+             f"{report['exclusion']['seats_per_deal']} seat(s) per deal):"]
+    for name, row in rows:
+        whole = row["range_exclusion"]["whole_hand"]
+        lines.append(f"  {name}: all {share(whole['all'])} | range cut "
+                     f"{share(whole['narrowed'])} | to the river "
+                     f"{share(whole['river'])}")
+        lines.append("    by street: " + " | ".join(
+            f"{street} {share(part)}" for street, part in whole["by_street"].items()))
+        first = list(whole["first"].items())[:4]
+        if first:
+            lines.append("    first out at: " + ", ".join(
+                f"{label} {count}" for label, count in first))
+    return lines
 
 
 def split_lines(report, rows, key, title):
@@ -165,8 +202,13 @@ def main(argv=None):
                         help="starting stacks in big blinds, drawn per seat and "
                         "deal: uniform between LOW and HIGH, or one of A,B,C "
                         "(default: everyone 100)")
+    parser.add_argument("--exclusion", type=int, nargs="?", const=1, metavar="SEATS",
+                        help="measure how often the range reading threw out an "
+                        "opponent's real hand, on this many seats per deal (1-8)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    if args.exclusion is not None and args.exclusion < 1:
+        parser.error("--exclusion needs at least one seat")
     rules = AARuleProfileV2.from_dict(
         json.loads(args.rules.read_text(encoding="utf-8")))
     strategies = args.strategies.split(",")
@@ -191,7 +233,7 @@ def main(argv=None):
                             base_seed=args.seed, reference=args.reference,
                             all_in_ev=not args.no_all_in_ev, progress=show_progress,
                             mushroom=mushroom, reads=args.reads, bomb=bomb,
-                            stacks=args.stacks)
+                            stacks=args.stacks, exclusion=args.exclusion)
     if args.out:
         args.out.write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(table(report))
