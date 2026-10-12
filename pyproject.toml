@@ -48,6 +48,8 @@ calibrate = [
 desktop = [
     # The live advice imports the scoreboard's hand evaluator at startup.
     "phevaluator==0.6.0",
+    # The live advice replays the hand on the AA table (aa_solver_input).
+    "pokerkit==0.7.5",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
     "pywebview>=5.0",

@@ -22,12 +22,15 @@ def smoke(executable):
               "capture_started": False, "endpoints": {}}
     with tempfile.TemporaryDirectory(prefix="pokersense-aa-offline-") as folder:
         root = Path(folder)
-        for argument in ("--help", "--version", "--self-check"):
+        for argument in ("--help", "--version", "--self-check", "--self-test"):
             result = subprocess.run(
                 [str(executable), argument], cwd=root, env=environment,
-                capture_output=True, text=True, timeout=30, creationflags=flags)
+                capture_output=True, text=True, timeout=180, creationflags=flags)
             if result.returncode:
-                raise RuntimeError(f"{argument}: {result.stderr}")
+                raise RuntimeError(f"{argument}: {result.stdout}{result.stderr}")
+            if argument == "--self-test":
+                report["self_test"] = json.loads(result.stdout)
+                assert report["self_test"]["result"] == "SELF_TEST_PASS"
             if argument == "--self-check":
                 report["self_check"] = json.loads(result.stdout)
                 assert not report["self_check"]["missing_resources"]
@@ -52,7 +55,8 @@ def smoke(executable):
                 base = ready["base"]
                 endpoints = ("", "app.js", "style.css", "controls.js",
                              "analysis.js", "review.js", "study.js",
-                             "hand_input.js", "analysis_records.js", "api/build",
+                             "hand_input.js", "analysis_records.js",
+                             "update_banner.js", "api/update", "api/build",
                              "api/status", "api/analysis/example/terminal",
                              "api/analysis/example/threeway")
                 for endpoint in endpoints:
@@ -67,6 +71,9 @@ def smoke(executable):
                             assert identity["product"] == "PokerSense-AA"
                             assert identity["version"] == (
                                 report["self_check"]["version"])
+                        if endpoint == "api/update":
+                            update = json.loads(content)
+                            assert update["status"] == "UNCONFIGURED", update
                         if endpoint == "api/status":
                             status = json.loads(content)
                             assert status["capture_available"] is False

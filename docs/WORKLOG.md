@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-12 · `feat/windows-installer-updater`（同事用的 Windows 安装包、自动更新和识别资源包下载；草稿，未合并）**
+- 做了什么：Inno Setup 安装包装到用户目录（不要管理员），有桌面和“检查更新”快捷方式；程序每次启动读一个可配置地址的版本清单：识别资源包没有或换了新的就自动下载，有新版程序在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 才传 Google Drive，没有就跳过。
+- 怎么做的：`desktop/app_update.py`（清单、版本比较、分享链接换直链、校验下载、`sync_recognition`）、入口加 `--update-now`/`--self-test`、安装版数据和资源包在 `%LOCALAPPDATA%\PokerSense-AA\data`；新工作流 `windows-release.yml`，资源包由 `tools/pack_aa_recognition.py` 在 Mac 上打包单独上传，发版时核对并写进 `latest.json`，不进安装包。顺带修了 Windows CI 抓到的打包版缺 `pokerkit`、输出接管道时打印中文崩溃。
+- 怎么验证的：新测试（更新器、资源包下载、发版步骤、入口）；Windows CI 上打包、离线冒烟、静默安装、端到端更新（错哈希拒装、新版下载安装并重开）、资源包首次下载/错哈希拒用/下次启动不重下。
+- 还剩什么：主人配云盘和 `RCLONE_CONFIG`、从 Mac 上传资源包后发第一版；Windows 实机的采集卡读牌和录像按钮没验；见 `docs/windows-distribution.md`。
+
 **2026-10-12 · `fix/flaky-timing-tests`（计时测试 + CI 瘦身，草稿未合并）**
 - 做了什么：CI 随机挂的计时测试和 readiness 进程组竞态；CI 工作流瘦身（macOS 仅正式 PR/推 main/手动、ubuntu-slim、纯文档跳过测试 job、concurrency 已有）。
 - 怎么做的：测试侧见上条；`tools/ci_changes.py` 判断纯文档则 `code=false` 跳过 test job（不用顶层 paths-ignore，避免必需检查 Pending）；拆成 `test (windows-latest)` / `test (macos-latest)`。

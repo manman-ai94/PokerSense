@@ -1,0 +1,271 @@
+name: Windows installer
+
+# Builds the Windows installer (PyInstaller + Inno Setup), tests the built
+# program, installs it on the runner and tests the in-app update end to end.
+# The installer is kept as a private Actions artifact.
+#
+# A release is a tag vX.Y.Z, or a manual run with a version; either must be a
+# commit on main. A release also uploads the installer and the version
+# manifest (latest.json) to the cloud folder with rclone -- only when the
+# RCLONE_CONFIG secret is configured; without it the upload steps are skipped.
+# The private recognition bundle is uploaded separately from a Mac
+# (tools/pack_aa_recognition.py -> <folder>/recognition/); a release checks it
+# and lists it in latest.json. It is never put inside the installer.
+#
+# Settings (Settings -> Secrets and variables -> Actions):
+#   secret   RCLONE_CONFIG            contents of rclone.conf (remote "pokersense")
+#   variable POKERSENSE_RELEASE_DIR   rclone folder, default pokersense:PokerSense-AA
+#   variable POKERSENSE_UPDATE_URL    manifest address baked into the program;
+#                                     default: the share link rclone makes for latest.json
+# See docs/windows-distribution.md.
+
+on:
+  pull_request:
+    paths:
+      - packaging/**
+      - src/poker_engine/desktop/app_update.py
+      - ui/aa-live/update_banner.js
+      - tools/pack_aa_recognition.py
+      - .github/workflows/windows-release.yml
+  push:
+    branches: [main]
+    paths:
+      - packaging/**
+      - src/poker_engine/desktop/app_update.py
+      - ui/aa-live/update_banner.js
+      - .github/workflows/windows-release.yml
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发版的版本号 X.Y.Z（只能从 main 发）；留空 = 只打包测试，不发版"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      RCLONE_CONFIG_TEXT: ${{ secrets.RCLONE_CONFIG }}
+      REMOTE_DIR: ${{ vars.POKERSENSE_RELEASE_DIR || 'pokersense:PokerSense-AA' }}
+      MANIFEST_URL_VAR: ${{ vars.POKERSENSE_UPDATE_URL }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Release or test build (releases only from main)
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = ""
+          if ($env:EVENT -eq "push" -and $env:REF.StartsWith("refs/tags/v")) {
+            $version = $env:REF_NAME.Substring(1)
+          } elseif ($env:EVENT -eq "workflow_dispatch" -and $env:INPUT_VERSION) {
+            $version = $env:INPUT_VERSION.Trim()
+          }
+          if ($version) {
+            if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "版本号要写成 X.Y.Z，现在是：$version" }
+            if ($env:EVENT -eq "workflow_dispatch" -and $env:REF -ne "refs/heads/main") {
+              throw "只能从 main 发版（这次是 $env:REF）"
+            }
+            git merge-base --is-ancestor $env:GITHUB_SHA origin/main
+            if ($LASTEXITCODE -ne 0) { throw "提交 $env:GITHUB_SHA 不在 main 上，不能发版" }
+          }
+          $upload = if ($version -and $env:RCLONE_CONFIG_TEXT) { "true" } else { "false" }
+          if ($version -and -not $env:RCLONE_CONFIG_TEXT) {
+            "::notice::没有配置 RCLONE_CONFIG：这次只打包和测试，不上传"
+          }
+          "release=$(if ($version) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "upload=$upload" >> $env:GITHUB_OUTPUT
+          "release=$(if ($version) { $version } else { 'no (test build)' }), upload=$upload"
+          exit 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: python -m pip install -e ".[desktop,perceptual,packaging]"
+
+      - name: Set up rclone
+        if: steps.mode.outputs.upload == 'true'
+        run: |
+          choco install rclone -y --no-progress
+          $dir = Join-Path $env:RUNNER_TEMP "rclone"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $conf = Join-Path $dir "rclone.conf"
+          [IO.File]::WriteAllText($conf, $env:RCLONE_CONFIG_TEXT)
+          "RCLONE_CONFIG=$conf" >> $env:GITHUB_ENV
+
+      - name: The version must be newer than the published one
+        if: steps.mode.outputs.upload == 'true'
+        run: |
+          $current = Join-Path $env:RUNNER_TEMP "published-latest.json"
+          rclone copyto "$env:REMOTE_DIR/latest.json" $current 2>$null
+          if (-not (Test-Path $current)) { [IO.File]::WriteAllText($current, "{}") }
+          python packaging/release_build.py newer --current $current --version "${{ steps.mode.outputs.version }}"
+          if ($LASTEXITCODE -ne 0) { throw "版本号必须比云盘上已经发布的新" }
+
+      - name: Check the recognition bundle in the cloud folder
+        id: recognition
+        if: steps.mode.outputs.upload == 'true'
+        run: |
+          $src = Join-Path $env:RUNNER_TEMP "recognition"
+          rclone copy "$env:REMOTE_DIR/recognition" $src --include "PokerSense-AA-recognition.*" 2>$null
+          if (Test-Path (Join-Path $src "PokerSense-AA-recognition.json")) {
+            python packaging/release_build.py recognition-check --source $src
+            if ($LASTEXITCODE -ne 0) { throw "识别资源包校验失败，不发版" }
+            "dir=$src" >> $env:GITHUB_OUTPUT
+          } else {
+            "::warning::云盘 recognition/ 里没有识别资源包：这一版不能实时读牌，其余功能照常"
+          }
+          exit 0
+
+      - name: Version manifest address
+        id: url
+        if: steps.mode.outputs.release == 'true'
+        run: |
+          $url = $env:MANIFEST_URL_VAR
+          if (-not $url -and "${{ steps.mode.outputs.upload }}" -eq "true") {
+            $found = rclone lsf "$env:REMOTE_DIR/latest.json" 2>$null
+            if (-not $found) {
+              $empty = Join-Path $env:RUNNER_TEMP "empty-latest.json"
+              [IO.File]::WriteAllText($empty, "{}")
+              rclone copyto $empty "$env:REMOTE_DIR/latest.json"
+              if ($LASTEXITCODE -ne 0) { throw "rclone 上传失败" }
+            }
+            $url = (rclone link "$env:REMOTE_DIR/latest.json" | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $url) { throw "rclone 拿不到 latest.json 的共享链接" }
+          }
+          if (-not $url) { "::warning::没有更新地址：这个安装包不会检查更新" }
+          "url=$url" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Stamp the release version
+        id: stamp
+        if: steps.mode.outputs.release == 'true'
+        run: python packaging/release_build.py stamp --version "${{ steps.mode.outputs.version }}"
+
+      - name: Build the program (PyInstaller)
+        run: python -m PyInstaller packaging/pokersense.spec --distpath dist --workpath build --noconfirm
+
+      - name: Test the built program offline (start, pages, core calculations)
+        run: python packaging/smoke_aa_package.py dist/PokerSense-AA/PokerSense-AA.exe --output dist/aa-package-smoke.json
+
+      - name: Put the update address next to the program
+        if: steps.url.outputs.url != ''
+        run: python packaging/release_build.py config --manifest-url "${{ steps.url.outputs.url }}" --out dist/PokerSense-AA/update-config.json
+
+      - name: Install Inno Setup (and its Simplified Chinese messages)
+        run: |
+          choco install innosetup -y --no-progress
+          $languages = "${env:ProgramFiles(x86)}\Inno Setup 6\Languages"
+          $target = Join-Path $languages "ChineseSimplified.isl"
+          if (-not (Test-Path $target)) {
+            try {
+              # Linked from jrsoftware.org/files/istrans/; Inno reads it as UTF-8 with a BOM.
+              Invoke-WebRequest -UseBasicParsing -OutFile $target `
+                "https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Files/Languages/ChineseSimplified.isl"
+              $bytes = [IO.File]::ReadAllBytes($target)
+              if (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)) {
+                [IO.File]::WriteAllBytes($target, [byte[]](0xEF, 0xBB, 0xBF) + $bytes)
+              }
+            } catch { "::warning::拿不到中文界面文件，安装器用英文：$_" }
+          }
+          Get-ChildItem $languages -Name
+
+      - name: Build the installer
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          $defines = @()
+          if ("${{ steps.mode.outputs.release }}" -eq "true") {
+            $defines += "/DMyAppVersion=${{ steps.mode.outputs.version }}"
+            $defines += "/DMyWindowsVersion=${{ steps.stamp.outputs.windows_version }}"
+          }
+          & $iscc @defines packaging\pokersense.iss
+          if ($LASTEXITCODE -ne 0) {
+            "::warning::中文界面编译失败，改用英文界面"
+            Remove-Item "${env:ProgramFiles(x86)}\Inno Setup 6\Languages\ChineseSimplified.isl" -ErrorAction SilentlyContinue
+            & $iscc @defines packaging\pokersense.iss
+            if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          }
+          Get-FileHash dist\PokerSense-AA-Setup.exe -Algorithm SHA256 | Format-List
+
+      - name: Screenshots of the installer (best effort)
+        continue-on-error: true
+        timeout-minutes: 5
+        run: ./packaging/installer_screenshots.ps1 -Installer dist\PokerSense-AA-Setup.exe -OutDir dist\screenshots
+
+      - name: Install silently, check shortcuts, test the in-app update end to end
+        run: |
+          Start-Process dist\PokerSense-AA-Setup.exe -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\PokerSense AA\PokerSense-AA.exe"
+          if (-not (Test-Path $exe)) { throw "装好后找不到 $exe" }
+          $desktop = [Environment]::GetFolderPath("Desktop")
+          if (-not (Test-Path (Join-Path $desktop "PokerSense AA.lnk"))) { throw "没有桌面快捷方式" }
+          $menu = Join-Path ([Environment]::GetFolderPath("Programs")) "PokerSense AA 检查更新.lnk"
+          if (-not (Test-Path $menu)) { throw "开始菜单里没有 PokerSense AA 检查更新" }
+          New-Item -ItemType Directory -Force dist\screenshots | Out-Null
+          python packaging/smoke_update.py --exe $exe --installer dist\PokerSense-AA-Setup.exe --screenshot dist\screenshots\window-update-banner.png --output dist\update-smoke.json
+          if ($LASTEXITCODE -ne 0) { throw "update smoke failed" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokerSense-AA-windows-installer
+          retention-days: 14
+          path: |
+            dist/PokerSense-AA-Setup.exe
+            dist/aa-package-smoke.json
+            dist/update-smoke.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-screenshots
+          retention-days: 14
+          if-no-files-found: ignore
+          path: dist/screenshots/
+
+      - name: Upload the installer, then the version manifest
+        if: steps.mode.outputs.upload == 'true'
+        run: |
+          $version = "${{ steps.mode.outputs.version }}"
+          rclone copyto dist\PokerSense-AA-Setup.exe "$env:REMOTE_DIR/versions/PokerSense-AA-Setup-$version.exe"
+          if ($LASTEXITCODE -ne 0) { throw "上传失败" }
+          rclone copyto dist\PokerSense-AA-Setup.exe "$env:REMOTE_DIR/PokerSense-AA-Setup.exe"
+          if ($LASTEXITCODE -ne 0) { throw "上传失败" }
+          $installerUrl = (rclone link "$env:REMOTE_DIR/PokerSense-AA-Setup.exe" | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $installerUrl) { throw "拿不到安装包的共享链接" }
+          $recognition = @()
+          $recognitionDir = "${{ steps.recognition.outputs.dir }}"
+          if ($recognitionDir) {
+            $recognitionUrl = (rclone link "$env:REMOTE_DIR/recognition/PokerSense-AA-recognition.zip" | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $recognitionUrl) { throw "拿不到识别资源包的共享链接" }
+            $recognition = @("--recognition-dir", $recognitionDir, "--recognition-url", $recognitionUrl)
+          }
+          python packaging/release_build.py manifest --version $version --installer dist\PokerSense-AA-Setup.exe `
+            --url $installerUrl --commit $env:GITHUB_SHA --notes "PokerSense AA $version" @recognition --out dist\latest.json
+          if ($LASTEXITCODE -ne 0) { throw "版本清单生成失败" }
+          rclone copyto dist\latest.json "$env:REMOTE_DIR/latest.json"
+          if ($LASTEXITCODE -ne 0) { throw "上传失败" }
+          "### 已发布 PokerSense AA $version（识别资源包：$(if ($recognitionDir) { '已列入' } else { '没有' })）" >> $env:GITHUB_STEP_SUMMARY
+          "员工的程序下次打开（或点开始菜单的 PokerSense AA 检查更新）就会看到新版。" >> $env:GITHUB_STEP_SUMMARY
