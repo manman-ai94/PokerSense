@@ -14,6 +14,7 @@
 - 做了什么：Inno Setup 安装包装到用户目录（不要管理员）、建桌面和“检查更新”快捷方式；程序启动时读一个可配置地址的版本清单，有新版在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 时传到云盘，没有就跳过。
 - 怎么做的：`desktop/app_update.py`（清单、版本比较、云盘分享链接换直链、校验下载）、入口加 `--update-now`/`--self-test`、安装版数据固定在 `%LOCALAPPDATA%\PokerSense-AA\data`；新工作流 `windows-release.yml`；识别资源包由 `tools/pack_aa_recognition.py` 在 Mac 上打包、发版时放进安装目录。
 - 怎么验证的：新测试（更新器 25 个、发版步骤和入口 13 个）；Linux 上 PyInstaller 打包后离线冒烟和自检通过；Windows CI 上打包、静默安装、端到端更新测试（见 PR）。
+- 顺带修的：打包版缺 `pokerkit`（实时建议在模拟牌桌上重放这手牌要用，#23 同类问题），新加的打包后自检在 Windows CI 上抓到；desktop 依赖加精确锁定的 `pokerkit==0.7.5`。
 - 还剩什么：主人要配云盘和 `RCLONE_CONFIG`、决定识别资源包能不能发给同事；Windows 实机的采集卡读牌、录像按钮还没验；见 `docs/windows-distribution.md`。
 
 **2026-10-11 · `fix/allin-raise-call-value`（翻前有人已全下时，加注和跟注按主池边池算）**

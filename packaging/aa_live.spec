@@ -2,7 +2,7 @@
 # Private profiles, models, recordings and credentials remain external.
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, copy_metadata
 
 root = Path(SPECPATH).resolve().parent
 a = Analysis(
@@ -17,7 +17,9 @@ a = Analysis(
                         "configs/strategy/examples"),
                        (str(root / "configs" / "game" /
                             "aa-scoreboard-rules-v2.json"), "configs/game")]
-          + collect_data_files("poker_engine"),
+          + collect_data_files("poker_engine")
+          # The AA table checks the audited PokerKit version at runtime.
+          + copy_metadata("pokerkit"),
     hiddenimports=["uvicorn.loops.auto", "uvicorn.loops.asyncio",
                    "uvicorn.protocols.http.auto", "uvicorn.protocols.http.h11_impl",
                    "uvicorn.protocols.websockets.auto",
