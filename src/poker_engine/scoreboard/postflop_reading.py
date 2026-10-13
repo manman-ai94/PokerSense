@@ -5,12 +5,11 @@ equity thresholds: it bets above one, checks below it; facing a bet it
 raises above one, calls above another and folds the rest. Reading a player
 with it as a veto (``solver_bot.kept``) throws out, at each action, every
 hand the model would have played otherwise: a check leaves no hand the model
-bets, a bet no hand it checks. Real players slow-play and bluff. Of the
-opponents who showed their cards at the end of a hand in fourteen recordings
-of 2026-10, the reading had thrown out the hand shown for most of those who
-reached the river, and the six who only checked and called with two pair or
-better were all thrown out; the AI then saw near-certain wins and bet big
-into them.
+bets, a bet no hand it checks. Real players slow-play and bluff: of the 149
+opponents who showed their cards while still in at the end of a hand in nine
+recordings of 2026-10-08 to 10-10, the reading had thrown out the hand shown
+for 86 (62 of the 81 who reached the river), 48 of them after the flop; the
+AI then saw near-certain wins and bet big into them.
 
 The reading here keeps, at each postflop action, the hands the model plays
 otherwise with a weight instead of 0 (as ``preflop_reading`` does before the
@@ -20,11 +19,20 @@ flop):
 * ``loose``: at a call, the hands the model would fold;
 * ``bluff``: at a bet or a raise, the hands the model would check or fold.
 
-The weights are per street (``WEIGHTS``) and were fitted to the shown hands
-(``tools/aa_postflop_reading_weights.py``), not to the scoreboard, whose
-players play exactly as the model. A seat whose reads show it bets clearly
-more than the model keeps, as before, at least its floor
-(``ranges.floor``) of every hand.
+The weights are per street (``WEIGHTS``) and come from those shown hands
+(``tools/aa_postflop_reading_weights.py``), not from the scoreboard, whose
+players play exactly as the model. At a check 43% (flop), 55% (turn) and 44%
+(river) of the hands shown were hands the model bets; at a bet about a
+quarter were hands it checks. The weights that make the shown hands most
+likely are slow 1.0 / 1.0 / 0.7, loose 0.2 / 0.7 / - (no river calls the
+model folds were shown), bluff 0.2 / 0.4 / 0.3. Hands shown at a showdown are
+not all hands: a strong hand that checked is more likely to get there than a
+weak one, which often folds later and is never seen, so slow play is set a
+step below its fit (0.7 / 0.7 / 0.5) and the river's loose weight to the
+flop's. With these weights no shown hand the preflop reading kept is thrown
+out after the flop. A seat whose reads show it bets clearly more than the
+model keeps, as before, at least its floor (``ranges.floor``) of every hand,
+so its bluff weight is larger.
 """
 
 from __future__ import annotations

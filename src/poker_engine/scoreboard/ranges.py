@@ -4,7 +4,9 @@ Without a solver (the flop, and pots with more than one opponent) each
 opponent still in is read the way the solver strategy reads its heads-up
 opponent: start from every two cards the board leaves and keep, at each of
 their past actions, the hands the population model plays that way
-(``solver_bot.kept``). An action the model would never take with any hand
+(``solver_bot.kept``); after the flop the hands it plays otherwise keep a
+weight (``postflop_reading``: slow play, calls the model folds, bluffs)
+instead of dropping out. An action the model would never take with any hand
 leaves that range as it was. Your share of the pot against those ranges is
 then worked out by dealing each opponent a hand from their range (weighted,
 without sharing cards) and the rest of the board, many times over.
