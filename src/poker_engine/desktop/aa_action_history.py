@@ -105,6 +105,7 @@ class AAActionHistory:
         self._wager_reads = {}                   # seat -> (value, count)
         self._wagers = {}                        # seat -> (hand, street, most in)
         self._drops = []                         # stack drops not placed yet
+        self._seat_drops = []                    # [seat, frame, chips, used]
         self._opened = None                      # first frame of the hand's pot
 
     # -- hands -----------------------------------------------------------------
@@ -114,6 +115,7 @@ class AAActionHistory:
                       "dealer": dealer, "complete": complete, "start": reason,
                       "actions": [], "streets": set()}
         self._hand_over = False
+        self._seat_drops = []
 
     def _boundary(self, payload, frame, street, dropped, dealer):
         """Why a new hand starts at this frame, or None."""
@@ -210,11 +212,16 @@ class AAActionHistory:
         found = self._rise(action["frame"], now)
         if found == "pending" and self._from_wager(action):
             return
+        if (found == "pending" and action["frame"] + AFTER <= now
+                and self._from_own_drop(action, settle=True)):
+            return
         if found == "pending":
             action["amount_source"] = "pending"
         elif found is not None:
             self._shares[found[0]] = self._shares.get(found[0], 0) + found[1]
             action["amount"], action["amount_source"] = str(found[1]), "pot_rise"
+        elif self._from_own_drop(action, settle=False):
+            return
         else:
             cash = action["cash_amount"]
             action["amount"] = cash
@@ -263,6 +270,34 @@ class AAActionHistory:
             return False
         action["amount"], action["amount_source"] = str(chips), "wager"
         action["owed"] = chips
+        return True
+
+    def _from_own_drop(self, action, settle):
+        """Price a call or raise whose badge was read but whose pot rise was
+        not, by the seat's own stack drop next to it (the nearest, used once).
+        With ``settle`` the pot is unreadable: its rise is settled later and a
+        smaller rise wins, as for a bet priced by the table.
+
+        On 10/10 40 calls and raises had no amount: 28 while the pot was
+        unreadable, 8 in the first rise from an empty pot (the blinds and a
+        raise read together, 35 = 19 + 16) while the raiser's stack was read
+        going 462 -> 446. The rough rule then advised every street of that
+        hand (A6, -145 bb)."""
+        best = None
+        for drop in self._seat_drops:
+            seat, at, _, used = drop
+            if (used or seat != action["slot"]
+                    or not -BEFORE <= at - action["frame"] <= AFTER):
+                continue
+            gap = abs(at - action["frame"])
+            if best is None or gap < abs(best[1] - action["frame"]):
+                best = drop
+        if best is None:
+            return False
+        best[3] = True
+        action["amount"], action["amount_source"] = str(best[2]), "stack_drop"
+        if settle:
+            action["owed"] = best[2]
         return True
 
     def _wager(self, action):
@@ -328,6 +363,7 @@ class AAActionHistory:
                 # Only a drop from a stack still read just before it: after a
                 # stretch unread the chips may have gone in long ago.
                 self._drops.append((int(slot), first, before - value))
+                self._seat_drops.append([int(slot), first, before - value, False])
             self._held[slot] = frame
             if value != 0 or not before or first < hand["start_frame"]:
                 continue

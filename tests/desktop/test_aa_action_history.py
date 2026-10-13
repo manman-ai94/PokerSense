@@ -338,3 +338,38 @@ def test_badges_read_again_after_a_stall_are_left_out():
             for a in hand["actions"]] == [
         (2, 0, "check", "0"), (3, 3, "fold", "0"), (4, 7, "check", "0"),
         (15, 1, "raise", "42")]
+
+
+def raise_from_empty_pot(drop_at=8, stack="446"):
+    """10/10 A6: the pot is first read at 35 with the blinds (19) and seat 2's
+    raise (16) in it; seat 2's stack was read going 462 -> 446."""
+    frames = [stacked(payload("0"), {"2": "462"})] * 5
+    frames += [stacked(payload("35"), {"2": "462" if i < drop_at - 5 else stack})
+               for i in range(5, 40)]
+    return [{**item, "action_history_candidate":
+             [event(6, 2, "aggressive")] if i > 6 else []}
+            for i, item in enumerate(frames)]
+
+
+def test_a_raise_in_the_first_rise_from_an_empty_pot_is_priced_by_its_stack_drop():
+    hand = feed(AAActionHistory(), raise_from_empty_pot())
+    assert [(a["slot"], a["kind"], a["amount"], a["amount_source"])
+            for a in hand["actions"]] == [(2, "raise", "16", "stack_drop")]
+    # A drop far from the badge is some other chips: still unknown.
+    hand = feed(AAActionHistory(), raise_from_empty_pot(drop_at=30))
+    assert hand["actions"][0]["amount_source"] == "unknown"
+
+
+def test_a_raise_before_the_flop_while_the_pot_is_unreadable_takes_its_stack_drop():
+    frames = [{**stacked(item, {"3": "500" if i < 7 else "456"}),
+               "pot": {"value": item["pot"]["value"]}}
+              for i, item in enumerate(unread_pot_bet("preflop"))]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("44", "stack_drop")]
+    # The pot read again settles it: a smaller rise wins.
+    frames = [{**stacked(item, {"3": "500" if i < 7 else "456"})}
+              for i, item in enumerate(unread_pot_bet("preflop", back="69"))]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("40", "pot_rise")]
