@@ -47,4 +47,4 @@
 
 ## 禁止
 
-OCR / 牌面识别 / 动作识别 / Solver / LLM / Equity / 自动操作 / anti-cheat。
+OCR / 牌面识别 / 动作识别 / Solver / LLM / Equity / anti-cheat。
