@@ -33,9 +33,9 @@ from .replay import kind_of, with_hole
 
 STREETS = ("flop", "turn", "river")
 KINDS = ("slow", "loose", "bluff")
-# {kind: (flop, turn, river)}; placeholder until fitted.
-WEIGHTS = {"slow": (0.0, 0.0, 0.0), "loose": (0.0, 0.0, 0.0),
-           "bluff": (0.0, 0.0, 0.0)}
+# {kind: (flop, turn, river)}, from the shown hands (see the module notes).
+WEIGHTS = {"slow": (0.7, 0.7, 0.5), "loose": (0.2, 0.5, 0.2),
+           "bluff": (0.2, 0.4, 0.3)}
 VETO = {kind: (0.0, 0.0, 0.0) for kind in KINDS}
 # Hands left below this share of the range's largest weight are dropped (the
 # share at which ``exclusion`` counts a hand as out): they barely move an
