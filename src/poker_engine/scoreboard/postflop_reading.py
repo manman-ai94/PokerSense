@@ -59,6 +59,20 @@ def weights_of(model):
     return getattr(model, "postflop_reading", None) or WEIGHTS
 
 
+def veto_from_name(name, make_policy):
+    """``vetoread+<policy>``: the policy reading postflop actions by veto, as
+    until 2026-10-13 (every model it or its base policies read with gets
+    ``VETO``), for comparing the two readings on the same deals."""
+    policy = make_policy(name.partition("+")[2])
+    part = policy
+    while part is not None:
+        if getattr(part, "model", None) is not None:
+            part.model.postflop_reading = VETO
+        part = getattr(part, "base", None)
+    policy.name = name
+    return policy
+
+
 def key_of(weights):
     """The weights as a hashable value, for cache keys."""
     return tuple(tuple(weights[kind]) for kind in KINDS)
@@ -86,4 +100,4 @@ def soft_kept(weights, decision, decide, reading=None):
 
 
 __all__ = ["KINDS", "PRUNE", "STREETS", "VETO", "WEIGHTS", "key_of", "otherwise",
-           "soft_kept", "weights_of"]
+           "soft_kept", "veto_from_name", "weights_of"]
