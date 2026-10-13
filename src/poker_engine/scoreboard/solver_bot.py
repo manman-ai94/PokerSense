@@ -20,12 +20,14 @@ each happened.
 from __future__ import annotations
 
 from collections import Counter, OrderedDict
+from functools import partial
 
 from poker_engine.solver.texassolver import (Spot, TexasSolver, Tree, all_combos,
                                              amount_of, combo_key, node_at,
                                              solver_binary, strategy_of)
 
 from .bots import RfiTablePolicy, _Policy, _rng, opponents_in_hand
+from .postflop_reading import soft_kept, weights_of
 from .preflop_reading import reading_model, reading_of
 from .replay import kind_of, public_replay, with_hole
 from .strength import hand_class
@@ -202,8 +204,9 @@ class SolverBot(_Policy):
                                 both_orders=True)
             elif decision.seat == villain:
                 before = other
-                other = kept(other, decision, lambda obs: self.model.decide(
-                    obs, _rng(MODEL_SALT, obs)))
+                decide = partial(_model_decide, self.model)
+                other = (kept(other, decision, decide) if street == "preflop" else
+                         soft_kept(other, decision, decide, weights_of(self.model)))
                 if not other:
                     self.counts["villain_range_kept"] += 1
                     other = before
@@ -260,6 +263,10 @@ class SolverBot(_Policy):
         target = mine + amount_of(choice)
         return min(raises,
                    key=lambda action: abs(float(action["raise_to"]) - target))["id"]
+
+
+def _model_decide(model, observation):
+    return model.decide(observation, _rng(MODEL_SALT, observation))
 
 
 _SOLVERS = {}
