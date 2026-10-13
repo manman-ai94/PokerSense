@@ -19,20 +19,27 @@ flop):
 * ``loose``: at a call, the hands the model would fold;
 * ``bluff``: at a bet or a raise, the hands the model would check or fold.
 
-The weights are per street (``WEIGHTS``) and come from those shown hands
-(``tools/aa_postflop_reading_weights.py``), not from the scoreboard, whose
-players play exactly as the model. At a check 43% (flop), 55% (turn) and 44%
-(river) of the hands shown were hands the model bets; at a bet about a
-quarter were hands it checks. The weights that make the shown hands most
-likely are slow 1.0 / 1.0 / 0.7, loose 0.2 / 0.7 / - (no river calls the
-model folds were shown), bluff 0.2 / 0.4 / 0.3. Hands shown at a showdown are
-not all hands: a strong hand that checked is more likely to get there than a
-weak one, which often folds later and is never seen, so slow play is set a
-step below its fit (0.7 / 0.7 / 0.5) and the river's loose weight to the
-flop's. With these weights no shown hand the preflop reading kept is thrown
-out after the flop. A seat whose reads show it bets clearly more than the
-model keeps, as before, at least its floor (``ranges.floor``) of every hand,
-so its bluff weight is larger.
+The weights are per street (``WEIGHTS``). The shown hands
+(``tools/aa_postflop_reading_weights.py``) are the evidence for them: at a
+check 43% (flop), 55% (turn) and 44% (river) of the hands shown were hands
+the model bets; at a bet about a quarter were hands it checks. The weights
+that make the shown hands most likely (``FITTED``) are slow 1.0 / 1.0 / 0.7,
+loose 0.2 / 0.7 / - (no river calls the model folds were shown), bluff
+0.2 / 0.4 / 0.3. Hands shown at a showdown are not all hands, though: a
+strong hand that checked is more likely to get there than a weak one, which
+often folds later and is never seen, so the fit overstates them.
+
+On the scoreboard every player plays exactly as the model, so there the veto
+is exact and any weight costs. Against the AA real-player table (1000 deals,
+paired with the veto reading) slow 0.7 / 0.7 / 0.5 with the loose and bluff
+weights above lost 61.5 bb/100 [-87, -36], half of all of them 32 [-51, -13];
+the loose and bluff weights alone lost 58 [-83, -33] and kept only a few
+more shown hands, slow play alone 18 [-31, -5]. What is used is slow play at
+half that, 0.35 / 0.35 / 0.25 (-3.3 [-14, +7]: not clearly worse), and no
+loose or bluff weight: a bet or a call still throws out the hands the model
+plays otherwise, as before. A seat whose reads show it bets clearly more
+than the model keeps, as before, at least its floor (``ranges.floor``) of
+every hand at every action, which is its bluff weight.
 """
 
 from __future__ import annotations
@@ -41,9 +48,13 @@ from .replay import kind_of, with_hole
 
 STREETS = ("flop", "turn", "river")
 KINDS = ("slow", "loose", "bluff")
-# {kind: (flop, turn, river)}, from the shown hands (see the module notes).
-WEIGHTS = {"slow": (0.7, 0.7, 0.5), "loose": (0.2, 0.5, 0.2),
-           "bluff": (0.2, 0.4, 0.3)}
+# {kind: (flop, turn, river)}: the shown hands' best fit, and what is used
+# (see the module notes for why it is smaller).
+# No river call of a hand the model folds was shown: the flop's loose weight.
+FITTED = {"slow": (1.0, 1.0, 0.7), "loose": (0.2, 0.7, 0.2),
+          "bluff": (0.2, 0.4, 0.3)}
+WEIGHTS = {"slow": (0.35, 0.35, 0.25), "loose": (0.0, 0.0, 0.0),
+           "bluff": (0.0, 0.0, 0.0)}
 VETO = {kind: (0.0, 0.0, 0.0) for kind in KINDS}
 # Hands left below this share of the range's largest weight are dropped (the
 # share at which ``exclusion`` counts a hand as out): they barely move an
@@ -107,5 +118,5 @@ def soft_kept(weights, decision, decide, reading=None):
     return {key: weight for key, weight in result.items() if weight > PRUNE * top}
 
 
-__all__ = ["KINDS", "PRUNE", "STREETS", "VETO", "WEIGHTS", "key_of", "otherwise",
-           "soft_kept", "veto_from_name", "weights_of"]
+__all__ = ["FITTED", "KINDS", "PRUNE", "STREETS", "VETO", "WEIGHTS", "key_of",
+           "otherwise", "soft_kept", "veto_from_name", "weights_of"]
