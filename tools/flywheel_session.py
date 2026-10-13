@@ -186,8 +186,25 @@ def session_hands(name, rows):
             "bb": round(float(Decimal(str(hand["your_chips"]))
                               / Decimal(level["big_blind"])), 2),
             "bomb_pot": bool(hand.get("bomb_pot")),
-            "spot": spot(grouped[hand["hand_id"]], mine[-1]) if mine else None})
+            "spot": spot(grouped[hand["hand_id"]], mine[-1]) if mine else None,
+            "misreads": misreads(hand),
+            "turn_seconds": [turn["video_seconds"] for turn in mine
+                             if turn["video_seconds"] is not None],
+            "end_seconds": None if hand["video_seconds"] is None else round(
+                hand["video_seconds"] + hand["end_pts"] - hand["start_pts"], 2)})
     return report["summary"], hands
+
+
+MISREADS = (("your_cards_readings", lambda n: n > 1, "你的牌认成两种"),
+            ("board_slots_with_two_readings", bool, "公共牌认成两种"),
+            ("unexplained_pot_rises", bool, "底池涨了没看到谁下注"),
+            ("unrecorded_folds", bool, "有人弃牌没记上"),
+            ("skipped_seats", bool, "行动顺序跳过了座位"))
+
+
+def misreads(hand):
+    """What the screen reading got wrong in this hand (``aa_session_report``)."""
+    return [label for key, wrong, label in MISREADS if wrong(hand.get(key) or 0)]
 
 
 def result(values):
@@ -286,6 +303,14 @@ def sheet(item):
                         f"{group['lost_bb']} 个大盲（这类共 {group['hands']} 手，净 "
                         f"{group['net_bb']:+}；照建议 {group['followed']}/"
                         f"{group['followed_of']}）看录像：{worst}")
+    look = item.get("to_look_at")
+    if look and look["hands"]:
+        text.append(f"要看的手 {look['hands']} 手（输 {LOOK_LOSS} 个大盲以上或认错），"
+                    f"截图 {look['pictures']} 张在 flywheel/frames/，"
+                    "每手是你决策时和这手结束时的画面；hands.json 里每手的 pictures 是它的截图")
+    if look and look["misreads"]:
+        counts = look["misreads"].items()
+        text.append("认错：" + "、".join(f"{label} {count} 手" for label, count in counts))
     return text
 
 
@@ -301,13 +326,97 @@ def write_json(path, value):
     path.write_text(json.dumps(value, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def report(folder, ledger_path):
+# -- the pictures of the hands to look at ------------------------------------------
+
+LOOK_LOSS = 20                # big blinds lost: a hand worth a look
+LOOK_HANDS = 30               # at most this many hands get pictures
+PICTURE_WIDTH = 360           # pixels: the phone strip, made small
+
+
+def to_look_at(hands):
+    """The hands that lost the most or were misread, the worst first."""
+    flagged = [hand for hand in hands if hand["bb"] <= -LOOK_LOSS or hand["misreads"]]
+    return sorted(flagged, key=lambda hand: hand["bb"])[:LOOK_HANDS]
+
+
+def segments_of(folder):
+    """[(start seconds, file)] of a recording, oldest first."""
+    index = folder / "segments.csv"
+    if not index.exists():
+        return []
+    found = []
+    for line in index.read_text(encoding="utf-8").splitlines():
+        parts = line.split(",")
+        if len(parts) >= 2 and (folder / parts[0]).exists():
+            found.append((float(parts[1]), folder / parts[0]))
+    return sorted(found)
+
+
+def pictures(folder, hands, out, *, opener=None):
+    """Cut the moments of each hand to look at (your turns and the end of the
+    hand, where shown cards are) from the recording as small pictures in
+    ``out``; each hand gets ``pictures`` (paths relative to ``out``'s parent).
+    Nothing leaves the computer; without the video or OpenCV, none are cut."""
+    segments = segments_of(folder)
+    if not segments:
+        return 0
+    try:
+        import cv2
+    except ImportError:
+        return 0
+    opener = opener or cv2.VideoCapture
+    meta = folder / "recording.json"
+    strip = (json.loads(meta.read_text(encoding="utf-8")).get("strip")
+             if meta.exists() else None)
+    wanted = []
+    for hand in hands:
+        moments = [("决策", seconds) for seconds in hand["turn_seconds"]]
+        if hand["end_seconds"] is not None:
+            moments.append(("结束", hand["end_seconds"]))
+        for label, seconds in moments:
+            wanted.append((seconds, hand, label))
+    out.mkdir(parents=True, exist_ok=True)
+    made, current, capture = 0, None, None
+    for seconds, hand, label in sorted(wanted, key=lambda item: item[0]):
+        start, path = max(((s, p) for s, p in segments if s <= seconds),
+                          default=segments[0])
+        if path != current:
+            if capture is not None:
+                capture.release()
+            capture, current = opener(str(path)), path
+        capture.set(cv2.CAP_PROP_POS_MSEC, max(0.0, seconds - start) * 1000)
+        ok, image = capture.read()
+        if not ok or image is None:
+            continue
+        if strip:
+            x0, y0, x1, y1 = strip
+            image = image[y0:y1, x0:x1]
+        height, width = image.shape[:2]
+        image = cv2.resize(image, (PICTURE_WIDTH,
+                                   max(1, round(height * PICTURE_WIDTH / width))))
+        name = f"{hand['hand_id']}-{label}-{seconds:.1f}s.jpg"
+        if cv2.imwrite(str(out / name), image, [cv2.IMWRITE_JPEG_QUALITY, 80]):
+            hand.setdefault("pictures", []).append(f"{out.name}/{name}")
+            made += 1
+    if capture is not None:
+        capture.release()
+    return made
+
+
+def report(folder, ledger_path, *, opener=None):
     folder = Path(folder)
     rows = load(folder / "frames.jsonl")
     summary, hands = session_hands(folder.name, rows)
     item = session_summary(folder.name, code_of(folder, rows), summary, hands)
     out = folder / FOLDER
     out.mkdir(exist_ok=True)
+    look = to_look_at(hands)
+    made = pictures(folder, look, out / "frames", opener=opener)
+    item["to_look_at"] = {
+        "hands": len(look), "pictures": made,
+        "misread_hands": sum(bool(hand["misreads"]) for hand in hands),
+        "misreads": dict(Counter(label for hand in hands
+                                 for label in hand["misreads"]).most_common())}
     write_json(out / "hands.json", hands)
     write_json(out / "summary.json", item)
     text = sheet(item)

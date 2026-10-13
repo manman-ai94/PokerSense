@@ -157,3 +157,62 @@ def test_rank_reads_the_sessions_under_the_root(tmp_path, capsys):
     assert fly.main(["rank", "--root", str(tmp_path), "--out",
                      str(tmp_path / "rank.json")]) == 0
     assert "1. 转牌 · 多人 · 面对下注 · 你跟注：输的 2 手共 -12" in capsys.readouterr().out
+
+
+class FakeVideo:
+    """Stands in for cv2.VideoCapture: the frame's colour is the second asked."""
+
+    opened = []
+
+    def __init__(self, path):
+        self.path, self.ms = path, 0
+        FakeVideo.opened.append(path)
+
+    def set(self, prop, value):
+        self.ms = value
+
+    def read(self):
+        import numpy as np
+        return True, np.full((1080, 1920, 3), int(self.ms / 1000) % 255, np.uint8)
+
+    def release(self):
+        pass
+
+
+def test_the_hands_to_look_at_get_pictures_cut_from_the_recording(tmp_path):
+    pytest.importorskip("cv2")
+    folder = session(tmp_path)
+    (folder / "segment_0000.mp4").write_bytes(b"")
+    (folder / "segments.csv").write_text("segment_0000.mp4,0.000000,600.000000\n")
+    (folder / "recording.json").write_text(json.dumps(
+        {"strip": [711, 0, 1209, 1080]}))
+    lines = (folder / "frames.jsonl").read_text(encoding="utf-8").splitlines()
+    rows = [json.loads(line) for line in lines if line.startswith("{\"processed")]
+    for item in rows:
+        item["video_seconds"] = round(100 + item["pts_seconds"], 2)
+    (folder / "frames.jsonl").write_text(
+        "".join(json.dumps(item) + "\n" for item in rows), encoding="utf-8")
+    FakeVideo.opened = []
+    text = fly.report(folder, None, opener=FakeVideo)
+    hands = json.loads((folder / "flywheel" / "hands.json").read_text(encoding="utf-8"))
+    first, second = hands
+    # Lost 20 big blinds: your turn and the hand's end; the small loss: none.
+    assert first["pictures"] == ["frames/hand_0-决策-100.5s.jpg",
+                                 "frames/hand_0-结束-100.6s.jpg"]
+    assert "pictures" not in second
+    for name in first["pictures"]:
+        assert (folder / "flywheel" / name).stat().st_size > 0
+    assert FakeVideo.opened == [str(folder / "segment_0000.mp4")]
+    summary = json.loads((folder / "flywheel" / "summary.json").read_text(
+        encoding="utf-8"))
+    look = summary["to_look_at"]
+    assert (look["hands"], look["pictures"]) == (1, 2)
+    assert any(line.startswith("要看的手 1 手") for line in text)
+
+
+def test_no_video_no_pictures(tmp_path):
+    hands = [{"hand_id": "h", "bb": -30, "misreads": [], "turn_seconds": [1.0],
+              "end_seconds": 2.0}]
+    assert fly.pictures(tmp_path, hands, tmp_path / "frames") == 0
+    assert fly.to_look_at(hands + [{"bb": -1, "misreads": ["你的牌认成两种"]},
+                                   {"bb": -5, "misreads": []}])[1]["bb"] == -1

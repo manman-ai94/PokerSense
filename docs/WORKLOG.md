@@ -11,7 +11,7 @@
 ## 记录
 
 **2026-10-13 · `claude/project-thread-elzvqy`（飞轮第一期 ②：录像一停自动出体检单、跨场亏损排行、成绩账本、三道关一条命令）**
-- 做了什么：窗口里停下录像，后台低优先级自动跑 `tools/flywheel_session.py report`，在录像文件夹的 `flywheel/` 写体检单（代码版本、建议覆盖、卡顿、按每手自己的级别换算成大盲的积分成绩和 95% 区间、普通局和暴击局分开、输得最多的局面）并记进账本 `PokerSense_private/flywheel/ledger.jsonl`；`rank` 把所有场按局面（街、单挑/多人、面对什么、你做了什么）排输得最多的；`ledger` 合计并按代码版本分开。`tools/flywheel_gates.py`：和 main 比，录像重放、模拟每桌 2 批牌配对比较、相关测试和 flake8，一条命令给出过 / 不过。
+- 做了什么：窗口里停下录像，后台低优先级自动跑 `tools/flywheel_session.py report`，在录像文件夹的 `flywheel/` 写体检单（代码版本、建议覆盖、卡顿、按每手自己的级别换算成大盲的积分成绩和 95% 区间、普通局和暴击局分开、输得最多的局面）并记进账本 `PokerSense_private/flywheel/ledger.jsonl`；只对要看的手（输 20 个大盲以上或认错，最多 30 手）从录像在本机截你决策时和这手结束时的小图放进 `flywheel/frames/`，统计只读逐手日志，没人需要再翻录像；`rank` 把所有场按局面（街、单挑/多人、面对什么、你做了什么）排输得最多的；`ledger` 合计并按代码版本分开。`tools/flywheel_gates.py`：和 main 比，录像重放、模拟每桌 2 批牌配对比较、相关测试和 flake8，一条命令给出过 / 不过。
 - 怎么做的：`aa_recorder` 写完 recording.json 后回调 `aa_after_session.start_report`（打包版、没有 frames.jsonl 时什么都不做）；体检单直接用 `aa_session_report` 和 `aa_strategy_review` 的函数，不改它们；旧账本（`aa_strategy_review --ledger`，按 1/2/4 算、没有区间）原样保留。三道关用 git worktree 取出 main 版本，两版跑同一批牌按每局配对。
 - 怎么验证的：新测试 4 个文件；在合成日志上跑通体检单和账本；三道关整套试跑（模拟 aa 桌 2 批各 60 局、测试关）全过，录像关在合成日志上跑通。还剩：在 Mac 真录像上跑一次、窗口里显示体检单（新界面，要主人定）。
 
