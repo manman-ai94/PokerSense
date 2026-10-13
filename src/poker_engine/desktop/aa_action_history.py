@@ -16,6 +16,9 @@ This layer keeps the reader's actions and rebuilds the rest:
   which also splits a rise that held the next bet too while the pot was
   unreadable. Chips of a rise are given out once; the rise from an empty
   pot is the blinds and antes, never an action;
+- **read calls and raises without a rise**: a call or raise whose badge
+  was read but whose pot rise was not (the pot unreadable, or the first
+  rise from an empty pot) takes the seat's own stack drop next to it;
 - **all in**: Mac recordings show the All in badge in a style the reader
   does not match, and some all-ins turn the cards face up at once. A seat
   whose steady stack drops to 0 with no call or raise of its own nearby
