@@ -988,6 +988,9 @@ def test_the_big_pot_guard_holds_back_a_pair_in_the_solvers_advice():
 
 
 def test_the_big_pot_guard_holds_back_a_pair_in_the_range_rule(monkeypatch):
+    # The share is made up here, so the rule plays it by its lines (with
+    # ``sizing`` it would weigh the bets against the ranges really read).
+    monkeypatch.setitem(DEFAULTS, "sizing", 0.0)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     monkeypatch.setattr(advice, "_ranges", lambda observation: {
         "value": 0.95, "opponents": 2, "hands": None, "hands_each": {}})
