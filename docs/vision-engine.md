@@ -39,4 +39,4 @@
 
 ## 不进入
 
-Equity / Strategy / Solver / Decision / LLM / 自动操作 / State mutation / player identity 映射。
+Equity / Strategy / Solver / Decision / LLM / State mutation / player identity 映射。

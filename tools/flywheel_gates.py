@@ -223,7 +223,7 @@ def default_tests(changed):
             stem = Path(name).stem
             candidate = ROOT / "tests" / "tools" / f"test_{stem}.py"
             if candidate.exists():
-                paths.add(str(candidate.relative_to(ROOT)))
+                paths.add(candidate.relative_to(ROOT).as_posix())
     # A folder already covers the files in it.
     return sorted(p for p in paths
                   if not any(p != q and p.startswith(q + "/") for q in paths))

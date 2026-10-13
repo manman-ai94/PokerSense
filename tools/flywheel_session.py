@@ -307,7 +307,7 @@ def sheet(item):
     if look and look["hands"]:
         text.append(f"要看的手 {look['hands']} 手（输 {LOOK_LOSS} 个大盲以上或认错），"
                     f"截图 {look['pictures']} 张在 flywheel/frames/，"
-                    "每手是你决策时和这手结束时的画面；hands.json 里每手的 pictures 是它的截图")
+                    "文件名里 turn 是你决策时、end 是这手结束时的画面")
     if look and look["misreads"]:
         counts = look["misreads"].items()
         text.append("认错：" + "、".join(f"{label} {count} 手" for label, count in counts))
@@ -370,9 +370,9 @@ def pictures(folder, hands, out, *, opener=None):
              if meta.exists() else None)
     wanted = []
     for hand in hands:
-        moments = [("决策", seconds) for seconds in hand["turn_seconds"]]
+        moments = [("turn", seconds) for seconds in hand["turn_seconds"]]
         if hand["end_seconds"] is not None:
-            moments.append(("结束", hand["end_seconds"]))
+            moments.append(("end", hand["end_seconds"]))
         for label, seconds in moments:
             wanted.append((seconds, hand, label))
     out.mkdir(parents=True, exist_ok=True)
@@ -395,7 +395,11 @@ def pictures(folder, hands, out, *, opener=None):
         image = cv2.resize(image, (PICTURE_WIDTH,
                                    max(1, round(height * PICTURE_WIDTH / width))))
         name = f"{hand['hand_id']}-{label}-{seconds:.1f}s.jpg"
-        if cv2.imwrite(str(out / name), image, [cv2.IMWRITE_JPEG_QUALITY, 80]):
+        # Encoded here and written by Python: OpenCV's own writer cannot
+        # take every path on Windows (a user folder with Chinese in it).
+        ok, data = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ok:
+            (out / name).write_bytes(data.tobytes())
             hand.setdefault("pictures", []).append(f"{out.name}/{name}")
             made += 1
     if capture is not None:

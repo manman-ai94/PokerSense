@@ -16,7 +16,7 @@ Hand Memory 负责「可靠地记住一手牌从开始到结束发生过什么�
 
 - 判断画面识别是否正确
 - 推理玩家做了什么 / 计算下一状态（属于 State Engine）
-- Equity / Strategy / Solver / Opponent Model / LLM / Decision / UI / 自动操作
+- Equity / Strategy / Solver / Opponent Model / LLM / Decision / UI
 
 一句话：State Engine 回答「这一步发生了什么」，Hand Memory 回答「把发生过的东西准确记下来」。
 

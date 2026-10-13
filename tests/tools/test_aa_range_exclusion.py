@@ -44,7 +44,9 @@ def rows(hand="hand_1"):
     return result
 
 
-def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_limp():
+# The window reads a limp as keeping the hands that would have raised
+# (``preflop_reading``), so the limped aces stay in until the flop check.
+def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_flop_check():
     report = session_exclusion([("log", rows())])
     assert report["skipped"] == {"shown_after_folding": 1}
     (trace,) = report["traces"]
@@ -52,30 +54,31 @@ def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_limp():
         "hand_1", 5, "whole")
     assert [(s["street"], s["action"]) for s in trace["steps"]] == [
         ("preflop", "call"), ("flop", "check"), ("turn", "raise"), ("river", "check")]
-    assert trace["steps"][0]["excluded"] and trace["you_in"] is False
+    assert not trace["steps"][0]["excluded"] and trace["steps"][1]["excluded"]
+    assert trace["you_in"] is False
     assert trace["steps"][-1]["ends_hand"]
     for view in ("whole_hand", "before_end"):
         summary = report[view]
         assert (summary["all"]["excluded"], summary["all"]["hands"]) == (1, 1)
         assert summary["river"]["hands"] == 1 and summary["narrowed"]["hands"] == 1
-        assert summary["first"] == {"preflop call": 1}
+        assert summary["first"] == {"flop check": 1}
     (line,) = report["hands"]
     assert (line["out"], line["out_before_end"], line["video_seconds"]) == (
-        "preflop call", "preflop call", 100.0)
+        "flop check", "flop check", 100.0)
 
 
 def test_the_session_report_and_the_review_show_it_hand_by_hand():
     found = session_report([("log", rows())])
     hand = found["hands"][0]
     reads = {seat["seat"]: seat["range_read"] for seat in hand["shown_cards"]}
-    assert reads[5]["out"] == "preflop call" and reads[5]["street"] == "river"
+    assert reads[5]["out"] == "flop check" and reads[5]["street"] == "river"
     assert reads[3] == {"skipped": "shown_after_folding"}
     summary = found["summary"]["range_exclusion"]
     assert summary["whole_hand"]["all"]["rate"] == 1.0
-    assert summary["before_end"]["by_street"]["preflop"]["excluded"] == 1
+    assert summary["before_end"]["by_street"]["flop"]["excluded"] == 1
     excluded = review([("log", rows())])["summary"]["range_exclusion"]["excluded"]
     assert [(item["seat"], item["cards"], item["out"]) for item in excluded] == [
-        (5, "Ah As", "preflop call")]
+        (5, "Ah As", "flop check")]
 
 
 def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys):
@@ -84,7 +87,7 @@ def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys):
     log.write_text("".join(json.dumps(row) + "\n" for row in rows()), encoding="utf-8")
     out = tmp_path / "one.json"
     main(["--frames", str(log), "--out", str(out)])
-    assert "preflop call 1" in capsys.readouterr().out
+    assert "flop check 1" in capsys.readouterr().out
     saved = json.loads(out.read_text(encoding="utf-8"))
     kept = json.loads(json.dumps(saved))
     for step in kept["traces"][0]["steps"]:
@@ -97,10 +100,6 @@ def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys):
 
 def test_the_report_reads_ranges_with_the_windows_reader():
     from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
-    from poker_engine.scoreboard.preflop_reading import (
-        HONEST, reading_model, reading_of)
+    from poker_engine.scoreboard.preflop_reading import reading_of
     from tools.aa_range_exclusion import window_model
-    policy = AAPreflopPolicy()
-    expected = reading_model(policy.adjusted, reading_of(policy))
-    assert type(window_model()) is type(expected)
-    assert getattr(window_model(), "reading", HONEST) == reading_of(policy)
+    assert window_model().reading == reading_of(AAPreflopPolicy())

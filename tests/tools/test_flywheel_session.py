@@ -197,8 +197,8 @@ def test_the_hands_to_look_at_get_pictures_cut_from_the_recording(tmp_path):
     hands = json.loads((folder / "flywheel" / "hands.json").read_text(encoding="utf-8"))
     first, second = hands
     # Lost 20 big blinds: your turn and the hand's end; the small loss: none.
-    assert first["pictures"] == ["frames/hand_0-决策-100.5s.jpg",
-                                 "frames/hand_0-结束-100.6s.jpg"]
+    assert first["pictures"] == ["frames/hand_0-turn-100.5s.jpg",
+                                 "frames/hand_0-end-100.6s.jpg"]
     assert "pictures" not in second
     for name in first["pictures"]:
         assert (folder / "flywheel" / name).stat().st_size > 0
