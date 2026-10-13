@@ -373,3 +373,28 @@ def test_a_raise_before_the_flop_while_the_pot_is_unreadable_takes_its_stack_dro
     hand = feed(AAActionHistory(), frames)
     assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
         ("40", "pot_rise")]
+
+
+def test_two_seats_putting_chips_in_while_the_pot_is_unreadable_each_get_their_own():
+    # 10/09 053249: the pot went 25 -> 62 unread; the whole 37 used to go to
+    # your raise and the call after it had no amount. Stacks: 286 -> 267,
+    # 500 -> 482; the call takes what is left of the rise.
+    pots = ["25"] * 5 + [None] * 40 + ["62"] * 10
+    frames = [{**stacked(payload(pot), {"4": "286" if i < 7 else "267",
+                                        "6": "500" if i < 12 else "482"}),
+               "action_history_candidate":
+               [e for e in (event(6, 4, "aggressive"), event(11, 6, "call"))
+                if e["frame"] < i]}
+              for i, pot in enumerate(pots)]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["slot"], a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        (4, "19", "stack_drop"), (6, "18", "pot_rise")]
+
+
+def test_a_stack_read_while_its_chips_moved_counts_both_steps():
+    frames = [{**stacked(item, {"3": "500" if i < 7 else "480" if i < 10 else "456"}),
+               "pot": {"value": item["pot"]["value"]}}
+              for i, item in enumerate(unread_pot_bet("preflop"))]
+    hand = feed(AAActionHistory(), frames)
+    assert [(a["amount"], a["amount_source"]) for a in hand["actions"]] == [
+        ("44", "stack_drop")]

@@ -274,7 +274,8 @@ class AAActionHistory:
 
     def _from_own_drop(self, action, settle):
         """Price a call or raise whose badge was read but whose pot rise was
-        not, by the seat's own stack drop next to it (the nearest, used once).
+        not, by the seat's own stack drops next to it (all of them: a stack
+        read while the chips moved drops in two steps; each used once).
         With ``settle`` the pot is unreadable: its rise is settled later and a
         smaller rise wins, as for a bet priced by the table.
 
@@ -282,22 +283,20 @@ class AAActionHistory:
         unreadable, 8 in the first rise from an empty pot (the blinds and a
         raise read together, 35 = 19 + 16) while the raiser's stack was read
         going 462 -> 446. The rough rule then advised every street of that
-        hand (A6, -145 bb)."""
-        best = None
-        for drop in self._seat_drops:
-            seat, at, _, used = drop
-            if (used or seat != action["slot"]
-                    or not -BEFORE <= at - action["frame"] <= AFTER):
-                continue
-            gap = abs(at - action["frame"])
-            if best is None or gap < abs(best[1] - action["frame"]):
-                best = drop
-        if best is None:
+        hand (A6, -145 bb). A pot unreadable while two seats put chips in
+        also gave the whole rise to the first of them (19 + 18 as a raise of
+        37 and a call without an amount); the drop splits it."""
+        near = [drop for drop in self._seat_drops
+                if not drop[3] and drop[0] == action["slot"]
+                and -BEFORE <= drop[1] - action["frame"] <= AFTER]
+        if not near:
             return False
-        best[3] = True
-        action["amount"], action["amount_source"] = str(best[2]), "stack_drop"
+        for drop in near:
+            drop[3] = True
+        chips = sum(drop[2] for drop in near)
+        action["amount"], action["amount_source"] = str(chips), "stack_drop"
         if settle:
-            action["owed"] = best[2]
+            action["owed"] = chips
         return True
 
     def _wager(self, action):
