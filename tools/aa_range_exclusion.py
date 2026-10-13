@@ -51,8 +51,9 @@ from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     HERO, hand_facts, replay_hand, starting_stacks)
 from poker_engine.scoreboard.exclusion import (  # noqa: E402
     brief, compare, exclusion_trace, summarize)
-from poker_engine.scoreboard.population import PopulationBot  # noqa: E402
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy  # noqa: E402
+from poker_engine.scoreboard.preflop_reading import (  # noqa: E402
+    reading_model, reading_of)
 
 
 def load(path):
@@ -62,7 +63,8 @@ def load(path):
 
 def window_model():
     """The model the window reads ranges with (``AASolverAdvice._range_model``)."""
-    return PopulationBot(adjusted=AAPreflopPolicy().adjusted)
+    policy = AAPreflopPolicy()
+    return reading_model(policy.adjusted, reading_of(policy))
 
 
 def hands_in_order(rows):

@@ -219,7 +219,8 @@ jobs:
       actions: read
     env:
       PYTHONUTF8: "1"
-      RCLONE_CONFIG_TEXT: ${{ secrets.RCLONE_CONFIG }}
+      # 密钥只放进写 rclone.conf 的那一步；其余步骤（含 pip install）只看到“有没有配”。
+      HAS_RCLONE: ${{ secrets.RCLONE_CONFIG != '' }}
       REMOTE_DIR: ${{ vars.POKERSENSE_RELEASE_DIR || 'pokersense:PokerSense-AA' }}
       MANIFEST_URL_VAR: ${{ vars.POKERSENSE_UPDATE_URL }}
     defaults:
@@ -244,7 +245,9 @@ jobs:
         run: python -m pip install -e ".[packaging]"
 
       - name: Set up rclone
-        if: env.RCLONE_CONFIG_TEXT != ''
+        if: env.HAS_RCLONE == 'true'
+        env:
+          RCLONE_CONFIG_TEXT: ${{ secrets.RCLONE_CONFIG }}
         run: |
           choco install rclone -y --no-progress
           $dir = Join-Path $env:RUNNER_TEMP "rclone"
@@ -254,13 +257,13 @@ jobs:
           "RCLONE_CONFIG=$conf" >> $env:GITHUB_ENV
 
       - name: Skip upload without RCLONE_CONFIG
-        if: env.RCLONE_CONFIG_TEXT == ''
+        if: env.HAS_RCLONE != 'true'
         run: |
           "::notice::没有配置 RCLONE_CONFIG：跳过云盘上传"
           exit 0
 
       - name: The version must be newer than the published one
-        if: env.RCLONE_CONFIG_TEXT != ''
+        if: env.HAS_RCLONE == 'true'
         run: |
           $current = Join-Path $env:RUNNER_TEMP "published-latest.json"
           rclone copyto "$env:REMOTE_DIR/latest.json" $current 2>$null
@@ -270,7 +273,7 @@ jobs:
 
       - name: Check the recognition bundle in the cloud folder
         id: recognition
-        if: env.RCLONE_CONFIG_TEXT != ''
+        if: env.HAS_RCLONE == 'true'
         run: |
           $src = Join-Path $env:RUNNER_TEMP "recognition"
           rclone copy "$env:REMOTE_DIR/recognition" $src --include "PokerSense-AA-recognition.*" 2>$null
@@ -284,7 +287,7 @@ jobs:
           exit 0
 
       - name: Upload the installer, then the version manifest
-        if: env.RCLONE_CONFIG_TEXT != ''
+        if: env.HAS_RCLONE == 'true'
         run: |
           $version = "${{ needs.windows.outputs.version }}"
           rclone copyto dist\PokerSense-AA-Setup.exe "$env:REMOTE_DIR/versions/PokerSense-AA-Setup-$version.exe"

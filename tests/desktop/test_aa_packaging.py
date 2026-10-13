@@ -231,7 +231,10 @@ def test_a_recognition_bundle_in_the_data_folder_turns_on_the_capture_card(
     (state / "recognition" / "current.json").write_text(
         json.dumps({"manifest_sha256": digest}), "utf-8")
     monkeypatch.setattr(entry.app_update, "install_root", lambda: tmp_path / "app")
-    monkeypatch.delenv(entry.DATA_ROOT_ENV, raising=False)
+    # main() 会设这个变量：先 setenv 让 monkeypatch 记下“原来没有”，测试结束时才会清掉，
+    # 否则后面的测试会到这个临时目录里找求解器等私有数据。
+    monkeypatch.setenv(entry.DATA_ROOT_ENV, "unset")
+    monkeypatch.delenv(entry.DATA_ROOT_ENV)
     monkeypatch.delenv(entry.app_update.URL_ENV, raising=False)
     assert entry.main(["--self-check", "--state", str(state)]) == 0
     report = json.loads(capsys.readouterr().out)

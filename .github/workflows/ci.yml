@@ -13,7 +13,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # 只取消同一 PR 的旧任务；推到 main 的每一版都要有完整结果。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   review-hygiene:

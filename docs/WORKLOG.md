@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-13 · `claude/full-audit-3hxb2f`（体检 grokBOT 周末提交：修 main 红灯、发版和 CI 漏洞、读牌跟进；先跟后加读法改为可选）**
+- 做了什么：main 的 Windows 检查红（资源包路径测试在 Windows 上不成立）；打包测试把数据目录变量漏给后面的测试（Mac 上 3 个求解器测试误报没装）；发版日志会打出云盘链接、密钥整个发版任务可见、更新地址收明文 http；代码改名进 docs 会跳过测试；推 main 的检查互相取消；文档误写仓库“私有”。读牌（#30）：排除率工具仍按旧读法量、缓存键不分读法参数、`noreads+` 等丢了读法参数。主人 10/13 定：先跟后加读法先关，`aa_preflop` 默认 slowplay=0、bluff=0（窗口回到周末前），写 `@slowplay=0.4:bluff=0.2` 才开。
+- 怎么做的：测试改 `..\outside.txt`（Windows 的 zipfile 把 `\` 换成 `/`）；monkeypatch 先 setenv 再 delenv；`public_summary` 打印不带链接；密钥只给写 rclone.conf 那步；`open_url` 拒绝非本机 http；`--no-renames`；concurrency 只取消 PR；排除率和窗口同一读法、缓存键加 `reading`、`reading_of` 穿过 `.base`；`aa_compare_advice` 的 after 明写新读法。
+- 怎么验证的：每处先复现再修（模拟 Windows zipfile、漏变量探针测试、缓存串读、包装参数），新测试 6 个；策略相关 2052 个测试和 flake8 全过；PR 三项检查。#30 证据：AA 真人桌两批各 6400 手，新读法 −20.2（−43.9 ~ +3.6）、−8.2（−29.0 ~ +12.6），翻前部分两批都确定变差。
+- 还剩什么：新读法要用 `tools/aa_compare_advice.py --recordings` 在录像上比过才考虑打开；更新清单没签名、启动同步下载识别包拖慢开窗、更新提示框不能关；识别包含真实牌桌截图，发不发给同事由主人定。
+
 **2026-10-12 · `feat/windows-installer-updater`（同事用的 Windows 安装包、自动更新和识别资源包下载；草稿，未合并）**
 - 做了什么：Inno Setup 安装包装到用户目录（不要管理员），有桌面和“检查更新”快捷方式；程序每次启动读一个可配置地址的版本清单：识别资源包没有或换了新的就自动下载，有新版程序在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 才传 Google Drive，没有就跳过。
 - 怎么做的：`desktop/app_update.py`（清单、版本比较、分享链接换直链、校验下载、`sync_recognition`）、入口加 `--update-now`/`--self-test`、安装版数据和资源包在 `%LOCALAPPDATA%\PokerSense-AA\data`；新工作流 `windows-release.yml`，资源包由 `tools/pack_aa_recognition.py` 在 Mac 上打包单独上传，发版时核对并写进 `latest.json`，不进安装包。顺带修了 Windows CI 抓到的打包版缺 `pokerkit`、输出接管道时打印中文崩溃。

@@ -116,7 +116,10 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
     ranges = dict.fromkeys(seats, every)
     reads = read_factors(observation, model, seats)
     floors = read_floors(observation, model, seats)
+    # The reader's (slow play, bluff) is part of the key: two readings of the
+    # same line must not share a range.
     table = (type(model).__name__, getattr(model, "adjusted", None),
+             getattr(model, "reading", None),
              observation.get("rules_fingerprint"), tuple(observation["occupied_seats"]),
              observation["dealer_seat"], observation.get("bomb_pot"),
              tuple(sorted(observation["starting_stacks"].items())))
