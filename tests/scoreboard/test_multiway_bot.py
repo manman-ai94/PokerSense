@@ -273,3 +273,19 @@ def test_facing_a_bet_without_the_price_folds_and_sizing_off_plays_the_lines(tab
     off = {**multiway_bot.DEFAULTS, "sizing": 0.0}
     assert multiway_bot.unguarded(spot, 0.9, off, ranges=ranges) == (
         multiway_bot.lines(spot, 0.9))
+
+
+def test_in_a_big_pot_a_bet_must_win_when_called(table):
+    spot = river_spot(table, ["8h", "6s"])
+    better = {"AcJc": 1.0, "7h7s": 1.0}
+    ranges = {seat: better for seat in opponents_of(spot)[:2]}
+    nobody = {**multiway_bot.DEFAULTS, "sticky": 0.0}        # every hand folds
+    big_blind = float(spot["rules"]["big_blind"])
+    me = spot["bets"][str(spot["observing_seat"])]
+    for pot, bluff in ((10 * big_blind, True), (40 * big_blind, False)):
+        sizes = [{"id": f"raise_to:{float(me) + size}", "kind": "raise_to",
+                  "raise_to": str(float(me) + size)} for size in (pot / 2, pot)]
+        here = {**spot, "pot": str(pot), "legal_actions": [
+            {"id": "check_call", "kind": "check_call"}, *sizes]}
+        action = multiway_bot.sized(here, 0.0, ranges, nobody)
+        assert action.startswith("raise_to") is bluff

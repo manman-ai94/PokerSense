@@ -61,7 +61,10 @@ answers to postflop bets in five recordings of 2026-10-07 to 10-09 (the
 ranges read as the window reads them), 37% went on where the model with
 ``sticky`` 1 says 43%; 0.9 and 0.5 fit them best (an elasticity of 0 or 1
 and stickiness 0.8 or 1 fit worse). Overbets are not weighed: 7 of those
-answers faced more than 1.5 pots. The big-pot guard still applies after it.
+answers faced more than 1.5 pots. In a pot of the guard's line (30 big
+blinds) or more a bet or raise must also win at least half the pot when
+called (``VALUE``): no bet there rests on fold equity alone. The big-pot
+guard still applies after it.
 
 Parameters can follow the name, for example
 ``range_multiway@bet=0.55:raise=0.7:margin=0.05+aa_preflop`` (":" between
@@ -98,6 +101,7 @@ MIN_SIZE = 0.25                 # smaller bets (the minimum) are not offered
 # postflop bets in the recordings of 2026-10-07 to 10-09, 7 faced
 # more than 1.5 pots, so how players answer an overbet is not known.
 MAX_SIZE = 1.5
+VALUE = 0.5                     # a big pot's bet: the least share when called
 RUNOUTS = 30                    # boards dealt to rank every hand's strength
 GUARD_SIZE = 0.5                # the most a guarded bet puts in, of the pot
 # phevaluator's ranks (lower is stronger) where each kind of hand ends.
@@ -370,7 +374,7 @@ def continue_line(observation, seat, put, after, params=DEFAULTS):
     return threshold(spot, min(share * params["sticky"], 1.0)), call
 
 
-def values(observation, ranges, params=DEFAULTS, seed=0):
+def values(observation, ranges, params=DEFAULTS, seed=0, called=None):
     """{action id: chips} of checking or calling ("check_call") and of each
     bet or raise (``candidates``), each counted as what comes back to you
     from the pot at the end less what it puts in, or None.
@@ -381,7 +385,10 @@ def values(observation, ranges, params=DEFAULTS, seed=0):
     its size (``continue_line``; a raise of theirs is taken as a call); with
     no caller the pot is yours, else the showdown with the callers is for the
     pot and the calls (what you put over the biggest call comes back). An
-    opponent all in is in every showdown and puts nothing more in."""
+    opponent all in is in every showdown and puts nothing more in.
+
+    ``called``: a dict to fill with {bet or raise: your share of the pot
+    when someone goes on, or None when nobody ever does}."""
     if not ranges:
         return None
     options = candidates(observation)
@@ -408,7 +415,7 @@ def values(observation, ranges, params=DEFAULTS, seed=0):
     known = [CARD_ID[card] for card in board]
     deck = [CARD_ID[card] for card in DECK if card not in dead]
     need = 5 - len(board)
-    totals = Counter()
+    totals, won_called, times_called = Counter(), Counter(), Counter()
     dealt = 0
     trials = int(params["trials"])
     seats = list(parts)
@@ -437,11 +444,16 @@ def values(observation, ranges, params=DEFAULTS, seed=0):
                 continue
             matched = min(put, max(float(observation["bets"][str(seat)]) + call
                                    for seat, call in zip(callers, calls)) - mine_in)
-            totals[action] += (_won(mine, [ranks[seat] for seat in callers + out])
-                               * (pot + matched + sum(calls)) - matched)
+            share = _won(mine, [ranks[seat] for seat in callers + out])
+            totals[action] += share * (pot + matched + sum(calls)) - matched
+            won_called[action] += share
+            times_called[action] += 1
         dealt += 1
     if dealt < trials / 2:
         return None
+    if called is not None:
+        called.update({action: won_called[action] / times_called[action]
+                       if times_called[action] else None for action in options})
     return {action: total / dealt for action, total in totals.items()}
 
 
@@ -460,8 +472,12 @@ def sized(observation, share, ranges, params=DEFAULTS, seed=0):
     (``values``), or None when it cannot be worked out. Facing a bet you fold
     when your share of the pot does not pay the price (as ``lines``);
     otherwise a bet or raise is made only when it is worth more than checking
-    or calling."""
-    worth = values(observation, ranges, params, seed)
+    or calling. In a pot of the guard's line or more (``big_pot``) a bet or
+    raise must also win at least ``VALUE`` of the pot when called: there a
+    bet the hands that call beat is what lost the most on the recordings,
+    and fold equity rests on the reading alone."""
+    called = {}
+    worth = values(observation, ranges, params, seed, called)
     if worth is None:
         return None
     to_call = float(observation["to_call"] or 0)
@@ -469,6 +485,9 @@ def sized(observation, share, ranges, params=DEFAULTS, seed=0):
         price = to_call / (float(observation["pot"]) + to_call)
         if share < price + params["margin"]:
             return "fold"
+    if big_pot(observation["pot"], observation["rules"]["big_blind"], params):
+        worth = {action: value for action, value in worth.items()
+                 if action == "check_call" or (called.get(action) or 0.0) >= VALUE}
     return max(worth, key=lambda action: (worth[action], action == "check_call"))
 
 

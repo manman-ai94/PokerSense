@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from tools.aa_compare_advice import cards_of, compare, main
+from tools.aa_compare_advice import behind_in_big_pots, cards_of, compare, main
 
 # A 2/4/8(4) table, eight players, you (seat 4) on the button: small blind 5,
 # big blind 6, straddle 7; seat 0 acts first. 8 x 4 + 2 + 4 + 8 = 46 to start.
@@ -91,3 +91,16 @@ def test_hands_are_picked_by_cards_or_id_and_unchanged_ones_left_out(tmp_path):
     # Every recording under a folder.
     main(["--recordings", str(tmp_path), "--hero", "A♦ Q♦", "--out", str(out)])
     assert len(json.loads(out.read_text(encoding="utf-8"))) == 1
+
+
+def test_sizing_counts_big_pot_bets_behind_the_shown_cards(capsys):
+    def item(before, after, share, pot):
+        return {"before": {"action": before}, "after": {"action": after},
+                "shown": {"share": share, "pot_big_blinds": pot}}
+    items = [item("bet", "check", 0.2, 40), item("check", "bet", 0.3, 50),
+             item("bet", "bet", 0.1, 31), item("bet", "check", 0.2, 20),
+             item("raise", "call", 0.7, 60), {"before": None, "after": None,
+                                              "shown": None}]
+    assert behind_in_big_pots(items) == {"before": 2, "after": 2}
+    # Preflop decisions with no change are not listed, nor counted.
+    assert compare([("log", rows(("As", "Ah")))], change="sizing") == []

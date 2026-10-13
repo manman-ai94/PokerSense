@@ -16,6 +16,18 @@ With ``--change postflop`` both read preflop as the window does, and
   until 2026-10-13);
 * ``after``: read with the weights of ``postflop_reading.WEIGHTS``.
 
+With ``--change sizing`` both read as the window does, and
+
+* ``before``: postflop bets and raises by the lines of the share of the pot
+  (``range_multiway`` with ``sizing=0``, as until 2026-10-13);
+* ``after``: by what each size is worth against the hands that call it
+  (``multiway_bot.sized``).
+
+It also counts, over every postflop decision (changed or not) in a pot of 30
+big blinds or more where every opponent still in showed his cards, the bets
+and raises advised while behind those cards (share under a half) before and
+after: the bets the hands that went on beat.
+
 Where every opponent still in at a decision showed his cards at the end of
 the hand, ``shown`` values each answer in chips against those cards: your
 share of the pot against them on the board of the decision (the rest of the
@@ -31,7 +43,7 @@ rule's answer next to a solve is shown either way.
     PYTHONPATH=src:. .venv/bin/python tools/aa_compare_advice.py \\
         --frames <recording>/frames.jsonl [--frames ...] [--recordings <folder>] \\
         [--hero "A♦ 9♠" --hero QsJc ...] [--hand hand_123 ...] [--all] \\
-        [--change preflop|postflop] [--out compare.json]
+        [--change preflop|postflop|sizing] [--out compare.json]
 
 ``--hero`` and ``--hand`` list every decision of the hands they pick;
 without them the decisions whose last answer changed are listed, or with
@@ -53,6 +65,7 @@ from decimal import Decimal  # noqa: E402
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice  # noqa: E402
 from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     HERO as HERO_SEAT, hand_facts, table_observation)
+from poker_engine.scoreboard import multiway_bot  # noqa: E402
 from poker_engine.scoreboard.postflop_reading import VETO, WEIGHTS  # noqa: E402
 from poker_engine.scoreboard.ranges import ranges_equity  # noqa: E402
 from poker_engine.solver.texassolver import combo_key  # noqa: E402
@@ -71,6 +84,7 @@ READINGS = {"before": PreflopParams(slowplay=0.0, bluff=0.0),
 # --change postflop: (preflop params, postflop weights) before and after.
 POSTFLOP = {"before": (PreflopParams(), VETO), "after": (PreflopParams(), WEIGHTS)}
 SHOWN_TRIALS = 20000
+BIG_POT = 30                # big blinds: the big-pot guard's line
 
 
 def cards_of(text):
@@ -82,9 +96,17 @@ def cards_of(text):
     return {text[0].upper() + text[1].lower(), text[2].upper() + text[3].lower()}
 
 
-def replay(rows, params, solver=False, postflop=None):
+def replay(rows, params, solver=False, postflop=None, sizing=None):
     """Each row's advice report, worked out again with ``params`` (and the
-    postflop reading weights ``postflop``, else the default)."""
+    postflop reading weights ``postflop``, else the default; ``sizing`` 0 or
+    1: ``range_multiway``'s, else the default)."""
+    if sizing is not None:
+        default = multiway_bot.DEFAULTS["sizing"]
+        multiway_bot.DEFAULTS["sizing"] = sizing
+        try:
+            return replay(rows, params, solver, postflop)
+        finally:
+            multiway_bot.DEFAULTS["sizing"] = default
     now = [0.0]
     advice = AASolverAdvice(None if solver else _Solved(), _Now(),
                             preflop=AAPreflopPolicy(params), clock=lambda: now[0])
@@ -197,8 +219,10 @@ def shown_value(rows, indexes, item):
                              trials=SHOWN_TRIALS)
     if share is None:
         return None
+    big_blind = float(observation["rules"]["big_blind"])
     result = {"cards": {str(seat): " ".join(shown[seat]) for seat in live},
-              "share": round(share, 3)}
+              "share": round(share, 3),
+              "pot_big_blinds": round(float(observation["pot"]) / big_blind, 1)}
     for label in ("before", "after"):
         value = chips(item[label], observation, share)
         result[label] = None if value is None else round(value, 1)
@@ -242,6 +266,9 @@ def compare(logs, *, heroes=(), hands=(), every=False, solver=False, change="pre
         if change == "postflop":
             reports = {label: replay(rows, params, solver, weights)
                        for label, (params, weights) in POSTFLOP.items()}
+        elif change == "sizing":
+            reports = {label: replay(rows, PreflopParams(), solver, sizing=sizing)
+                       for label, sizing in (("before", 0.0), ("after", 1.0))}
         else:
             reports = {label: replay(rows, params, solver)
                        for label, params in READINGS.items()}
@@ -255,8 +282,11 @@ def compare(logs, *, heroes=(), hands=(), every=False, solver=False, change="pre
                             final)
             chosen = ((not wanted or set((item["hero"] or "").split()) in wanted)
                       and (not hands or item["hand_id"] in hands))
-            if chosen and (item["changed"] or wanted or hands or every):
+            listed = item["changed"] or wanted or hands or every
+            postflop = change == "sizing" and item["street"] != "preflop"
+            if chosen and (listed or postflop):
                 item["shown"] = shown_value(rows, indexes, item)
+                item["listed"] = bool(listed)
                 result.append(item)
     return result
 
@@ -275,9 +305,25 @@ def line(answer):
     return text
 
 
+def behind_in_big_pots(items):
+    """{"before", "after"}: bets and raises advised in pots of ``BIG_POT`` big
+    blinds or more while behind the cards the opponents showed."""
+    count = {"before": 0, "after": 0}
+    for item in items:
+        shown = item.get("shown")
+        if (not shown or shown["share"] >= 0.5
+                or shown["pot_big_blinds"] < BIG_POT):
+            continue
+        for label in count:
+            count[label] += (item[label] or {}).get("action") in ("bet", "raise")
+    return count
+
+
 def report(items):
     out = []
     for item in items:
+        if not item.get("listed", True):
+            continue
         out.append(f"{item['log']} {item['hand_id']} {item['street']}"
                    f" hero {item['hero']} board [{item['board']}] pot {item['pot']}"
                    f" to call {item['to_call']} you did {item['you_did']}"
@@ -305,7 +351,8 @@ def main(argv=None):
                         "the changed ones")
     parser.add_argument("--solver", action="store_true",
                         help="run TexasSolver for heads-up turns and rivers")
-    parser.add_argument("--change", choices=("preflop", "postflop"), default="preflop",
+    parser.add_argument("--change", choices=("preflop", "postflop", "sizing"),
+                        default="preflop",
                         help="which reading change to compare (see above)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
@@ -319,7 +366,13 @@ def main(argv=None):
                     solver=args.solver, change=args.change)
     print(report(items) or "no decision chosen")
     changed = sum(item["changed"] for item in items)
-    print(f"{len(items)} decisions, {changed} with another answer after the change")
+    items_listed = [item for item in items if item.get("listed", True)]
+    print(f"{len(items_listed)} decisions, {changed} with another answer after the "
+          "change")
+    if args.change == "sizing":
+        behind = behind_in_big_pots(items)
+        print(f"bets and raises in pots of {BIG_POT}+ big blinds behind the shown "
+              f"cards: before {behind['before']}, after {behind['after']}")
     priced = [item["shown"] for item in items
               if item["changed"] and item.get("shown")
               and None not in (item["shown"]["before"], item["shown"]["after"])]
