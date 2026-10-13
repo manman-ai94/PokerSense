@@ -16,8 +16,15 @@ The reading here keeps two things the model leaves out:
   raised stay in with weight ``SLOWPLAY`` instead of 0;
 * **bluffs after calling**: a raise by a seat that has already called on
   this round (``AFTER_CALL``: limp then raise, call then re-raise) holds,
-  next to the strongest hands of its range, a share ``BLUFF`` of hands its
-  range would otherwise fold.
+  next to the strongest hands of its range, a share ``BLUFF`` of the hands
+  its range would otherwise call or fold, at the same weight each; so does
+  the seat's next raise (the all in over a re-raise of its limp-raise).
+
+The two last parts came from hands shown on AA tables (2026-10-13): with
+the bluffs drawn from the folding hands only, a limp-raise never held the
+hands that would call a raise, and an all in over a re-raised limp-raise was
+the top 14% of the range, aces and kings, though medium pairs were shown
+there too.
 
 Everything else is the model as it was: the measured shares of each spot and
 position (and the reads' scaling of a seat's first decision) are applied to
@@ -133,15 +140,16 @@ def split(hands, raise_share, call_share, *, slowplay=SLOWPLAY, bluff=0.0):
     The strongest ``raise_share`` of the weight raises, the next
     ``call_share`` calls; the calls also hold the raising hands at
     ``slowplay`` of their weight, and with ``bluff`` the raises hold that
-    share of bluffs, spread over the hands that fold."""
+    share of other hands, spread over the hands that call and fold."""
     total = hands.mass()
     top = hands.cut(0.0, raise_share * total)
     middle = hands.cut(raise_share * total, (raise_share + call_share) * total)
     rest = hands.cut((raise_share + call_share) * total, total)
     raised = top
-    if bluff and top.mass() > 0 and rest.mass() > 0:
-        share = min(1.0, bluff / (1 - bluff) * top.mass() / rest.mass())
-        raised = top + rest.scaled(share)
+    others = middle + rest
+    if bluff and top.mass() > 0 and others.mass() > 0:
+        share = min(1.0, bluff / (1 - bluff) * top.mass() / others.mass())
+        raised = top + others.scaled(share)
     return {"r": raised, "c": middle + top.scaled(slowplay), "f": rest}
 
 
@@ -150,6 +158,7 @@ def _parts(history, seat, name, adjusted, read, reading):
     """``split`` of ``seat``'s range at its decision after ``history``."""
     slowplay, bluff = reading
     hands = EVERY_HAND
+    raised_after_call = False
     for index, (player, kind) in enumerate(history + ((seat, None),)):
         if player != seat:
             continue
@@ -157,10 +166,14 @@ def _parts(history, seat, name, adjusted, read, reading):
         raise_share, call_share = read_shares(
             *preflop_shares(name, spot, adjusted), read)
         read = (1.0, 1.0)
+        # After a raise that followed a call, the seat's next raise (the
+        # all in over a re-raise) holds other hands too.
+        bluffing = spot in AFTER_CALL or raised_after_call
         parts = split(hands, raise_share, call_share, slowplay=slowplay,
-                      bluff=bluff if spot in AFTER_CALL else 0.0)
+                      bluff=bluff if bluffing else 0.0)
         if kind is None:
             return parts
+        raised_after_call = bluffing and kind == "r"
         hands = parts[kind]
     raise AssertionError("unreachable")
 

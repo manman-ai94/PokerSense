@@ -104,10 +104,12 @@ def test_a_range_splits_strongest_first_by_weight():
     slow = split(hands, 0.2, 0.4, slowplay=0.4)
     assert slow["c"].weight(0.1) == pytest.approx(0.2)
     assert slow["c"].mass() == pytest.approx(0.2 + 0.4 * 0.1)
-    # Bluffs: a fifth of the raises come from the hands that fold.
+    # Bluffs: a fifth of the raises come from the hands that call or fold,
+    # at the same weight per hand.
     bluffing = split(hands, 0.2, 0.4, slowplay=0.0, bluff=0.2)
     assert bluffing["r"].mass() == pytest.approx(0.1 / 0.8)
-    assert bluffing["r"].weight(0.55) > 0 and bluffing["r"].weight(0.35) == 0
+    assert bluffing["r"].weight(0.55) > 0
+    assert bluffing["r"].weight(0.35) == pytest.approx(bluffing["r"].weight(0.55))
 
 
 def test_the_honest_split_is_the_band_the_population_model_plays():
@@ -197,11 +199,62 @@ def test_a_limp_raise_range_holds_the_big_hands():
     per_combo = {name: weight / class_combos(name) for name, weight in weights.items()}
     assert per_combo["AA"] == pytest.approx(max(per_combo.values()))
     # ... the medium hands the old reading kept are a small part, and a few
-    # weak hands are in as bluffs (about a fifth of the weight).
+    # weak hands are in as bluffs (a fifth of the weight is hands that would
+    # call or fold, spread evenly).
     assert (weights["A9o"] + weights["KQo"]) / total < 0.05
     weak = sum(weight for name, weight in weights.items()
                if preflop_percentile(HANDS[name]) > 0.3)
-    assert 0.1 < weak / total < 0.3
+    assert 0.05 < weak / total < 0.2
+
+
+def test_hands_that_would_call_can_limp_raise_too():
+    # The bluffs come from the hands that call the raise as well as from
+    # those that fold: KQs, KJs or 66 limp-raise now and then (shown on AA
+    # tables), each combination far less often than aces.
+    weights = by_class(opponent_ranges({**limp_raise(), "own_hole": ["2c", "3d"]},
+                                       PopulationReader(adjusted=True))[3])
+    per_combo = {name: weight / class_combos(name) for name, weight in weights.items()}
+    for name in ("KQs", "KJs", "66", "KQo"):
+        assert 0 < per_combo[name] < per_combo["AA"] / 5
+
+
+def shove_over_a_re_raise():
+    """Seat 3 limps, the button raises, seat 3 re-raises, the button raises
+    again and seat 3 goes all in, 112 big blinds deep: the button has 159 to
+    call into 779 (needs 17%)."""
+    arena = AAFullHandArena(AARuleProfileV2.from_dict(TWO_FOUR),
+                            starting_stacks={seat: 450 for seat in range(8)})
+    arena.reset(3)
+    for step in ["c", "f", "f", "f", 0.5, "f", "f", "f", 1.0, 0.2]:
+        seen = arena.observe(arena.actor)
+        arena.step({"c": "check_call", "f": "fold"}.get(step)
+                   or raise_toward(seen, step))
+    seen = arena.observe(arena.actor)
+    arena.step(max((a for a in seen["legal_actions"] if a["kind"] == "raise_to"),
+                   key=lambda a: float(a["raise_to"]))["id"])
+    observation = arena.observe(arena.actor)
+    assert [kind for actor, kind in actions(observation, "preflop")
+            if actor == 3] == ["c", "r", "r"]
+    assert observation["observing_seat"] == 7
+    assert float(observation["to_call"]) == 159
+    return observation
+
+
+def test_an_all_in_after_a_limp_raise_is_not_only_aces_and_kings():
+    observation = shove_over_a_re_raise()
+    weights = by_class(opponent_ranges({**observation, "own_hole": ["2c", "3d"]},
+                                       PopulationReader(adjusted=True))[3])
+    total = sum(weights.values())
+    # Mostly aces and kings still, but a fifth of it is the rest of the
+    # limp-raise range: queens, jacks, AK, AQ and a few bluffs.
+    assert 0.5 < (weights["AA"] + weights["KK"]) / total < 0.8
+    for name in ("QQ", "JJ", "TT", "AKo", "AQs"):
+        assert weights[name] > 0
+    # So a hand that needs 17% calls by price; it folded against aces and
+    # kings alone.
+    assert choose(observation, "KQo")["action"] == "check_call"
+    for hand in ("AA", "QQ", "JJ"):
+        assert choose(observation, hand)["action"] == "check_call"
 
 
 def test_call_then_re_raise_keeps_the_big_hands_too():
