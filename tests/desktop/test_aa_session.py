@@ -330,6 +330,40 @@ def test_table_math_enriches_payload_and_frames_are_logged(tmp_path):
     assert rows[0]["source_frame"] == 97 and rows[0]["source_kind"] == "fake"
     assert rows[0]["fields"]["table_math"] == {"seen": True}
     assert rows[0]["timing"]["recognition_ms"] >= 0
+    # The first line names the code that wrote the log; later lines do not.
+    assert set(rows[0]["code"]) == {"version", "commit", "dirty"}
+    assert "code" not in rows[1]
+
+
+def test_the_frame_log_keeps_each_change_of_the_grades(tmp_path):
+    import json
+
+    class Grades:
+        def __init__(self):
+            self.calls = 0
+
+        def __call__(self, payload, frame):
+            self.calls += 1
+            graded = min(self.calls // 3, 2)
+            return {"graded": graded, "rows": [{"n": n} for n in range(graded)],
+                    "last": {"n": graded - 1} if graded else None}
+
+    source = Source()
+    log = tmp_path / "frames.jsonl"
+    session = AARecognitionSession(lambda _: source, Reader, grades=Grades(),
+                                   frame_log=log)
+    session.start({})
+    try:
+        wait_until(lambda: log.exists() and len(log.read_text().splitlines()) >= 9)
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    logged = [row["grade"] for row in rows if "grade" in row]
+    # Only when it changed, and without the window's list of recent rows.
+    assert logged[:3] == [{"graded": 0, "last": None},
+                          {"graded": 1, "last": {"n": 0}},
+                          {"graded": 2, "last": {"n": 1}}]
 
 
 def test_grades_follow_the_advice_and_reset_when_a_source_starts():

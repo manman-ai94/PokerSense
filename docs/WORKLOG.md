@@ -10,6 +10,11 @@
 
 ## 记录
 
+**2026-10-13 · `claude/project-thread-elzvqy`（飞轮第一期 ①：日志记上代码版本和每步打分）**
+- 做了什么：录像文件夹的 recording.json 和窗口逐帧日志 frames.jsonl 的第一行都记下当时跑的代码（版本号、提交号、有没有未提交的改动）；打分（grade_v1）一变就写进那一帧的日志（不带逐手明细）。以后每场成绩都能对上是哪版代码打的。
+- 怎么做的：新增 `code_version.py`（每个进程只读一次 git；打包版没有 git 时提交号记 None，不猜）；`aa_session._append_frame_log` 加 `grade`、首行加 `code`；`aa_recorder` 的 meta 加 `code`。
+- 怎么验证的：新增和扩充的测试，`tests/desktop`、`tests/tools` 全过，flake8 干净。还剩：三道关一条命令、录像一停自动出体检单、跨场亏损排行和成绩账本。
+
 **2026-10-13 · `claude/full-audit-3hxb2f`（体检 grokBOT 周末提交：修 main 红灯、发版和 CI 漏洞、读牌跟进；先跟后加读法改为可选）**
 - 做了什么：main 的 Windows 检查红（资源包路径测试在 Windows 上不成立）；打包测试把数据目录变量漏给后面的测试（Mac 上 3 个求解器测试误报没装）；发版日志会打出云盘链接、密钥整个发版任务可见、更新地址收明文 http；代码改名进 docs 会跳过测试；推 main 的检查互相取消；文档误写仓库“私有”。读牌（#30）：排除率工具仍按旧读法量、缓存键不分读法参数、`noreads+` 等丢了读法参数。主人 10/13 定：先跟后加读法先关，`aa_preflop` 默认 slowplay=0、bluff=0（窗口回到周末前），写 `@slowplay=0.4:bluff=0.2` 才开。
 - 怎么做的：测试改 `..\outside.txt`（Windows 的 zipfile 把 `\` 换成 `/`）；monkeypatch 先 setenv 再 delenv；`public_summary` 打印不带链接；密钥只给写 rclone.conf 那步；`open_url` 拒绝非本机 http；`--no-renames`；concurrency 只取消 PR；排除率和窗口同一读法、缓存键加 `reading`、`reading_of` 穿过 `.base`；`aa_compare_advice` 的 after 明写新读法。
