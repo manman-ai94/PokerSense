@@ -5,7 +5,6 @@ All hands here are synthetic: an eight-seat 2/4/8(4) table, 100 big blinds
 """
 
 from collections import defaultdict
-from dataclasses import replace
 from itertools import combinations
 import json
 from pathlib import Path
@@ -75,11 +74,7 @@ def limp_raise(name="button"):
 
 
 def choose(observation, hand, params=None):
-    """What aa_preflop picks with the limp-raise reading (opt-in since
-    2026-10-13) unless ``params`` says otherwise."""
-    params = params or replace(AAPreflopPolicy().params, slowplay=SLOWPLAY,
-                               bluff=BLUFF)
-    policy = AAPreflopPolicy(params)
+    policy = AAPreflopPolicy(params) if params else AAPreflopPolicy()
     return policy.choose({**observation, "own_hole": HANDS[hand]})
 
 
@@ -177,16 +172,12 @@ def test_without_slow_play_or_bluffs_the_reading_is_the_population_model():
 def test_the_scoreboard_players_still_play_honestly():
     assert type(make_policy("aa_population")) is PopulationBot
     assert type(reading_model(True, HONEST)) is PopulationBot
-    # Since 2026-10-13 the limp-raise reading is opt-in (it lost on the
-    # scoreboard); by default every strategy reads as the model plays.
-    on = f"aa_preflop@slowplay={SLOWPLAY}:bluff={BLUFF}"
-    reader = make_policy(f"range_multiway@hu=1+{on}").model
+    reader = make_policy("range_multiway@hu=1+aa_preflop").model
     assert isinstance(reader, PopulationReader) and reader.adjusted
     assert reader.reading == (SLOWPLAY, BLUFF)
-    assert isinstance(make_policy(f"solver_turn+{on}").model, PopulationReader)
-    default = make_policy("range_multiway@hu=1+aa_preflop").model
-    assert type(default) is PopulationBot and default.adjusted
-    assert type(make_policy("solver_turn+aa_preflop").model) is PopulationBot
+    old = make_policy("range_multiway@hu=1+aa_preflop@slowplay=0:bluff=0").model
+    assert type(old) is PopulationBot
+    assert isinstance(make_policy("solver_turn+aa_preflop").model, PopulationReader)
 
 
 # -- the limp-raise -----------------------------------------------------------
