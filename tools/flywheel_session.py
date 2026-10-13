@@ -110,21 +110,30 @@ def hand_stakes(hands):
     return found
 
 
-def facing(rows, turn):
-    """What your last turn faced: the bets and raises before it on its street
-    by the other seats, and whether one of them was all in."""
+def facing(rows, turn, big_blind=None):
+    """What your last turn faced, from the button and the price on it then
+    (an opponent's bet is often logged in the same frame your turn shows up,
+    so the frame number cannot tell before from after): with 让牌 on the
+    button nothing; otherwise the bets and raises on that street before your
+    answer, at least one when the price is more than the big blind (or after
+    the flop at all), and whether one of them was all in."""
     start = next((row["processed"] for row in rows
                   if round(row["pts_seconds"], 1) == turn["pts"]), None)
     actions = rows[-1]["fields"]["actions_v1"]["actions"]
+    mine = next((index for index, (frame, street, slot, *_) in enumerate(actions)
+                 if str(slot) == HERO and street == turn["street"]
+                 and start is not None and frame >= start), len(actions))
     raises = all_in = 0
-    for frame, street, slot, kind, *_ in actions:
-        if start is not None and frame >= start:
-            break
-        if street != turn["street"] or str(slot) == HERO:
-            continue
-        if kind in AGGRESSIVE:
-            raises += 1
-            all_in += kind in ("all_in", "allin")
+    if turn.get("button") != "check":
+        for frame, street, slot, kind, *_ in actions[:mine]:
+            if street == turn["street"] and kind in AGGRESSIVE:
+                raises += 1
+                all_in += kind in ("all_in", "allin") and str(slot) != HERO
+        price = number(turn.get("to_call"))
+        if turn.get("button") == "all_in" or (
+                turn["street"] != "preflop" and price) or (
+                big_blind is not None and price is not None and price > big_blind):
+            raises = max(raises, 1)
     if turn["street"] == "preflop":
         text = ("没人加注", "面对加注", "面对再加注")[min(raises, 2)]
     else:
@@ -132,11 +141,18 @@ def facing(rows, turn):
     return text + ("（有人全下）" if all_in else "")
 
 
-def spot(rows, turn):
+def number(value):
+    try:
+        return Decimal(str(value)) if value not in (None, "") else None
+    except ArithmeticError:
+        return None
+
+
+def spot(rows, turn, big_blind=None):
     """The spot a hand was decided in: your last turn."""
     last = turn["answers"][-1] if turn["answers"] else None
     opponents = turn["opponents"]
-    return {"street": turn["street"], "facing": facing(rows, turn),
+    return {"street": turn["street"], "facing": facing(rows, turn, big_blind),
             "opponents": opponents,
             "table": None if opponents is None else "单挑" if opponents == 1 else "多人",
             "advice": None if last is None else last["action"],
@@ -186,7 +202,8 @@ def session_hands(name, rows):
             "bb": round(float(Decimal(str(hand["your_chips"]))
                               / Decimal(level["big_blind"])), 2),
             "bomb_pot": bool(hand.get("bomb_pot")),
-            "spot": spot(grouped[hand["hand_id"]], mine[-1]) if mine else None,
+            "spot": spot(grouped[hand["hand_id"]], mine[-1],
+                         number(level["big_blind"])) if mine else None,
             "misreads": misreads(hand),
             "turn_seconds": [turn["video_seconds"] for turn in mine
                              if turn["video_seconds"] is not None],

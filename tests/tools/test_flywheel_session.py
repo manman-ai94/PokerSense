@@ -216,3 +216,33 @@ def test_no_video_no_pictures(tmp_path):
     assert fly.pictures(tmp_path, hands, tmp_path / "frames") == 0
     assert fly.to_look_at(hands + [{"bb": -1, "misreads": ["你的牌认成两种"]},
                                    {"bb": -5, "misreads": []}])[1]["bb"] == -1
+
+
+def _turn(street, button, to_call, frame=5):
+    return {"pts": round(frame * 0.1, 1), "street": street, "button": button,
+            "to_call": to_call}
+
+
+@pytest.mark.parametrize("street, actions, button, to_call, big_blind, expected", [
+    # The bet is logged in the very frame your turn shows up.
+    ("flop", [(5, "flop", 6, "all_in", "250", "bet")], "call", "250", 8,
+     "面对下注（有人全下）"),
+    ("turn", [(5, "turn", 6, "bet", "40", "bet")], "call", "40", 8, "面对下注"),
+    ("preflop", [(5, "preflop", 6, "raise", "80", "bet")], "call", "80", 8, "面对加注"),
+    # The bet was not read at all: the price on the button tells.
+    ("preflop", [], "call", "80", 8, "面对加注"),
+    ("river", [], "call", "40", 8, "面对下注"),
+    ("preflop", [], "call", "4", 8, "没人加注"),
+    # 让牌 on the button: nothing faced, whatever the log says.
+    ("flop", [(5, "flop", 6, "bet", "40", "bet")], "check", "0", 8, "没人下注"),
+    # You bet, were raised, and answer again: a raise; actions after you don't count.
+    ("flop", [(2, "flop", 4, "bet", "20", "bet"),
+              (5, "flop", 6, "raise", "80", "bet"),
+              (7, "flop", 4, "call", "60", "bet"),
+              (8, "flop", 5, "raise", "300", "bet")],
+     "call", "60", 8, "面对加注"),
+])
+def test_facing_reads_the_button_and_the_price(street, actions, button, to_call,
+                                               big_blind, expected):
+    rows = [row(f, street=street, actions=actions) for f in range(9)]
+    assert fly.facing(rows, _turn(street, button, to_call), big_blind) == expected
