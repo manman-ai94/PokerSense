@@ -59,6 +59,13 @@ def test_the_manifest_matches_the_installer_and_passes_the_programs_check(tmp_pa
     assert manifest["installer"]["bytes"] == 2000
     assert manifest["installer"]["sha256"] == release.sha256_file(installer)
     assert app_update.validate_manifest(json.loads(json.dumps(manifest)))
+    share = "https://drive.google.com/open?id=AbC_1-x"
+    direct = ("https://drive.usercontent.google.com/download?id=AbC_1-x"
+              "&export=download&confirm=t")
+    manifest = release.build_manifest("0.3.0", installer, share)
+    assert manifest["installer"]["url"] == direct
+    assert release.normalize_download_url(share) == direct
+    assert release.main(["direct-url", "--url", share]) == 0
     release.write_config("https://drive.google.com/open?id=x",
                          tmp_path / "update-config.json")
     assert app_update.configured_url(None, {}, tmp_path) == (
@@ -107,6 +114,12 @@ def test_an_uploaded_bundle_is_checked_and_listed_in_the_manifest(bundle, tmp_pa
         "created": sidecar["created"]}
     assert "recognition" not in release.build_manifest(
         "0.3.0", installer, "https://cloud/setup.exe")
+    share = "https://drive.google.com/open?id=zip9"
+    direct = ("https://drive.usercontent.google.com/download?id=zip9"
+              "&export=download&confirm=t")
+    manifest = release.build_manifest("0.3.0", installer, "https://cloud/setup.exe",
+                                      recognition=out, recognition_url=share)
+    assert manifest["recognition"]["url"] == direct
 
 
 def test_the_program_installs_what_the_release_lists(bundle, tmp_path):
@@ -166,8 +179,18 @@ def test_the_installer_is_per_user_with_shortcuts_and_a_waiting_silent_update():
     assert "/WAITPID=1" in command and "/RELAUNCH=1" in command
 
 
+def test_upload_commands_mention_direct_url(tmp_path):
+    out = tmp_path / "upload-commands.md"
+    assert release.main(["upload-commands", "--version", "0.3.0",
+                         "--out", str(out)]) == 0
+    text = out.read_text("utf-8")
+    assert "direct-url" in text and "drive.usercontent.google.com" in text
+    assert "open?id=" in text
+
+
 def test_releases_come_only_from_main_and_uploads_need_the_secret():
     workflow = (ROOT / ".github/workflows/windows-release.yml").read_text("utf-8")
+    assert "release_build.py direct-url" in workflow
     assert "git merge-base --is-ancestor $env:GITHUB_SHA origin/main" in workflow
     assert '$env:REF -ne "refs/heads/main"' in workflow
     assert "secrets.RCLONE_CONFIG" in workflow

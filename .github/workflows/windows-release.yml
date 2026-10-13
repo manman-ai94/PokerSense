@@ -296,11 +296,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "上传失败" }
           $installerUrl = (rclone link "$env:REMOTE_DIR/PokerSense-AA-Setup.exe" | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $installerUrl) { throw "拿不到安装包的共享链接" }
+          $installerUrl = (python packaging/release_build.py direct-url --url $installerUrl | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $installerUrl) { throw "安装包链接无法换成直链" }
           $recognition = @()
           $recognitionDir = "${{ steps.recognition.outputs.dir }}"
           if ($recognitionDir) {
             $recognitionUrl = (rclone link "$env:REMOTE_DIR/recognition/PokerSense-AA-recognition.zip" | Out-String).Trim()
             if ($LASTEXITCODE -ne 0 -or -not $recognitionUrl) { throw "拿不到识别资源包的共享链接" }
+            $recognitionUrl = (python packaging/release_build.py direct-url --url $recognitionUrl | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $recognitionUrl) { throw "识别资源包链接无法换成直链" }
             $recognition = @("--recognition-dir", $recognitionDir, "--recognition-url", $recognitionUrl)
           }
           python packaging/release_build.py manifest --version $version --installer dist\PokerSense-AA-Setup.exe `
