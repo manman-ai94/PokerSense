@@ -10,12 +10,11 @@
 
 ## 记录
 
-**2026-10-13 · `claude/full-audit-3hxb2f`（体检周末提交：修 main 的 Windows 红灯和发版、CI 的几处漏洞）**
-- 做了什么：main 上 Windows 检查一直红（资源包路径测试）；发版日志会打出云盘下载链接、密钥在整个发版任务里可见、更新地址允许明文 http；改名进 docs 的代码会被当成纯文档跳过测试；推到 main 的检查会互相取消；文档误写仓库“私有”；打包测试把数据目录变量漏给后面的测试，Mac 上 3 个求解器测试因此报“没装求解器”。读牌（#30）后：复盘里的“真牌排除率”还按旧读法算、读牌缓存不分读法参数（同一进程比不同参数会串）、`noreads+` 等包了一层的策略丢了自己的读法参数。
-- 怎么做的：测试改用 `..\outside.txt`（Windows 的 zipfile 会把 `\` 换成 `/`，原来的 `a\b.txt` 在那里本就安全）；`release_build manifest` 只打印去掉链接的摘要；`RCLONE_CONFIG` 只给写 rclone.conf 那一步；`open_url` 拒绝非本机的 http；`ci_changes` 加 `--no-renames`；concurrency 只取消 PR 的旧任务；AGENTS 和发版说明改回“公开”；那个打包测试先 setenv 再 delenv，结束时把变量清掉。排除率工具和记分牌按窗口同一读法量；缓存键加读法参数；`reading_of` 穿过包装层找参数。
-- 怎么验证的：相关 4 个测试文件 84 通过，flake8 干净；用改 `zipfile.os.sep` 模拟 Windows，确认 `..\x` 读成 `../x` 被拒；新加打印不带链接、http 被拒、改名仍跑测试 3 个测试。
-- 先跟后加读法（#30）主人 10/13 定为先关：`aa_preflop` 默认 slowplay=0、bluff=0，窗口回到周末之前的读法；新读法写 `@slowplay=0.4:bluff=0.2` 才打开。理由：#30 只有合成测试，审计在 AA 真人桌两批各 6400 手上新读法 −20.2（−43.9 ~ +3.6）、−8.2（−29.0 ~ +12.6），翻前那部分两批都确定变差；模拟对手不慢打，好处量不出，要用 `tools/aa_compare_advice.py --recordings` 在录像上比。
-- 还剩什么：更新清单没有签名（谁能写云盘谁就能让同事装任意程序）、启动时同步下载识别包会拖慢开窗、更新提示框没有关闭按钮；识别包含真实牌桌截图，发不发给同事要主人定。
+**2026-10-13 · `claude/full-audit-3hxb2f`（体检 grokBOT 周末提交：修 main 红灯、发版和 CI 漏洞、读牌跟进；先跟后加读法改为可选）**
+- 做了什么：main 的 Windows 检查红（资源包路径测试在 Windows 上不成立）；打包测试把数据目录变量漏给后面的测试（Mac 上 3 个求解器测试误报没装）；发版日志会打出云盘链接、密钥整个发版任务可见、更新地址收明文 http；代码改名进 docs 会跳过测试；推 main 的检查互相取消；文档误写仓库“私有”。读牌（#30）：排除率工具仍按旧读法量、缓存键不分读法参数、`noreads+` 等丢了读法参数。主人 10/13 定：先跟后加读法先关，`aa_preflop` 默认 slowplay=0、bluff=0（窗口回到周末前），写 `@slowplay=0.4:bluff=0.2` 才开。
+- 怎么做的：测试改 `..\outside.txt`（Windows 的 zipfile 把 `\` 换成 `/`）；monkeypatch 先 setenv 再 delenv；`public_summary` 打印不带链接；密钥只给写 rclone.conf 那步；`open_url` 拒绝非本机 http；`--no-renames`；concurrency 只取消 PR；排除率和窗口同一读法、缓存键加 `reading`、`reading_of` 穿过 `.base`；`aa_compare_advice` 的 after 明写新读法。
+- 怎么验证的：每处先复现再修（模拟 Windows zipfile、漏变量探针测试、缓存串读、包装参数），新测试 6 个；策略相关 2052 个测试和 flake8 全过；PR 三项检查。#30 证据：AA 真人桌两批各 6400 手，新读法 −20.2（−43.9 ~ +3.6）、−8.2（−29.0 ~ +12.6），翻前部分两批都确定变差。
+- 还剩什么：新读法要用 `tools/aa_compare_advice.py --recordings` 在录像上比过才考虑打开；更新清单没签名、启动同步下载识别包拖慢开窗、更新提示框不能关；识别包含真实牌桌截图，发不发给同事由主人定。
 
 **2026-10-12 · `feat/windows-installer-updater`（同事用的 Windows 安装包、自动更新和识别资源包下载；草稿，未合并）**
 - 做了什么：Inno Setup 安装包装到用户目录（不要管理员），有桌面和“检查更新”快捷方式；程序每次启动读一个可配置地址的版本清单：识别资源包没有或换了新的就自动下载，有新版程序在窗口右下角提示，点一下下载、核对 sha256、静默安装再自动打开；发版只从 main（tag 或手动填版本号），有 `RCLONE_CONFIG` 才传 Google Drive，没有就跳过。
