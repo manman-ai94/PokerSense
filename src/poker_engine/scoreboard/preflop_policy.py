@@ -100,8 +100,12 @@ class PreflopParams:
     raise_size: float = 1.0     # re-raises
     jam_share: float = 0.4      # raise all in when a raise would put in this
     #                             share of the stack anyway
-    slowplay: float = SLOWPLAY  # how ranges are read (``preflop_reading``);
-    bluff: float = BLUFF        # both 0: as the population model plays
+    # How ranges are read (``preflop_reading``). Both 0 (the default since
+    # 2026-10-13): as the population model plays. The limp-raise reading
+    # (slowplay=SLOWPLAY:bluff=BLUFF) lost on the scoreboard and stays opt-in
+    # until recordings show it helps.
+    slowplay: float = 0.0
+    bluff: float = 0.0
 
 
 class EquityTable:

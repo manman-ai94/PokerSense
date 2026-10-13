@@ -37,12 +37,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice  # noqa: E402
 from poker_engine.scoreboard.preflop_policy import (  # noqa: E402
     AAPreflopPolicy, PreflopParams)
+from poker_engine.scoreboard.preflop_reading import BLUFF, SLOWPLAY  # noqa: E402
 from tools.aa_session_report import _Now, _Solved, load, plain  # noqa: E402
 from tools.aa_strategy_review import mode  # noqa: E402
 
 HERO = "4"
 SUITS = {"♠": "s", "♥": "h", "♦": "d", "♣": "c"}
-READINGS = {"before": PreflopParams(slowplay=0.0, bluff=0.0), "after": PreflopParams()}
+# "after" is the limp-raise reading, opt-in since 2026-10-13 (the window reads
+# as "before" until this comparison on recordings shows "after" helps).
+READINGS = {"before": PreflopParams(slowplay=0.0, bluff=0.0),
+            "after": PreflopParams(slowplay=SLOWPLAY, bluff=BLUFF)}
 
 
 def cards_of(text):
