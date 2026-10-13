@@ -209,9 +209,10 @@ def test_the_heads_up_flop_gets_the_range_rules_action_with_its_cuts(monkeypatch
 
 def test_the_opponents_reads_go_to_the_range_reading_after_the_flop(monkeypatch):
     # A seat that bets far more than the AA players after the flop keeps more
-    # of the hands the model would not play that way. One that only raises
-    # more before the flop does not: read that way, a tight-aggressive player
-    # who bets honestly was taken as bluffing.
+    # of the hands the model would not bet (its floor over the bluff weight;
+    # here seat 2's turn bet, three-handed). One that only raises more before
+    # the flop does not: read that way, a tight-aggressive player who bets
+    # honestly was taken as bluffing.
     seen, real = [], aa_solver_advice.opponent_ranges
     monkeypatch.setattr(aa_solver_advice, "opponent_ranges",
                         lambda observation, model: seen.append(observation)
@@ -223,7 +224,7 @@ def test_the_opponents_reads_go_to_the_range_reading_after_the_flop(monkeypatch)
         reads = {"2": {"hands": 30, "vpip": 0.6, "pfr": 0.4, **postflop}}
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
         monkeypatch.setattr(advice.reads, "snapshot", lambda: reads)
-        report = flop_turn(advice)
+        report = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
         assert seen[-1]["reads"] == reads and report["status"] == "ready"
         assert report["reads_hands"] == 30
         return report["range_equity"]
@@ -288,9 +289,10 @@ def test_the_opponents_ranges_are_read_while_they_act(monkeypatch):
         if fresh:                          # nothing read before
             monkeypatch.setattr(ranges, "_KEPT", {})
         calls = []
-        kept = ranges.kept
-        monkeypatch.setattr(ranges, "kept",
-                            lambda *a, **k: calls.append(1) or kept(*a, **k))
+        for name in ("kept", "soft_kept"):          # before / after the flop
+            read = getattr(ranges, name)
+            monkeypatch.setattr(ranges, name, lambda *a, read=read, **k:
+                                calls.append(1) or read(*a, **k))
         reports = [advice.observe(three_handed(frame), frame) for frame in frames]
         return reports, len(calls)
 
