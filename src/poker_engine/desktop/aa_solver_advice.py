@@ -39,6 +39,16 @@ are read, the hand so far is replayed on the AA table (``aa_solver_input``).
   rough rule can run at once: on 10/07 at real pace recognition took about
   a second a frame for 8 frames while they did.
 
+After the flop every answer goes through the big-pot guard
+(``multiway_bot.guard_action``): with one pair or less of your own in a pot
+of 30 big blinds or more, no raise (call or fold by the price), at most half
+the pot, no bet on the river. The range rule and the rough rule are guarded
+always, the solver's answer only when it bets or raises for value (your
+share against the opponent's range at least ``VALUE_SHARE``; a bluff is its
+own). The report's ``guard`` says what it changed and the advice before it,
+for the window and the log; the ranges are read narrower than people play,
+so a pair came out at 0.9-1.0 against them and was bet big.
+
 An action the history missed but the table shows (``aa_solver_input``) is
 filled in; the report's ``inferred_actions`` counts them. A decision is the
 actions read so far, the street, what your button shows and how many of the
@@ -132,9 +142,10 @@ from poker_engine.core.enums import Position
 from poker_engine.scoreboard.bots import position
 from poker_engine.scoreboard.mushroom import MIN_PLAYERS
 from poker_engine.scoreboard.multiway_bot import DEFAULTS as MULTIWAY_LINES
-from poker_engine.scoreboard.multiway_bot import choose as multiway_choice
+from poker_engine.scoreboard.multiway_bot import GUARD_SIZE
+from poker_engine.scoreboard.multiway_bot import big_pot, guard_action, guarded
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
-from poker_engine.scoreboard.multiway_bot import street_params
+from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_hand
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
@@ -188,6 +199,7 @@ ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 
                "rough rule for when the hand cannot be worked out; for study only")
 BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 IN_HAND = ("active", "all_in")
+VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
 
 
 def _switch_quickly():
@@ -249,6 +261,33 @@ def multiway_row(action, observation):
             "chips": str(to - mine), "to": str(to)}
 
 
+def guard_report(size, was, street):
+    """What the big-pot guard changed (``multiway_bot.guard_action``): the
+    pot in big blinds, its line, and the advice before it."""
+    return {"pot_big_blinds": round(size, 1), "line": MULTIWAY_LINES["guard"],
+            "street": street, "was": was}
+
+
+def solver_guard(rows, observation, share):
+    """The solver's advice under the big-pot guard: (rows, guard report or
+    None). Only a bet or raise for value (your share of the pot against the
+    opponent's range at least ``VALUE_SHARE``) is guarded; a bluff is the
+    solver's own and stays."""
+    top = rows[0] if rows else {}
+    if (top.get("action") not in ("bet", "raise") or share is None
+            or share < VALUE_SHARE):
+        return rows, None
+    size = guarded(observation)
+    if size is None:
+        return rows, None
+    asked = f"raise_to:{top['to']}"
+    action = guard_action(observation, asked, share)
+    if action == asked:
+        return rows, None
+    return ([multiway_row(action, observation)],
+            guard_report(size, top, observation["street"]))
+
+
 def range_report(observation, weights):
     """Your share of the pot against the opponent's range, and how many of
     its hands your cards and the board leave; None when it leaves none."""
@@ -276,6 +315,17 @@ def open_level(stakes=None):
 @lru_cache(maxsize=1)
 def _rule_set_open_level():
     return open_level(json.loads(RULES_PATH.read_text(encoding="utf-8")))
+
+
+def big_blind(stakes=None):
+    """The table's big blind (``stakes``: ``aa_stakes``; None: the shared rule
+    set's)."""
+    return Decimal((stakes or _rule_set())["big_blind"])
+
+
+@lru_cache(maxsize=1)
+def _rule_set():
+    return json.loads(RULES_PATH.read_text(encoding="utf-8"))
 
 
 def _bets(fields):
@@ -377,10 +427,12 @@ def rough_advice(fields, cards, street, pot=None, stakes=None):
     required = to_call / (pot + to_call) if to_call > 0 else Decimal(0)
     action = "check" if to_call == 0 else "call" if value >= required else "fold"
     row = {"action": action, "frequency": 1.0}
+    guard = None
     if street != "preflop" and not all_in and stack is not None:
-        row = rough_aggression(row, value, len(opponents), pot, to_call, mine, top,
-                               stack)
-    return {"kind": "rough", "advice": [row],
+        bold = rough_aggression(row, value, len(opponents), pot, to_call, mine, top,
+                                stack)
+        row, guard = rough_guard(bold, row, cards, board, street, pot, mine, stakes)
+    return {"kind": "rough", "advice": [row], **({"guard": guard} if guard else {}),
             "range_equity": {"value": round(value, 3), "opponents": len(opponents),
                              "hands": None, "hands_each": counts, "realize": realize},
             "required": round(float(required), 3), "pot": str(pot),
@@ -407,6 +459,26 @@ def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
         return row
     to = min(to, mine + stack)
     return {"action": action, "frequency": 1.0, "chips": str(to - mine), "to": str(to)}
+
+
+def rough_guard(row, quiet, cards, board, street, pot, mine, stakes=None):
+    """The rough rule's bet or raise ``row`` under the big-pot guard
+    (``multiway_bot.guard_action``): (row, guard report or None). ``quiet``
+    is its check, call or fold without the bet or raise."""
+    if row["action"] not in ("bet", "raise"):
+        return row, None
+    size = big_pot(pot, big_blind(stakes))
+    if size is None or not weak_hand(cards, board):
+        return row, None
+    if row["action"] == "bet" and street != "river":
+        cap = (pot * Decimal(str(GUARD_SIZE))).quantize(Decimal(1))
+        if Decimal(row["chips"]) <= cap:
+            return row, None
+        return ({**row, "chips": str(cap), "to": str(mine + cap)},
+                guard_report(size, row, street))
+    if row["action"] == "bet":
+        quiet = {"action": "check", "frequency": 1.0}
+    return quiet, guard_report(size, row, street)
 
 
 class AASolverAdvice:
@@ -642,10 +714,16 @@ class AASolverAdvice:
         if pot is not None and pot > Decimal(observation["pot"]):
             offset = pot - Decimal(observation["pot"])
             observation = {**observation, "pot": str(pot)}
-        action = multiway_choice(observation, edge["value"])
+        bold = unguarded(observation, edge["value"])
+        action = guard_action(observation, bold, edge["value"])
+        guard = None
+        if action != bold:
+            guard = guard_report(guarded(observation), multiway_row(bold, observation),
+                                 observation["street"])
         line = multiway_cuts(observation, street_params(observation))
         return {"status": "ready", "kind": "multiway", "heads_up": heads_up,
                 "advice": [multiway_row(action, observation)],
+                **({"guard": guard} if guard else {}),
                 "cuts": {name: round(value, 3) for name, value in line.items()},
                 "range_equity": edge, "pot": observation["pot"],
                 "to_call": observation["to_call"],
@@ -725,7 +803,13 @@ class AASolverAdvice:
             edge = range_report(observation, villain)
         except (KeyError, ValueError):     # never lose the advice over it
             edge = None
-        return {"status": "ready", "advice": advice_rows(strategy, observation),
+        rows = advice_rows(strategy, observation)
+        offset = _decimal(observation.get("pot_offset")) or Decimal(0)
+        on_screen = {**observation,
+                     "pot": str(Decimal(observation["pot"]) + max(offset, Decimal(0)))}
+        rows, guard = solver_guard(rows, on_screen, edge and edge["value"])
+        return {"status": "ready", "advice": rows,
+                **({"guard": guard} if guard else {}),
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": observation.get("pot_offset"),
                 "range_equity": edge,
@@ -834,7 +918,7 @@ class AASolverAdvice:
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
                                 "bomb_pot", "seconds", "basis", "provisional",
-                                "solver_gave_up")
+                                "solver_gave_up", "guard")
                                 if name in job})
 
     def _report(self, status, reason, **extra):

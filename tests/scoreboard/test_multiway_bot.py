@@ -130,3 +130,64 @@ def test_with_hu_the_heads_up_flop_is_played_with_its_own_cuts(monkeypatch, tabl
     assert bot_with(monkeypatch, 0.9, hu=2).decide(turn, random.Random(0)).startswith(
         "raise_to")                             # unless every street is asked for
     assert multiway_bot.street_params(spot, multiway_bot.DEFAULTS)["bet"] == 0.55
+
+
+@pytest.mark.parametrize("hole, board, weak", [
+    (["Ad", "Ts"], ["Tc", "2s", "7d", "8h", "Qc"], True),      # second pair, river
+    (["Ad", "Ts"], ["Tc", "2s", "7d"], True),                   # top pair
+    (["As", "Ts"], ["Jd", "6c", "Jh"], True),                   # the board's pair
+    (["7h", "2c"], ["Kd", "Ks", "7s"], True),                   # a pair is the board's
+    (["Ah", "2c"], ["Kd", "Ks", "5s", "5c", "9h"], True),        # the board's two pair
+    (["Ah", "2c"], ["9d", "9s", "9h"], True),                   # the board's trips
+    (["Ah", "2c"], ["3d", "4s", "5h", "6c", "7d"], True),        # the board's straight
+    (["Kh", "7c"], ["Kd", "7s", "2h"], False),                  # two pair of your own
+    (["9h", "9c"], ["Kd", "9s", "2h"], False),                  # a set
+    (["Ah", "2c"], ["Ad", "As", "5h"], False),                  # trips with your ace
+    (["Ah", "Kh"], ["2h", "7h", "Qh"], False),                  # a flush
+    (["Ah", "Kh"], ["2h", "7h"], False),                        # before the flop
+])
+def test_weak_hand_is_one_pair_or_less_of_your_own(hole, board, weak):
+    assert multiway_bot.weak_hand(hole, board) is weak
+
+
+def guard_spot(street="river", pot=120, to_call=0, hole=("Ad", "Ts")):
+    """A decision with your pair of tens; the big blind is 2."""
+    board = {"flop": ["Tc", "2s", "7d"], "turn": ["Tc", "2s", "7d", "8h"],
+             "river": ["Tc", "2s", "7d", "8h", "Qc"]}[street]
+    bets = {"4": "0", "5": str(to_call)}
+    raises = [pot // 2, pot, 400] if not to_call else [to_call * 3, 400]
+    return {"street": street, "pot": str(pot), "to_call": str(to_call),
+            "rules": {"big_blind": "2"}, "own_hole": list(hole), "board": board,
+            "bets": bets, "occupied_seats": [4, 5], "folded": [],
+            "legal_actions": [
+                {"id": "check_call", "kind": "check_call"},
+                *[{"id": f"raise_to:{to}", "kind": "raise_to", "raise_to": str(to)}
+                  for to in raises]]}
+
+
+def test_guard_holds_a_pair_back_in_a_big_pot():
+    guard = multiway_bot.guard_action
+    river = guard_spot("river", pot=120)                   # 60 big blinds
+    assert multiway_bot.guarded(river) == 60
+    assert guard(river, "raise_to:60", 1.0) == "check_call"        # no river bet
+    turn = guard_spot("turn", pot=120)
+    assert guard(turn, "raise_to:120", 0.9) == "raise_to:60"       # half the pot
+    assert guard(turn, "raise_to:60", 0.9) == "raise_to:60"
+    facing = guard_spot("turn", pot=120, to_call=40)               # price 0.25
+    assert guard(facing, "raise_to:120", 0.9) == "check_call"      # call, no raise
+    assert guard(facing, "raise_to:120", 0.2) == "fold"
+    assert guard(facing, "fold", 0.2) == "fold"
+
+
+def test_guard_leaves_small_pots_strong_hands_and_its_off_switch():
+    guard = multiway_bot.guard_action
+    small = guard_spot("river", pot=58)                    # 29 big blinds
+    assert multiway_bot.guarded(small) is None
+    assert guard(small, "raise_to:29", 1.0) == "raise_to:29"
+    two_pair = guard_spot("river", pot=120, hole=("Ts", "8c"))
+    assert guard(two_pair, "raise_to:60", 0.9) == "raise_to:60"
+    river = guard_spot("river", pot=120)
+    off = {**multiway_bot.DEFAULTS, "guard": 0}
+    assert guard(river, "raise_to:60", 1.0, off) == "raise_to:60"
+    assert multiway_bot.choose(river, 1.0) == "check_call"
+    assert multiway_bot.unguarded(river, 1.0) == "raise_to:60"
