@@ -35,8 +35,10 @@ BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "
 
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
-            turn=41, complete=True, stacks_read=True, priced=0, pot_gone=None):
-    seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop]
+            turn=41, complete=True, stacks_read=True, priced=0, pot_gone=None,
+            late=0):
+    seen = [a for i, a in enumerate(ACTIONS) if a[0] < frame and i not in drop
+            and not (a[0] == 40 and frame < late)]
     if frame < priced:              # the turn bet's chips not read yet
         seen = [a if a[0] != 40 else a[:4] + (None, "pending") for a in seen]
     street = seen[-1][1] if seen else "preflop"
@@ -922,3 +924,40 @@ def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines()
     assert aa_solver_advice.rough_aggression(
         row, 0.5, 3, Decimal(120), Decimal(0), Decimal(0), Decimal(0),
         Decimal(500))["to"] == "120"
+
+
+class FirstOnly(Inline):
+    """Runs the first ``count`` jobs at once; the later ones never finish."""
+
+    def __init__(self, count):
+        super().__init__()
+        self.count = count
+
+    def submit(self, function, *args):
+        self.finish = self.submitted < self.count
+        return super().submit(function, *args)
+
+
+def test_an_inferred_action_read_for_real_keeps_the_advice_while_it_is_redone():
+    # Seat 2's turn bet is on the table as your buttons show (and filled in),
+    # but read into the history only at frame 50: the same price, one more
+    # action read. Until that decision is worked out the earlier advice
+    # stays, instead of the rough rule's (10/10: fold, rough call, fold).
+    advice = AASolverAdvice(Bot({"FOLD": 1.0}), FirstOnly(2), clock=still)
+    results = run(advice, range(70), late=50)
+    before, after = results[45], results[65]
+    assert before["status"] == "ready" and before["inferred_actions"] == 1
+    assert (after["status"], after["advice"], after["carried_from"]) == (
+        "ready", before["advice"], before["decision"])
+    assert after["decision"] == before["decision"] + 1
+    assert "rough_for" not in after
+
+
+def test_a_new_price_is_not_carried_over():
+    advice = AASolverAdvice(Bot({"FOLD": 1.0}), FirstOnly(2), clock=still)
+    results = [advice.observe(payload(frame), frame) for frame in range(50)]
+    raised = payload(50)
+    raised["hero_controls_v1"]["call_amount"] = "30"
+    late = [advice.observe(raised, frame) for frame in range(50, 70)]
+    assert results[-1]["status"] == "ready"
+    assert all("carried_from" not in report for report in late)

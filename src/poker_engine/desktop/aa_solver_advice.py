@@ -491,6 +491,8 @@ class AASolverAdvice:
             except Exception:              # the rough rule answers; the window goes on
                 self._jobs[key] = {"status": "abstain", "reason": "advice_failed"}
         report = self._outcome(key, street)
+        if report["status"] != "ready":
+            report = self._carried(key, street) or report
         if report["status"] == "ready" or not self._rough_due(frame, report):
             return report
         return self._rough_outcome(key, fields, cards, street, frame, report) or report
@@ -805,6 +807,22 @@ class AASolverAdvice:
         if job is not None and job["status"] != "ready":
             job = self._rough_done(key) or job
         return job
+
+    def _carried(self, key, street):
+        """The advice of the decision just before this one, while this one is
+        worked out, when only the number of actions read differs: the same
+        street and the same button and price. An action the table had already
+        shown (and the replay filled in) being read for real is not a new
+        decision for you; on 10/10 that made the advice go fold, rough call,
+        fold, fold in 3.5 s on one river call (the rough rule answers first)."""
+        for earlier in reversed(list(self._jobs)):
+            if earlier == key or earlier[1:3] != key[1:3] or earlier[0] >= key[0]:
+                continue
+            report = self._outcome(earlier, street)
+            if report["status"] == "ready":
+                return {**report, "decision": key[0], "carried_from": earlier[0]}
+            return None
+        return None
 
     def _outcome(self, key, street):
         job = self._answer(key) or self._provisional(key)
