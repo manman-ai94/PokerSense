@@ -145,7 +145,7 @@ class AARecorder:
 
     def __init__(self, out, normalization, *, meta=None, clock=time.monotonic,
                  writer_factory=avc1_writer, limit_seconds=LIMIT_SECONDS,
-                 free=free_bytes, stop_free=STOP_FREE_GB * GB):
+                 free=free_bytes, stop_free=STOP_FREE_GB * GB, on_finished=None):
         self.box = strip_box(normalization)
         self.out = Path(out)
         self.out.mkdir(parents=True, exist_ok=False)
@@ -158,6 +158,9 @@ class AARecorder:
         self.offered = self.skipped = 0
         self.stopping = False
         self.reason = self.error = None
+        # Called with the folder once recording.json is written (the source
+        # sets it: aa_after_session.start_report).
+        self.on_finished = on_finished
         self.meta = {"source": "aa-live-service", "fps": FPS, "size": list(SIZE),
                      "strip": list(self.box), "code": code_version(), **(meta or {}),
                      "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
@@ -230,6 +233,11 @@ class AARecorder:
                              error=None if self.error is None else str(self.error))
             (self.out / "recording.json").write_text(
                 json.dumps(self.meta, ensure_ascii=False, indent=1), encoding="utf-8")
+            if self.on_finished is not None:
+                try:
+                    self.on_finished(self.out)
+                except Exception as exc:            # never the recording's problem
+                    self.meta["after_error"] = str(exc)
 
     def _measure(self):
         self.megabytes = round(sum(path.stat().st_size for path in
