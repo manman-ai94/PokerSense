@@ -223,10 +223,12 @@ class PopulationReader(PopulationBot):
 def reading_of(policy):
     """(slow play, bluff) a policy reads ranges with: its preflop parameters'
     (``aa_preflop@slowplay=0:bluff=0`` reads as the model plays), else the
-    defaults."""
-    params = getattr(policy, "params", None)
-    if hasattr(params, "slowplay"):
-        return params.slowplay, params.bluff
+    defaults. Wrappers (``noreads+``, ``nomushroom+`` …) are looked through."""
+    while policy is not None:
+        params = getattr(policy, "params", None)
+        if hasattr(params, "slowplay"):
+            return params.slowplay, params.bluff
+        policy = getattr(policy, "base", None)
     return SLOWPLAY, BLUFF
 
 

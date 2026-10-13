@@ -272,3 +272,9 @@ def test_after_calling_a_limp_raise_the_flop_is_played_against_big_hands():
     assert shares["K", "new"] < shares["K", "old"] - 0.04
     # Ace high was a coin flip against the medium hands; now it is behind.
     assert shares["A", "old"] > 0.45 and shares["A", "new"] < 0.4
+
+
+def test_a_wrapped_policy_reads_with_its_base_parameters():
+    from poker_engine.scoreboard.bots import make_policy
+    from poker_engine.scoreboard.preflop_reading import reading_of
+    assert reading_of(make_policy("noreads+aa_preflop@slowplay=0:bluff=0")) == (0, 0)
