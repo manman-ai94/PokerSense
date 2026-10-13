@@ -16,6 +16,9 @@ This layer keeps the reader's actions and rebuilds the rest:
   which also splits a rise that held the next bet too while the pot was
   unreadable. Chips of a rise are given out once; the rise from an empty
   pot is the blinds and antes, never an action;
+- **read calls and raises without a rise**: a call or raise whose badge
+  was read but whose pot rise was not (the pot unreadable, or the first
+  rise from an empty pot) takes the seat's own stack drop next to it;
 - **all in**: Mac recordings show the All in badge in a style the reader
   does not match, and some all-ins turn the cards face up at once. A seat
   whose steady stack drops to 0 with no call or raise of its own nearby
@@ -105,6 +108,7 @@ class AAActionHistory:
         self._wager_reads = {}                   # seat -> (value, count)
         self._wagers = {}                        # seat -> (hand, street, most in)
         self._drops = []                         # stack drops not placed yet
+        self._seat_drops = []                    # [seat, frame, chips, used]
         self._opened = None                      # first frame of the hand's pot
 
     # -- hands -----------------------------------------------------------------
@@ -114,6 +118,7 @@ class AAActionHistory:
                       "dealer": dealer, "complete": complete, "start": reason,
                       "actions": [], "streets": set()}
         self._hand_over = False
+        self._seat_drops = []
 
     def _boundary(self, payload, frame, street, dropped, dealer):
         """Why a new hand starts at this frame, or None."""
@@ -210,11 +215,16 @@ class AAActionHistory:
         found = self._rise(action["frame"], now)
         if found == "pending" and self._from_wager(action):
             return
+        if (found == "pending" and action["frame"] + AFTER <= now
+                and self._from_own_drop(action, settle=True)):
+            return
         if found == "pending":
             action["amount_source"] = "pending"
         elif found is not None:
             self._shares[found[0]] = self._shares.get(found[0], 0) + found[1]
             action["amount"], action["amount_source"] = str(found[1]), "pot_rise"
+        elif self._from_own_drop(action, settle=False):
+            return
         else:
             cash = action["cash_amount"]
             action["amount"] = cash
@@ -263,6 +273,33 @@ class AAActionHistory:
             return False
         action["amount"], action["amount_source"] = str(chips), "wager"
         action["owed"] = chips
+        return True
+
+    def _from_own_drop(self, action, settle):
+        """Price a call or raise whose badge was read but whose pot rise was
+        not, by the seat's own stack drops next to it (all of them: a stack
+        read while the chips moved drops in two steps; each used once).
+        With ``settle`` the pot is unreadable: its rise is settled later and a
+        smaller rise wins, as for a bet priced by the table.
+
+        On 10/10 40 calls and raises had no amount: 28 while the pot was
+        unreadable, 8 in the first rise from an empty pot (the blinds and a
+        raise read together, 35 = 19 + 16) while the raiser's stack was read
+        going 462 -> 446. The rough rule then advised every street of that
+        hand (A6, -145 bb). A pot unreadable while two seats put chips in
+        also gave the whole rise to the first of them (19 + 18 as a raise of
+        37 and a call without an amount); the drop splits it."""
+        near = [drop for drop in self._seat_drops
+                if not drop[3] and drop[0] == action["slot"]
+                and -BEFORE <= drop[1] - action["frame"] <= AFTER]
+        if not near:
+            return False
+        for drop in near:
+            drop[3] = True
+        chips = sum(drop[2] for drop in near)
+        action["amount"], action["amount_source"] = str(chips), "stack_drop"
+        if settle:
+            action["owed"] = chips
         return True
 
     def _wager(self, action):
@@ -328,6 +365,7 @@ class AAActionHistory:
                 # Only a drop from a stack still read just before it: after a
                 # stretch unread the chips may have gone in long ago.
                 self._drops.append((int(slot), first, before - value))
+                self._seat_drops.append([int(slot), first, before - value, False])
             self._held[slot] = frame
             if value != 0 or not before or first < hand["start_frame"]:
                 continue
