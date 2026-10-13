@@ -241,7 +241,9 @@ def test_a_stall_clears_the_table_and_the_next_frame_in_time_shows_again():
         assert all(payload is None or payload["sequence"] >= 2 for payload in seen)
         assert session.snapshot()["generation"] == generation
         assert not source.closed.is_set()
-        assert session.preview().startswith(b"\xff\xd8")
+        # The picture shows again too (waited for: on a slow runner a gap
+        # longer than stale_after can clear it once more between two reads).
+        wait_until(lambda: (session.preview() or b"").startswith(b"\xff\xd8"))
     finally:
         release.set()
         session.stop()
