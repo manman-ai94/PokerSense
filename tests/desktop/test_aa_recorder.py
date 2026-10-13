@@ -95,8 +95,13 @@ def wait_for(predicate):
 def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
     clock = Clock()
     out = tmp_path / "20261008-020000-live"
+    finished = []
+
+    def done(folder):
+        finished.append((folder, (folder / "recording.json").exists()))
+
     recorder = AARecorder(out, AA8, meta={"device_index": 0}, clock=clock,
-                          writer_factory=Writer)
+                          writer_factory=Writer, on_finished=done)
     strip = np.full((1080, 498, 3), 200, np.uint8)
     recorder.offer(strip)
     wait_for(lambda: Writer.made and Writer.made[0].frames)
@@ -108,6 +113,8 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
                                  "stopped_reason": None, "error": None}
     status = recorder.stop()
     assert (status["active"], status["stopped_reason"]) == (False, "stopped")
+    # Told once the summary is written (the check-up sheet starts from it).
+    assert finished == [(out, True)]
     frame = Writer.made[0].frames[0]
     assert frame.shape == (1080, 1920, 3)
     assert (frame[:, 711:1209] == 200).all()
@@ -200,6 +207,8 @@ def test_the_capture_source_records_its_frames_until_it_closes(tmp_path):
     source = AACaptureSource({"device_index": 1}, backend_factory=Backend)
     source.recorder_factory = lambda out, normalization, meta: AARecorder(
         out, normalization, meta=meta, writer_factory=Writer)
+    finished = []
+    source.after_recording = finished.append
     assert source.recording_status() is None
     source.read()
     status = source.start_recording(tmp_path / "live")
@@ -209,6 +218,7 @@ def test_the_capture_source_records_its_frames_until_it_closes(tmp_path):
     source.close()
     status = source.recording_status()
     assert (status["active"], status["stopped_reason"]) == (False, "source_stopped")
+    assert finished == [tmp_path / "live"]
     summary = json.loads((tmp_path / "live" / "recording.json").read_text())
     assert summary["device_index"] == 1 and summary["offered_frames"] >= 1
     assert not (tmp_path / "other").exists()

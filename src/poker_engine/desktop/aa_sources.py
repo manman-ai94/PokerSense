@@ -40,6 +40,7 @@ from poker_engine.perceptual.capture.capture_card_backend import (
     CaptureCardBackend, default_capture_api)
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
 
+from .aa_after_session import start_report
 from .aa_device_lock import AACaptureDeviceLock
 from .aa_recorder import STRIP_LIT, AARecorder, picture
 
@@ -172,6 +173,7 @@ class AACaptureSource:
         self.device_lock = (device_lock_factory or AACaptureDeviceLock)()
         self.recorder = None
         self.recorder_factory = AARecorder
+        self.after_recording = start_report
 
     def _backend(self, index, **options):
         return self.backend_factory(device_index=index, api=self.api, width=1920,
@@ -328,6 +330,7 @@ class AACaptureSource:
             if self.recorder is None or not self.recorder.status()["active"]:
                 self.recorder = self.recorder_factory(out, self.normalization,
                                                       meta=dict(self.device))
+                self.recorder.on_finished = self.after_recording
             return self.recorder.status()
 
     def stop_recording(self, reason="stopped"):
