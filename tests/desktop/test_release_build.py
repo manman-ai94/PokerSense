@@ -208,3 +208,16 @@ def test_releases_come_only_from_main_and_uploads_need_the_secret():
     assert "softprops/action-gh-release" not in workflow
     legacy = (ROOT / ".github/workflows/build-desktop.yml").read_text("utf-8")
     assert "action-gh-release" not in legacy and "tags:" not in legacy
+
+
+def test_the_printed_manifest_has_no_download_links(tmp_path, capsys):
+    installer = tmp_path / "setup.exe"
+    installer.write_bytes(b"MZ")
+    out = tmp_path / "latest.json"
+    assert release.main(["manifest", "--version", "0.3.0",
+                         "--installer", str(installer),
+                         "--url", "https://cloud/secret-link", "--out", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert "secret-link" not in printed and '"sha256"' in printed
+    assert json.loads(out.read_text("utf-8"))["installer"]["url"] == (
+        "https://cloud/secret-link")

@@ -93,3 +93,14 @@ def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys):
     assert result["paired_hands"] == 1
     whole = result["whole_hand"]
     assert (whole["kept_now"], whole["change"]["all"]) == (1, -1.0)
+
+
+def test_the_report_reads_ranges_with_the_windows_reader():
+    from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
+    from poker_engine.scoreboard.preflop_reading import (
+        HONEST, reading_model, reading_of)
+    from tools.aa_range_exclusion import window_model
+    policy = AAPreflopPolicy()
+    expected = reading_model(policy.adjusted, reading_of(policy))
+    assert type(window_model()) is type(expected)
+    assert getattr(window_model(), "reading", HONEST) == reading_of(policy)

@@ -47,6 +47,7 @@ import math
 from poker_engine.solver.texassolver import all_combos, combo_key
 
 from .population import PopulationBot
+from .preflop_reading import reading_model as preflop_reader, reading_of
 from .ranges import opponent_ranges
 from .reads import Unread
 
@@ -81,7 +82,8 @@ def reading_model(policy):
         if model is not None:
             return model, sees
         if hasattr(policy, "adjusted"):
-            return PopulationBot(adjusted=policy.adjusted), sees
+            # The same reader the policy's own table uses (``preflop_reading``).
+            return preflop_reader(policy.adjusted, reading_of(policy)), sees
         policy = getattr(policy, "base", None)
     return PopulationBot(), sees
 

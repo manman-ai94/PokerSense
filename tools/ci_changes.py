@@ -45,7 +45,8 @@ def changed_files(base, head):
     try:
         subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"], check=True,
                        capture_output=True)
-        listing = subprocess.run(["git", "diff", "--name-only", f"{base}...{head}"],
+        listing = subprocess.run(["git", "diff", "--name-only", "--no-renames",
+                                  f"{base}...{head}"],
                                  check=True, capture_output=True, text=True)
     except (OSError, subprocess.CalledProcessError):
         return None

@@ -201,3 +201,15 @@ def test_only_betting_more_after_the_flop_keeps_extra_hands_after_it():
     raiser = {"reads": {seat: {**preflop, "pfr": 0.35}}}
     assert read_floors(raiser, model, [opener]) == {opener: 0.0}
     assert honest == plain < betting
+
+
+def test_two_readings_of_the_same_line_do_not_share_a_kept_range(monkeypatch):
+    from poker_engine.scoreboard import ranges
+    from poker_engine.scoreboard.preflop_reading import PopulationReader
+    observation = _three_way_flop(("2c", "3d", "4h"))
+    wide, narrow = PopulationReader(True, 0.4, 0.2), PopulationReader(True, 0.1, 0.0)
+    monkeypatch.setattr(ranges, "_KEPT", {})
+    opponent_ranges(observation, wide)
+    after_wide = opponent_ranges(observation, narrow)
+    monkeypatch.setattr(ranges, "_KEPT", {})
+    assert after_wide == opponent_ranges(observation, narrow)

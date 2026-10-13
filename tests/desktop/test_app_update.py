@@ -363,8 +363,10 @@ def test_a_wrong_bundle_is_not_made_current_and_the_old_one_stays(
         "current.json", "d" * 64]
 
 
+# 反斜杠用 "..\\outside.txt"：Windows 上 zipfile 读写时都会把 "\\" 换成 "/"，
+# 普通的 "a\\b.txt" 在那里就是安全的 a/b.txt；带 ".." 的在两种系统上都必须拒绝。
 @pytest.mark.parametrize("name", ["../outside.txt", "/abs.txt", "C:/x.txt",
-                                  "a\\b.txt"])
+                                  "..\\outside.txt"])
 def test_a_bundle_with_unsafe_paths_is_refused(tmp_path, name):
     evil = bundle_zip({"profile.json": b"{}", name: b"x"})
     result = app_update.sync_recognition(
@@ -387,3 +389,10 @@ def test_no_recognition_without_an_address_an_entry_or_a_reachable_manifest(tmp_
     (tmp_path / "recognition").mkdir()
     (tmp_path / "recognition" / "current.json").write_text('{"manifest_sha256": "x"}')
     assert app_update.installed_recognition(tmp_path) is None
+
+
+@pytest.mark.parametrize("url", ["http://cloud.example/latest.json",
+                                 "http://drive.google.com/uc?id=x"])
+def test_a_plain_http_address_on_the_internet_is_refused(url):
+    with pytest.raises(app_update.UpdateError, match="https"):
+        app_update.open_url(url)
