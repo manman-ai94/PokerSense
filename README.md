@@ -1,10 +1,11 @@
 # PokerSense
 
 德州扑克**实时策略分析**工具：用采集卡读取 AA 扑克手机画面，识别牌局，实时计算并显示策略参考。
-用途是跟 AI 学打牌，不涉及资金。软件显示分析结果。
+用途是跟 AI 学打牌，不涉及资金。软件只显示分析结果，绝不自动点击或下注，人始终是唯一操作者。
 
 *A real-time Texas Hold'em strategy-analysis tool for study: it reads the table from a capture card,
-reconstructs the hand state and shows strategy references.*
+reconstructs the hand state and shows strategy references. It never clicks, bets or controls the poker
+client.*
 
 ## 项目性质 / Project scope
 
