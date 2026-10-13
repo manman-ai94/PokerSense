@@ -100,12 +100,14 @@ class PreflopParams:
     raise_size: float = 1.0     # re-raises
     jam_share: float = 0.4      # raise all in when a raise would put in this
     #                             share of the stack anyway
-    # How ranges are read (``preflop_reading``). Both 0 (the default since
-    # 2026-10-13): as the population model plays. The limp-raise reading
-    # (slowplay=SLOWPLAY:bluff=BLUFF) lost on the scoreboard and stays opt-in
-    # until recordings show it helps.
-    slowplay: float = 0.0
-    bluff: float = 0.0
+    # How ranges are read (``preflop_reading``); both 0: as the population
+    # model plays. Off 2026-10-13 (it loses on the scoreboard, whose players
+    # never slow-play), back on the same day on real shown cards: of 9 AA
+    # limp-raisers who showed, the honest reading had ruled out 8 before the
+    # flop (this one 4), and over 149 shown hands it ruled out 65.8% against
+    # 58.4%, never keeping a hand this one ruled out.
+    slowplay: float = SLOWPLAY
+    bluff: float = BLUFF
 
 
 class EquityTable:
