@@ -37,6 +37,10 @@ KINDS = ("slow", "loose", "bluff")
 WEIGHTS = {"slow": (0.0, 0.0, 0.0), "loose": (0.0, 0.0, 0.0),
            "bluff": (0.0, 0.0, 0.0)}
 VETO = {kind: (0.0, 0.0, 0.0) for kind in KINDS}
+# Hands left below this share of the range's largest weight are dropped (the
+# share at which ``exclusion`` counts a hand as out): they barely move an
+# equity, and every hand kept is asked about again at each later action.
+PRUNE = 0.001
 
 
 def otherwise(taken, model_kind):
@@ -63,7 +67,8 @@ def key_of(weights):
 def soft_kept(weights, decision, decide, reading=None):
     """``weights`` after ``decision`` read without veto: a hand ``decide``
     plays as the seat did keeps its weight, any other hand the share
-    ``reading`` gives its kind on this street (``WEIGHTS`` by default)."""
+    ``reading`` gives its kind on this street (``WEIGHTS`` by default);
+    hands left at ``PRUNE`` of the largest weight or less are dropped."""
     reading = WEIGHTS if reading is None else reading
     street = STREETS.index(decision.street)
     taken = decision.kind
@@ -76,8 +81,9 @@ def soft_kept(weights, decision, decide, reading=None):
         share = 1.0 if kind is None else reading[kind][street]
         if share:
             result[key] = weight * share
-    return result
+    top = max(result.values(), default=0.0)
+    return {key: weight for key, weight in result.items() if weight > PRUNE * top}
 
 
-__all__ = ["KINDS", "STREETS", "VETO", "WEIGHTS", "key_of", "otherwise", "soft_kept",
-           "weights_of"]
+__all__ = ["KINDS", "PRUNE", "STREETS", "VETO", "WEIGHTS", "key_of", "otherwise",
+           "soft_kept", "weights_of"]
