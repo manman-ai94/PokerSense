@@ -191,3 +191,85 @@ def test_guard_leaves_small_pots_strong_hands_and_its_off_switch():
     assert guard(river, "raise_to:60", 1.0, off) == "raise_to:60"
     assert multiway_bot.choose(river, 1.0) == "check_call"
     assert multiway_bot.unguarded(river, 1.0) == "raise_to:60"
+
+
+def river_spot(table, hole, board=("Ad", "7c", "2d", "Js", "4h")):
+    """The multiway spot checked to you, on a river you choose."""
+    spot = table["checked_to"]
+    return {**spot, "street": "river", "own_hole": list(hole), "board": list(board)}
+
+
+def opponents_of(spot):
+    return [seat for seat in spot["occupied_seats"]
+            if seat not in spot["folded"] and seat != spot["observing_seat"]]
+
+
+def test_strengths_rank_every_hand_against_random_ones():
+    board = ("Ad", "7c", "2d", "Js", "4h")
+    one = multiway_bot.strengths(board, 1)
+    ids = multiway_bot.CARD_ID
+    nuts = one[(ids["3c"], ids["5c"])]                     # the straight
+    air = one[(ids["6s"], ids["8h"])]                      # lower card first
+    assert nuts > 0.99 and air < 0.1
+    assert len(one) == 47 * 46 // 2
+    three = multiway_bot.strengths(board, 3)
+    pair = (ids["9s"], ids["Ac"])
+    assert three[pair] == pytest.approx(one[pair] ** 3)
+
+
+def test_bets_below_a_quarter_of_the_pot_are_not_weighed_but_all_in_is(table):
+    spot = table["checked_to"]
+    options = multiway_bot.candidates(spot)
+    pot = float(spot["pot"])
+    sizes = sorted(options.values())
+    assert sizes and all(size >= 0.25 * pot - 1e-9 for size in sizes[:-1])
+    top = max(float(action["raise_to"]) for action in spot["legal_actions"]
+              if action["kind"] == "raise_to")
+    assert max(sizes) == top - float(spot["bets"][str(spot["observing_seat"])])
+
+
+def test_a_bigger_bet_is_called_by_fewer_hands(table):
+    spot = table["checked_to"]
+    seat, pot = opponents_of(spot)[0], float(spot["pot"])
+    lines = [multiway_bot.continue_line(spot, seat, put, pot + put)[0]
+             for put in (0.5 * pot, pot, 3 * pot)]
+    assert lines[0] <= lines[1] <= lines[2] and lines[0] < lines[2]
+    sticky = {**multiway_bot.DEFAULTS, "sticky": 1.5}
+    assert multiway_bot.continue_line(spot, seat, pot, 2 * pot, sticky)[0] < lines[1]
+
+
+def test_value_bet_when_worse_hands_call_check_when_only_better_ones_do(table):
+    spot = river_spot(table, ["3c", "5c"])                  # the nuts
+    weaker = {"AcKc": 1.0, "AhQh": 1.0, "JdJh": 1.0}
+    ranges = {seat: weaker for seat in opponents_of(spot)[:1]}
+    everyone = {**multiway_bot.DEFAULTS, "sticky": 100.0}    # every hand calls
+    worth = multiway_bot.values(spot, ranges, everyone)
+    assert max(worth, key=worth.get) != "check_call"
+    assert multiway_bot.sized(spot, 1.0, ranges, everyone).startswith("raise_to")
+    behind = river_spot(table, ["Kh", "Ks"])
+    better = {"3c5c": 1.0, "AcJc": 1.0, "7h7s": 1.0}
+    ranges = {seat: better for seat in opponents_of(behind)[:1]}
+    assert multiway_bot.sized(behind, 0.0, ranges, everyone) == "check_call"
+
+
+def test_a_bet_everyone_folds_to_wins_the_pot(table):
+    spot = river_spot(table, ["8h", "6s"])
+    better = {"AcJc": 1.0, "7h7s": 1.0}
+    ranges = {seat: better for seat in opponents_of(spot)[:2]}
+    nobody = {**multiway_bot.DEFAULTS, "sticky": 0.0}        # every hand folds
+    worth = multiway_bot.values(spot, ranges, nobody)
+    pot = float(spot["pot"])
+    assert all(worth[action] == pytest.approx(pot) for action in worth
+               if action != "check_call")
+    assert worth["check_call"] == pytest.approx(0.0)
+
+
+def test_facing_a_bet_without_the_price_folds_and_sizing_off_plays_the_lines(table):
+    spot = {**table["facing"], "street": "river", "own_hole": ["8h", "6s"],
+            "board": ["Ad", "7c", "2d", "Js", "4h"]}
+    hands = ({"AcJc": 1.0}, {"7h7s": 1.0}, {"AhAs": 1.0})
+    ranges = dict(zip(opponents_of(spot), hands))
+    assert multiway_bot.sized(spot, 0.0, ranges) == "fold"
+    off = {**multiway_bot.DEFAULTS, "sizing": 0.0}
+    assert multiway_bot.unguarded(spot, 0.9, off, ranges=ranges) == (
+        multiway_bot.lines(spot, 0.9))

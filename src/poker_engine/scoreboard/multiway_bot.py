@@ -51,17 +51,31 @@ them: "," separates strategies on the command line).
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from collections import Counter
+from functools import lru_cache
+import random
 
 from phevaluator import evaluate_cards
 
-from .bots import _Policy, _rng, opponents_in_hand, raise_toward
+from poker_engine.solver.texassolver import all_combos
+
+from .bots import MAX_EQUITY_OPPONENTS, _Policy, _rng, opponents_in_hand, raise_toward
+from .population import actions, population_stats, threshold
 from .preflop_reading import reading_model, reading_of
-from .ranges import opponent_ranges, ranges_equity
+from .ranges import _Range, opponent_ranges, ranges_equity
+from .spots import postflop_spot
+from .strength import CARD_ID, DECK, _EVALUATE_7
 
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
             "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7,
-            "size": 0.66, "size3": 1.0, "raise_size": 1.0, "guard": 30.0}
+            "size": 0.66, "size3": 1.0, "raise_size": 1.0, "guard": 30.0,
+            "sizing": 1.0, "elastic": 0.5, "sticky": 1.0}
+# The model's own bet and raise (of the pot), the sizes its continue shares
+# were seen at.
+REFERENCE = {"facing_bet": 0.66, "facing_raise": 1.0}
+MIN_SIZE = 0.25                 # smaller bets (the minimum) are not offered
+RUNOUTS = 30                    # boards dealt to rank every hand's strength
 GUARD_SIZE = 0.5                # the most a guarded bet puts in, of the pot
 # phevaluator's ranks (lower is stronger) where each kind of hand ends.
 KINDS = ((10, "straight_flush"), (166, "four_of_a_kind"), (322, "full_house"),
@@ -103,7 +117,8 @@ class RangeMultiwayBot(_Policy):
             self.counts["no_equity"] += 1
             return self.base.decide(observation, rng)
         self.counts["decided"] += 1
-        return choose(observation, share, self.params)
+        return choose(observation, share, self.params, ranges=ranges,
+                      seed=rng.randrange(2 ** 31))
 
 
 def covered(observation, params=DEFAULTS):
@@ -139,10 +154,11 @@ def cuts(observation, params=DEFAULTS):
     return {"call": price + params["margin"], "raise": params["raise"]}
 
 
-def choose(observation, share, params=DEFAULTS):
+def choose(observation, share, params=DEFAULTS, *, ranges=None, model=None, seed=0):
     """The action id for your share of the pot against the field, with the
     big-pot guard (``guard_action``)."""
-    action = unguarded(observation, share, params)
+    action = unguarded(observation, share, params, ranges=ranges, model=model,
+                       seed=seed)
     return guard_action(observation, action, share, params)
 
 
@@ -221,8 +237,25 @@ def guard_action(observation, action, share, params=DEFAULTS):
     return raise_toward(observation, GUARD_SIZE) or "check_call"
 
 
-def unguarded(observation, share, params=DEFAULTS):
-    """``choose`` without the big-pot guard."""
+def unguarded(observation, share, params=DEFAULTS, *, ranges=None, model=None, seed=0):
+    """``choose`` without the big-pot guard: with ``sizing`` (the default)
+    the most valuable action against the hands that would call it
+    (``sized``), else by the share of the pot and the lines (``lines``).
+    ``ranges``: the opponents' ranges when already read (read here with
+    ``model``, by default the window's reader, otherwise; a decision without
+    its hand's history is played by the lines)."""
+    if params.get("sizing"):
+        if ranges is None and "public_history" in observation:
+            ranges = opponent_ranges(observation, model or window_reader())
+        action = sized(observation, share, ranges, params, seed) if ranges else None
+        if action is not None:
+            return action
+    return lines(observation, share, params)
+
+
+def lines(observation, share, params=DEFAULTS):
+    """The rule until 2026-10-13: bet or raise when the share of the pot is
+    over a line, about two thirds or the whole pot."""
     params = street_params(observation, params)
     line = cuts(observation, params)
     if "bet" in line:
@@ -232,6 +265,192 @@ def unguarded(observation, share, params=DEFAULTS):
     if share >= line["raise"]:
         return raise_toward(observation, params["raise_size"]) or "check_call"
     return "check_call" if share >= line["call"] else "fold"
+
+
+@lru_cache(maxsize=1)
+def window_reader():
+    """The model the live window reads ranges with (``aa_preflop``'s reader),
+    so a reading it has done is found in the ranges' cache."""
+    return reading_model(True)
+
+
+def candidates(observation):
+    """{action id: chips it puts in} of the bets or raises worth weighing:
+    every legal one of at least ``MIN_SIZE`` of the pot after calling, and
+    all in."""
+    raises = [action for action in observation["legal_actions"]
+              if action["kind"] == "raise_to"]
+    if not raises:
+        return {}
+    me = str(observation["observing_seat"])
+    mine, to_call = float(observation["bets"][me]), float(observation["to_call"] or 0)
+    current = mine + to_call
+    base = float(observation["pot"]) + to_call
+    top = max(float(action["raise_to"]) for action in raises)
+    return {action["id"]: float(action["raise_to"]) - mine for action in raises
+            if float(action["raise_to"]) - current >= MIN_SIZE * base - 1e-9
+            or float(action["raise_to"]) == top}
+
+
+@lru_cache(maxsize=256)
+def strengths(board, opponents):
+    """{(card id, card id), lower first: share of the pot the hand wins against
+    ``opponents`` random hands} for every hand the board leaves: the model's
+    own measure (``PopulationBot.postflop``), for all hands at once. Each of
+    ``RUNOUTS`` boards (the river as it is) ranks every hand; a hand's share
+    against one random hand is the share of the other hands it beats, and
+    against several that share to their number."""
+    rng = random.Random("".join(board) + str(opponents))
+    known = [CARD_ID[card] for card in board]
+    deck = [CARD_ID[card] for card in DECK if card not in board]
+    hands = [tuple(sorted((CARD_ID[key[:2]], CARD_ID[key[2:]]))) for key in all_combos()
+             if key[:2] not in board and key[2:] not in board]
+    need = 5 - len(board)
+    runouts = ([()] if not need else
+               [tuple(rng.sample(deck, need)) for _ in range(RUNOUTS)])
+    totals, counts = Counter(), Counter()
+    for runout in runouts:
+        full = (*known, *runout)
+        ranked = [(hand, _EVALUATE_7(*hand, *full)) for hand in hands
+                  if hand[0] not in runout and hand[1] not in runout]
+        order = sorted(rank for _, rank in ranked)
+        others = len(order) - 1
+        for hand, rank in ranked:
+            low, high = bisect_left(order, rank), bisect_right(order, rank)
+            beaten = (len(order) - high + (high - low - 1) / 2) / others
+            totals[hand] += beaten ** opponents
+            counts[hand] += 1
+    return {hand: totals[hand] / counts[hand] for hand in totals}
+
+
+def continue_line(observation, seat, put, after, params=DEFAULTS):
+    """The strength (``strengths``) from which ``seat`` goes on (calls or
+    raises) when you put ``put`` in, the pot then ``after``; None when it
+    goes on with every hand.
+
+    The share of hands that go on is the population's (``population_stats``,
+    as the model plays) at the model's size, scaled by
+    (1 + that size) / (1 + this size) to the power ``elastic``: a bigger bet
+    is called less often; ``sticky`` scales it for players who call more."""
+    street, me = observation["street"], observation["observing_seat"]
+    history = actions(observation, street) + [(me, "r")]
+    aggressor = None
+    for player, kind in actions(observation, "preflop"):
+        if kind == "r":
+            aggressor = player
+    spot = postflop_spot(street, history, seat, opponents_in_hand(observation),
+                         aggressor)
+    row = population_stats().get(spot) or {}
+    share = row.get("raise", 0.1) + row.get("call", 0.4)
+    call = min(float(observation["bets"][str(me)]) + put
+               - float(observation["bets"][str(seat)]),
+               float(observation["stacks"][str(seat)]))
+    size = call / max(after - call, 1e-9)
+    facing = spot.rpartition("|")[2]
+    share *= ((1 + REFERENCE[facing]) / (1 + size)) ** params["elastic"]
+    return threshold(spot, min(share * params["sticky"], 1.0)), call
+
+
+def values(observation, ranges, params=DEFAULTS, seed=0):
+    """{action id: chips} of checking or calling ("check_call") and of each
+    bet or raise (``candidates``), each counted as what comes back to you
+    from the pot at the end less what it puts in, or None.
+
+    The opponents' hands are dealt from their ranges (``ranges_equity``) and
+    the board run out. A check or call goes to a showdown with everyone. A
+    bet or raise is called by the opponents whose hand is strong enough for
+    its size (``continue_line``; a raise of theirs is taken as a call); with
+    no caller the pot is yours, else the showdown with the callers is for the
+    pot and the calls (what you put over the biggest call comes back). An
+    opponent all in is in every showdown and puts nothing more in."""
+    if not ranges:
+        return None
+    options = candidates(observation)
+    if not options:
+        return None
+    me = str(observation["observing_seat"])
+    board = tuple(observation["board"])
+    hero = observation["own_hole"]
+    dead = set(hero) | set(board)
+    parts = {seat: _Range(weights, dead) for seat, weights in ranges.items()}
+    if not all(part.hands for part in parts.values()):
+        return None
+    pot, to_call = float(observation["pot"]), float(observation["to_call"] or 0)
+    mine_in = float(observation["bets"][me])
+    strength = strengths(board, min(len(parts), MAX_EQUITY_OPPONENTS))
+    lines_of, out = {}, [seat for seat in parts
+                         if float(observation["stacks"][str(seat)]) <= 0]
+    for action, put in options.items():
+        lines_of[action] = {
+            seat: continue_line(observation, seat, put, pot + put, params)
+            for seat in parts if seat not in out}
+    rng = random.Random(seed)
+    first, second = (CARD_ID[card] for card in hero)
+    known = [CARD_ID[card] for card in board]
+    deck = [CARD_ID[card] for card in DECK if card not in dead]
+    need = 5 - len(board)
+    totals = Counter()
+    dealt = 0
+    trials = int(params["trials"])
+    seats = list(parts)
+    for _ in range(trials):
+        for _ in range(50):
+            hands = [parts[seat].draw(rng) for seat in seats]
+            used = {card for hand in hands for card in hand}
+            if len(used) == 2 * len(hands):
+                break
+        else:
+            continue
+        rest = rng.sample([card for card in deck if card not in used], need)
+        full = (*known, *rest)
+        mine = _EVALUATE_7(first, second, *full)
+        ranks = dict(zip(seats, (_EVALUATE_7(*hand, *full) for hand in hands)))
+        held = {seat: tuple(sorted(hand)) for seat, hand in zip(seats, hands)}
+        totals["check_call"] += (_won(mine, list(ranks.values())) * (pot + to_call)
+                                 - to_call)
+        for action, put in options.items():
+            callers = [seat for seat, (line, _) in lines_of[action].items()
+                       if line is None or strength.get(held[seat], 0.0) >= line]
+            calls = [lines_of[action][seat][1] for seat in callers]
+            if not callers:
+                totals[action] += (pot if not out else
+                                   _won(mine, [ranks[seat] for seat in out]) * pot)
+                continue
+            matched = min(put, max(float(observation["bets"][str(seat)]) + call
+                                   for seat, call in zip(callers, calls)) - mine_in)
+            totals[action] += (_won(mine, [ranks[seat] for seat in callers + out])
+                               * (pot + matched + sum(calls)) - matched)
+        dealt += 1
+    if dealt < trials / 2:
+        return None
+    return {action: total / dealt for action, total in totals.items()}
+
+
+def _won(mine, ranks):
+    """Your share of a pot against hands of these ranks (lower is stronger)."""
+    if not ranks:
+        return 1.0
+    best = min(ranks)
+    if mine < best:
+        return 1.0
+    return 1.0 / (1 + ranks.count(mine)) if mine == best else 0.0
+
+
+def sized(observation, share, ranges, params=DEFAULTS, seed=0):
+    """The most valuable action against the hands that would call it
+    (``values``), or None when it cannot be worked out. Facing a bet you fold
+    when your share of the pot does not pay the price (as ``lines``);
+    otherwise a bet or raise is made only when it is worth more than checking
+    or calling."""
+    worth = values(observation, ranges, params, seed)
+    if worth is None:
+        return None
+    to_call = float(observation["to_call"] or 0)
+    if to_call > 0:
+        price = to_call / (float(observation["pot"]) + to_call)
+        if share < price + params["margin"]:
+            return "fold"
+    return max(worth, key=lambda action: (worth[action], action == "check_call"))
 
 
 def from_name(name, make_policy):
@@ -247,6 +466,7 @@ def from_name(name, make_policy):
     return bot
 
 
-__all__ = ["DEFAULTS", "RangeMultiwayBot", "big_pot", "choose", "covered", "cuts",
-           "from_name", "guard_action", "guarded", "hand_kind", "street_params",
-           "unguarded", "weak_hand"]
+__all__ = ["DEFAULTS", "RangeMultiwayBot", "big_pot", "candidates", "choose",
+           "continue_line", "covered", "cuts", "from_name", "guard_action", "guarded",
+           "hand_kind", "lines", "sized", "street_params", "strengths", "unguarded",
+           "values", "weak_hand", "window_reader"]
