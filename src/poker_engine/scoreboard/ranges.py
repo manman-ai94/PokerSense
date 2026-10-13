@@ -4,7 +4,9 @@ Without a solver (the flop, and pots with more than one opponent) each
 opponent still in is read the way the solver strategy reads its heads-up
 opponent: start from every two cards the board leaves and keep, at each of
 their past actions, the hands the population model plays that way
-(``solver_bot.kept``). An action the model would never take with any hand
+(``solver_bot.kept``); after the flop the hands it plays otherwise keep a
+weight (``postflop_reading``: slow play, calls the model folds, bluffs)
+instead of dropping out. An action the model would never take with any hand
 leaves that range as it was. Your share of the pot against those ranges is
 then worked out by dealing each opponent a hand from their range (weighted,
 without sharing cards) and the rest of the board, many times over.
@@ -50,12 +52,14 @@ from __future__ import annotations
 
 from bisect import bisect
 from dataclasses import replace
+from functools import partial
 from itertools import accumulate
 import random
 
 from poker_engine.solver.texassolver import all_combos
 
 from .bots import _rng
+from .postflop_reading import key_of, soft_kept, weights_of
 from .reads import MODEL, aggression_factor, factors
 from .replay import public_replay
 from .solver_bot import MODEL_SALT, kept
@@ -95,6 +99,10 @@ def read_floors(observation, model, seats):
             for seat in seats}
 
 
+def _decide(model, observation):
+    return model.decide(observation, _rng(MODEL_SALT, observation))
+
+
 def _without(weights, cards):
     return {combo: weight for combo, weight in weights.items()
             if combo[:2] not in cards and combo[2:] not in cards}
@@ -116,10 +124,11 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
     ranges = dict.fromkeys(seats, every)
     reads = read_factors(observation, model, seats)
     floors = read_floors(observation, model, seats)
-    # The reader's (slow play, bluff) is part of the key: two readings of the
-    # same line must not share a range.
+    # The reader's (slow play, bluff) before the flop and its weights after it
+    # are part of the key: two readings of the same line must not share a range.
+    postflop = weights_of(model)
     table = (type(model).__name__, getattr(model, "adjusted", None),
-             getattr(model, "reading", None),
+             getattr(model, "reading", None), key_of(postflop),
              observation.get("rules_fingerprint"), tuple(observation["occupied_seats"]),
              observation["dealer_seat"], observation.get("bomb_pot"),
              tuple(sorted(observation["starting_stacks"].items())))
@@ -139,8 +148,11 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
             if read != (1.0, 1.0):
                 decision = replace(decision, observation={
                     **decision.observation, "read_factors": read})
-            after = kept(before, decision, lambda obs: model.decide(
-                obs, _rng(MODEL_SALT, obs))) or before
+            if decision.street == "preflop":
+                after = kept(before, decision, partial(_decide, model)) or before
+            else:
+                after = soft_kept(before, decision, partial(_decide, model),
+                                  postflop) or before
             kept_share = floors[decision.seat] if decision.street != "preflop" else 0.0
             if kept_share:
                 after = {combo: max(after.get(combo, 0.0), kept_share * weight)

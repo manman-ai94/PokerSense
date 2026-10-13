@@ -2,6 +2,9 @@
 
 import json
 
+import pytest
+
+from poker_engine.scoreboard import postflop_reading
 from tools.aa_range_exclusion import compare_runs, main, session_exclusion
 from tools.aa_session_report import session_report
 from tools.aa_strategy_review import review
@@ -44,9 +47,16 @@ def rows(hand="hand_1"):
     return result
 
 
+@pytest.fixture
+def veto(monkeypatch):
+    """Postflop actions read by veto, as until 2026-10-13: the checked aces
+    are thrown out at the flop check."""
+    monkeypatch.setattr(postflop_reading, "WEIGHTS", postflop_reading.VETO)
+
+
 # The window reads a limp as keeping the hands that would have raised
 # (``preflop_reading``), so the limped aces stay in until the flop check.
-def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_flop_check():
+def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_flop_check(veto):
     report = session_exclusion([("log", rows())])
     assert report["skipped"] == {"shown_after_folding": 1}
     (trace,) = report["traces"]
@@ -67,7 +77,16 @@ def test_aces_limped_and_raised_later_were_out_of_the_range_from_the_flop_check(
         "flop check", "flop check", 100.0)
 
 
-def test_the_session_report_and_the_review_show_it_hand_by_hand():
+# Read with weights, the check keeps the hands the model bets (slow play).
+def test_the_checked_aces_stay_in_the_range_read_with_weights():
+    report = session_exclusion([("log", rows())])
+    (trace,) = report["traces"]
+    assert not any(step["excluded"] for step in trace["steps"])
+    assert report["whole_hand"]["all"]["excluded"] == 0
+    assert report["hands"][0]["out"] is None
+
+
+def test_the_session_report_and_the_review_show_it_hand_by_hand(veto):
     found = session_report([("log", rows())])
     hand = found["hands"][0]
     reads = {seat["seat"]: seat["range_read"] for seat in hand["shown_cards"]}
@@ -81,7 +100,7 @@ def test_the_session_report_and_the_review_show_it_hand_by_hand():
         (5, "Ah As", "flop check")]
 
 
-def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys):
+def test_two_runs_over_the_same_logs_are_compared_and_saved(tmp_path, capsys, veto):
     log = tmp_path / "rec" / "frames.jsonl"
     log.parent.mkdir()
     log.write_text("".join(json.dumps(row) + "\n" for row in rows()), encoding="utf-8")

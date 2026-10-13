@@ -2,12 +2,26 @@
 show the decisions where it differs (or the hands you ask for).
 
 The window writes ``frames.jsonl`` into each recording folder; the advice is
-worked out again from it with this checkout's code twice:
+worked out again from it with this checkout's code twice. With
+``--change preflop`` (the default):
 
 * ``before``: opponents' preflop ranges read as the population model plays
   (``aa_preflop@slowplay=0:bluff=0``: a limp or a call never holds a hand
   the model would raise, as until 2026-10-12);
 * ``after``: read with slow play and bluffs (``preflop_reading``).
+
+With ``--change postflop`` both read preflop as the window does, and
+
+* ``before``: postflop actions read by veto (``postflop_reading.VETO``, as
+  until 2026-10-13);
+* ``after``: read with the weights of ``postflop_reading.WEIGHTS``.
+
+Where every opponent still in at a decision showed his cards at the end of
+the hand, ``shown`` values each answer in chips against those cards: your
+share of the pot against them on the board of the decision (the rest of the
+board dealt at random), a fold 0, a check or call that share of the pot
+after calling less the call, a bet or raise the same with every opponent
+still in calling it (they did go on to show their cards).
 
 As in ``aa_session_report.replayed_advice`` a heads-up solve is not run (it
 comes back at once as check or call) unless ``--solver`` is given, which
@@ -17,7 +31,7 @@ rule's answer next to a solve is shown either way.
     PYTHONPATH=src:. .venv/bin/python tools/aa_compare_advice.py \\
         --frames <recording>/frames.jsonl [--frames ...] [--recordings <folder>] \\
         [--hero "A♦ 9♠" --hero QsJc ...] [--hand hand_123 ...] [--all] \\
-        [--out compare.json]
+        [--change preflop|postflop] [--out compare.json]
 
 ``--hero`` and ``--hand`` list every decision of the hands they pick;
 without them the decisions whose last answer changed are listed, or with
@@ -34,7 +48,14 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from decimal import Decimal  # noqa: E402
+
 from poker_engine.desktop.aa_solver_advice import AASolverAdvice  # noqa: E402
+from poker_engine.desktop.aa_solver_input import (  # noqa: E402
+    HERO as HERO_SEAT, hand_facts, table_observation)
+from poker_engine.scoreboard.postflop_reading import VETO, WEIGHTS  # noqa: E402
+from poker_engine.scoreboard.ranges import ranges_equity  # noqa: E402
+from poker_engine.solver.texassolver import combo_key  # noqa: E402
 from poker_engine.scoreboard.preflop_policy import (  # noqa: E402
     AAPreflopPolicy, PreflopParams)
 from poker_engine.scoreboard.preflop_reading import BLUFF, SLOWPLAY  # noqa: E402
@@ -47,6 +68,9 @@ SUITS = {"♠": "s", "♥": "h", "♦": "d", "♣": "c"}
 # as "before" until this comparison on recordings shows "after" helps).
 READINGS = {"before": PreflopParams(slowplay=0.0, bluff=0.0),
             "after": PreflopParams(slowplay=SLOWPLAY, bluff=BLUFF)}
+# --change postflop: (preflop params, postflop weights) before and after.
+POSTFLOP = {"before": (PreflopParams(), VETO), "after": (PreflopParams(), WEIGHTS)}
+SHOWN_TRIALS = 20000
 
 
 def cards_of(text):
@@ -58,11 +82,14 @@ def cards_of(text):
     return {text[0].upper() + text[1].lower(), text[2].upper() + text[3].lower()}
 
 
-def replay(rows, params, solver=False):
-    """Each row's advice report, worked out again with ``params``."""
+def replay(rows, params, solver=False, postflop=None):
+    """Each row's advice report, worked out again with ``params`` (and the
+    postflop reading weights ``postflop``, else the default)."""
     now = [0.0]
     advice = AASolverAdvice(None if solver else _Solved(), _Now(),
                             preflop=AAPreflopPolicy(params), clock=lambda: now[0])
+    if postflop is not None:
+        advice._range_model().postflop_reading = postflop
     result = []
     for row in rows:
         now[0] = row.get("pts_seconds") or now[0]
@@ -103,6 +130,81 @@ def turns(rows):
     return found
 
 
+def shown_cards(rows):
+    """{seat: two cards} the hand's last reading of the cards shown."""
+    shown = next((row["fields"]["shown_cards"] for row in reversed(rows)
+                  if row["fields"].get("shown_cards")), None) or {}
+    return {int(seat): value["cards"]
+            for seat, value in (shown.get("seats") or {}).items()
+            if len(value.get("cards") or ()) == 2 and all(value["cards"])}
+
+
+def chips(answer, observation, share):
+    """What ``answer`` is worth in chips now against shown cards (see the
+    module notes), or None for an answer it cannot price."""
+    if not answer or not answer.get("action"):
+        return None
+    me = str(observation["observing_seat"])
+    to_call = Decimal(observation["to_call"] or 0)
+    pot = Decimal(observation["pot"])
+    action = answer["action"]
+    if action == "fold" and to_call:
+        return 0.0
+    if action in ("fold", "check", "call"):
+        put = min(to_call, Decimal(observation["stacks"][me]))
+        return float(Decimal(share) * (pot + put) - put)
+    if action != "raise" or not answer.get("to"):
+        return None
+    mine = Decimal(observation["bets"][me])
+    put = min(Decimal(str(answer["to"])) - mine, Decimal(observation["stacks"][me]))
+    level = mine + put
+    final = pot + put
+    for seat in observation["occupied_seats"]:
+        if str(seat) == me or seat in observation["folded"]:
+            continue
+        final += max(Decimal(0), min(level - Decimal(observation["bets"][str(seat)]),
+                                     Decimal(observation["stacks"][str(seat)])))
+    return float(Decimal(share) * final - put)
+
+
+def shown_value(rows, indexes, item):
+    """{"cards", "share", "before", "after"}: both answers in chips against the
+    cards the opponents still in showed, or None when one of them did not."""
+    hand = item["hand_id"]
+    start = next(i for i in range(indexes[0], -1, -1)
+                 if ((rows[i]["fields"].get("actions_v1") or {}).get("hand_id")
+                     != hand) or i == 0)
+    hand_rows = [row for row in rows[start:] if
+                 (row["fields"].get("actions_v1") or {}).get("hand_id") == hand]
+    shown = shown_cards(hand_rows)
+    if not shown:
+        return None
+    moment = rows[indexes[0]]["processed"]
+    upto = [row for row in hand_rows if row["processed"] <= moment]
+    try:
+        observation = table_observation(hand_facts(upto), HERO_SEAT)
+    except Exception:
+        return None
+    if observation is None or not all(observation["own_hole"]):
+        return None
+    live = [seat for seat in observation["occupied_seats"]
+            if seat not in observation["folded"] and seat != HERO_SEAT]
+    if not live or any(seat not in shown for seat in live):
+        return None
+    board = tuple(observation["board"])
+    ranges = {seat: {combo_key(shown[seat]): 1.0} for seat in live}
+    share, _ = ranges_equity(tuple(observation["own_hole"]), board, ranges,
+                             trials=SHOWN_TRIALS)
+    if share is None:
+        return None
+    result = {"cards": {str(seat): " ".join(shown[seat]) for seat in live},
+              "share": round(share, 3)}
+    for label in ("before", "after"):
+        value = chips(item[label], observation, share)
+        result[label] = None if value is None else round(value, 1)
+    return result
+
+
 def decision(name, rows, indexes, before, after, final):
     fields = [rows[index]["fields"] for index in indexes]
     street = mode(f.get("street") for f in fields)
@@ -131,14 +233,18 @@ def decision(name, rows, indexes, before, after, final):
     return item
 
 
-def compare(logs, *, heroes=(), hands=(), every=False, solver=False):
+def compare(logs, *, heroes=(), hands=(), every=False, solver=False, change="preflop"):
     """The decisions chosen, each with its last answer before and after."""
     wanted = [cards_of(text) for text in heroes]
     result = []
     for name, rows in logs:
         rows = [row for row in rows if row.get("fields")]
-        reports = {label: replay(rows, params, solver)
-                   for label, params in READINGS.items()}
+        if change == "postflop":
+            reports = {label: replay(rows, params, solver, weights)
+                       for label, (params, weights) in POSTFLOP.items()}
+        else:
+            reports = {label: replay(rows, params, solver)
+                       for label, params in READINGS.items()}
         final = {}          # each hand's actions as its last row has them
         for row in rows:
             history = row["fields"].get("actions_v1")
@@ -150,6 +256,7 @@ def compare(logs, *, heroes=(), hands=(), every=False, solver=False):
             chosen = ((not wanted or set((item["hero"] or "").split()) in wanted)
                       and (not hands or item["hand_id"] in hands))
             if chosen and (item["changed"] or wanted or hands or every):
+                item["shown"] = shown_value(rows, indexes, item)
                 result.append(item)
     return result
 
@@ -177,6 +284,10 @@ def report(items):
                    + ("  CHANGED" if item["changed"] else ""))
         out.append(f"  before: {line(item['before'])}")
         out.append(f"  after : {line(item['after'])}")
+        if item.get("shown"):
+            shown = item["shown"]
+            out.append(f"  shown {shown['cards']} share {shown['share']:.0%}: "
+                       f"before {shown['before']} after {shown['after']} chips")
     return "\n".join(out)
 
 
@@ -194,6 +305,8 @@ def main(argv=None):
                         "the changed ones")
     parser.add_argument("--solver", action="store_true",
                         help="run TexasSolver for heads-up turns and rivers")
+    parser.add_argument("--change", choices=("preflop", "postflop"), default="preflop",
+                        help="which reading change to compare (see above)")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
     paths = list(args.frames)
@@ -203,10 +316,20 @@ def main(argv=None):
         parser.error("no frames.jsonl: give --frames or --recordings")
     logs = [(str(path.parent.name), load(path)) for path in paths]
     items = compare(logs, heroes=args.hero, hands=args.hand, every=args.all,
-                    solver=args.solver)
+                    solver=args.solver, change=args.change)
     print(report(items) or "no decision chosen")
     changed = sum(item["changed"] for item in items)
     print(f"{len(items)} decisions, {changed} with another answer after the change")
+    priced = [item["shown"] for item in items
+              if item["changed"] and item.get("shown")
+              and None not in (item["shown"]["before"], item["shown"]["after"])]
+    if priced:
+        better = sum(one["after"] > one["before"] for one in priced)
+        worse = sum(one["after"] < one["before"] for one in priced)
+        print(f"changed decisions priced against shown cards: {len(priced)}, "
+              f"after better {better}, worse {worse}; chips before "
+              f"{sum(one['before'] for one in priced):+.0f}, after "
+              f"{sum(one['after'] for one in priced):+.0f}")
     if args.out:
         args.out.write_text(json.dumps(items, ensure_ascii=False, indent=1),
                             encoding="utf-8")

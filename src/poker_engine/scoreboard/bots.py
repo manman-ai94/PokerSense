@@ -228,6 +228,9 @@ def make_policy(name):
     if name.startswith("noreads+"):
         from .reads import Unread                # imports this module
         return Unread(make_policy(name.partition("+")[2]), name)
+    if name.startswith("vetoread+"):
+        from .postflop_reading import veto_from_name
+        return veto_from_name(name, make_policy)
     if name.startswith("noisy") and "+" in name:
         from .opponents import noisy_from_name   # imports this module
         return noisy_from_name(name, make_policy)
