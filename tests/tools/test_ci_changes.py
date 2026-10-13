@@ -56,3 +56,22 @@ def test_the_diff_is_read_from_git_and_doubt_runs_the_tests(tmp_path, monkeypatc
     ci_changes.main([base, head])
     ci_changes.main([])                                         # workflow_dispatch
     assert output.read_text().splitlines() == ["code=false", "code=true"]
+
+
+def test_a_code_file_renamed_into_docs_still_runs_the_tests(tmp_path, monkeypatch):
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "config", "user.email", "ci@example.invalid")
+    git(tmp_path, "config", "user.name", "ci")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "mod.py").write_text("x = 1\n" * 20)
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "code")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "docs").mkdir()
+    git(tmp_path, "mv", "src/mod.py", "docs/mod.md")
+    git(tmp_path, "commit", "-qm", "moved")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    monkeypatch.chdir(tmp_path)
+    files = ci_changes.changed_files(base, head)
+    assert "src/mod.py" in files
+    assert ci_changes.needs_tests(files)

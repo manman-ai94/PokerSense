@@ -131,6 +131,18 @@ def build_manifest(version, installer, url, commit="", notes="", now=None,
     return app_update.validate_manifest(manifest)
 
 
+def public_summary(manifest):
+    """The manifest without its download links, safe for a public Actions log."""
+    def strip(entry):
+        return {key: value for key, value in entry.items() if key != "url"}
+    summary = {key: value for key, value in manifest.items()
+               if key not in ("installer", "recognition")}
+    for key in ("installer", "recognition"):
+        if key in manifest:
+            summary[key] = strip(manifest[key])
+    return summary
+
+
 def check_newer(current_path, version):
     """True when nothing valid is published yet or ``version`` is newer."""
     try:
@@ -184,7 +196,8 @@ def main(argv=None):
                                   recognition_url=args.recognition_url)
         args.out.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
                             "utf-8")
-        print(json.dumps(manifest, ensure_ascii=False))
+        # 只打印版本和校验值：仓库公开，Actions 日志谁都能看，下载链接不能进日志。
+        print(json.dumps(public_summary(manifest), ensure_ascii=False))
     elif args.command == "newer":
         newer, published = check_newer(args.current, args.version)
         print(json.dumps({"version": args.version, "published": published,

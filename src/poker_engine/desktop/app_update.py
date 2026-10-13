@@ -100,8 +100,13 @@ def _local_path(url):
     if parts.scheme == "file":
         path = url2pathname(parts.path)
         return Path(f"//{parts.netloc}{path}" if parts.netloc else path)
-    if parts.scheme in {"http", "https"}:
+    if parts.scheme == "https":
         return None
+    if parts.scheme == "http":
+        # 明文 http 只给本机测试用；网上的地址必须是 https，否则路上能被换包。
+        if parts.hostname in {"127.0.0.1", "localhost", "::1"}:
+            return None
+        raise UpdateError(f"更新地址必须是 https：{url}")
     if len(parts.scheme) == 1 or not parts.scheme:       # C:\..., \\server\...
         return Path(url)
     raise UpdateError(f"不支持的地址：{url}")
