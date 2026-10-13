@@ -361,6 +361,25 @@ view = signalView(running(multiway({action: "call", frequency: 1.0}, {heads_up: 
 assert.deepEqual([view.verdict.kind, view.verdict.word], ["multiway", "跟注"]);
 assert.deepEqual(view.basis.slice(0, 2), ["按胜率和价格定 · 0.4 秒算完",
   "单挑求解器算不了这一步（这条街开始时不止两人）；对手范围按 AA 真人打法推算"]);
+// The big-pot guard turned a raise into a call: marked, the old advice in the basis,
+// and a chance of winning never shown above 95%.
+view = signalView(running(multiway({action: "call", frequency: 1.0}, {
+  range_equity: {value: 1.0, opponents: 2, hands: null},
+  guard: {pot_big_blinds: 47.4, line: 30, street: "turn",
+    was: {action: "raise", frequency: 1.0, chips: "113", to: "113"}}})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.guard], ["跟注", true]);
+assert.equal(view.verdict.note, "护栏：你只有一对或更小，底池已有 47 个大盲，不加注，按价格跟或弃");
+assert.ok(view.tags.includes("护栏"));
+assert.match(view.basis[0], /^护栏改的：原来是“加注到 113”/);
+assert.equal(view.numbers[1].value, "95%");
+// On the river a bet becomes a check; the solver's mix is the one row left.
+view = signalView(running(base({solver_advice_v1: {status: "ready", to_call: "0",
+  advice: [{action: "check", frequency: 1.0}], range_equity: {value: 0.97, hands: 40},
+  guard: {pot_big_blinds: 136, line: 30, street: "river",
+    was: {action: "bet", frequency: 0.77, chips: "166", to: "166"}}}})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.kind, view.verdict.mix.length], ["过牌", "solver", 1]);
+assert.equal(view.verdict.note, "护栏：你只有一对或更小，底池已有 136 个大盲，河牌不下注");
+assert.equal(view.numbers[1].value, "95%");
 // Nothing else a second into your turn: the rough rule's action, marked rough.
 const rough = (row, extra = {}) => base({solver_advice_v1: {status: "ready", kind: "rough", advice: [row],
   rough_for: "hand_incomplete", to_call: "28", pot: "85", required: 0.248,

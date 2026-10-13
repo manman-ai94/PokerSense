@@ -961,3 +961,68 @@ def test_a_new_price_is_not_carried_over():
     late = [advice.observe(raised, frame) for frame in range(50, 70)]
     assert results[-1]["status"] == "ready"
     assert all("carried_from" not in report for report in late)
+
+
+def test_the_big_pot_guard_holds_back_a_pair_in_the_solvers_advice():
+    # 10/09 and 10/10 live: river bets with a pair into pots of 30 big blinds
+    # and more, the share against the read range 0.79-1.0 (2026-10-13 sheet).
+    # Your queens on Ah Kd 7c 2s face a bet of 10; the pot on screen is 60
+    # chips more than the rules post: 47 big blinds of 2.
+    ahead = {"JdJc": 1.0}                      # the read range: you are ahead
+    raise_ = {"RAISE 60.000000": 1.0}
+    report = run(AASolverAdvice(Bot(raise_, villain=ahead), Inline()), range(50),
+                 extra_pot=62)[-1]
+    assert report["advice"] == [{"action": "call", "frequency": 1.0}]
+    guard = report["guard"]
+    assert guard["was"]["action"] == "raise" and guard["street"] == "turn"
+    assert guard["pot_big_blinds"] >= DEFAULTS["guard"]
+    # A raise with a share under a half is a bluff: the solver's own.
+    behind = run(AASolverAdvice(Bot(raise_, villain={"KhKc": 1.0}), Inline()),
+                 range(50), extra_pot=62)[-1]
+    assert behind["advice"][0]["action"] == "raise" and "guard" not in behind
+    # A small pot is not guarded.
+    small = run(AASolverAdvice(Bot(raise_, villain=ahead), Inline()), range(50))[-1]
+    assert small["advice"][0]["action"] == "raise" and "guard" not in small
+
+
+def test_the_big_pot_guard_holds_back_a_pair_in_the_range_rule(monkeypatch):
+    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    monkeypatch.setattr(advice, "_ranges", lambda observation: {
+        "value": 0.95, "opponents": 2, "hands": None, "hands_each": {}})
+    report = [advice.observe(three_handed(frame, extra_pot=80), frame)
+              for frame in range(50)][-1]
+    assert report["kind"] == "multiway"
+    assert report["advice"] == [{"action": "call", "frequency": 1.0}]
+    assert report["guard"]["was"]["action"] == "raise"
+    # A pot under 30 big blinds keeps the raise.
+    small = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    monkeypatch.setattr(small, "_ranges", lambda observation: {
+        "value": 0.95, "opponents": 2, "hands": None, "hands_each": {}})
+    report = [small.observe(three_handed(frame), frame) for frame in range(50)][-1]
+    assert report["advice"][0]["action"] == "raise" and "guard" not in report
+
+
+def test_the_big_pot_guard_holds_back_a_pair_in_the_rough_rule():
+    board = ["7s", "9s", "5c", "5h"]
+    bet = {"action": "bet", "frequency": 1.0, "chips": "89", "to": "89"}
+    check = {"action": "check", "frequency": 1.0}
+    guard = aa_solver_advice.rough_guard
+    # Nines and the board's fives: one pair of your own, 135 chips is 67 big
+    # blinds of 2 (the rule set's): at most half the pot on the turn.
+    row, report = guard(bet, check, ["9h", "2c"], board, "turn", Decimal(135),
+                        Decimal(0))
+    assert (row["chips"], row["to"]) == ("68", "68") and report["was"] == bet
+    row, report = guard(bet, check, ["9h", "2c"], board + ["Kd"], "river",
+                        Decimal(135), Decimal(0))
+    assert row == check and report["street"] == "river"
+    raise_ = {"action": "raise", "frequency": 1.0, "chips": "215", "to": "215"}
+    call = {"action": "call", "frequency": 1.0}
+    assert guard(raise_, call, ["9h", "2c"], board, "turn", Decimal(175),
+                 Decimal(0))[0] == call
+    # Trips, a small pot, a big blind of 8 or a check: nothing changes.
+    for hole, pot, stakes in ((["5s", "6h"], 135, None), (["9h", "2c"], 50, None),
+                              (["9h", "2c"], 135, {"big_blind": "8"})):
+        assert guard(bet, check, hole, board, "turn", Decimal(pot), Decimal(0),
+                     stakes) == (bet, None)
+    assert guard(check, check, ["9h", "2c"], board, "turn", Decimal(135),
+                 Decimal(0)) == (check, None)

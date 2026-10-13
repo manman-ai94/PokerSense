@@ -63,6 +63,10 @@
     return number === null ? null : String(Math.round(number * 100) / 100);
   };
   const pct = value => `${Math.round(value * 100)}%`;
+  // A chance of winning is shown at most 95%: the opponents' ranges are read
+  // narrower than people play, so 100% overstates it (2026-10-13).
+  const SHARE_CAP = 0.95;
+  const sharePct = value => pct(Math.min(Number(value), SHARE_CAP));
   const SUITS = {c: "♣︎", d: "♦︎", h: "♥︎", s: "♠︎"};
   const GRADES = {best: "最佳", fine: "可以", slip: "小失误", mistake: "错误"};
   const RULE = "怎么打分：翻前看比最好的选择少赢几个大盲；转牌、河牌看求解器多常这样打：" +
@@ -223,7 +227,7 @@
 
   // Several opponents: why the share of the pot calls for this action.
   function multiwayReason(action, value, cut = {}) {
-    const share = isNumber(value) ? pct(Number(value)) : "—";
+    const share = isNumber(value) ? sharePct(value) : "—";
     const line = name => (isNumber(cut[name]) ? pct(Number(cut[name])) : "—");
     return {
       bet: `你能赢 ${share}，超过 ${line("bet")} 就下注`,
@@ -249,7 +253,7 @@
     const row = (advice.advice || [])[0];
     if (!row) return null;
     const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
-    const share = isNumber(advice.range_equity?.value) ? pct(Number(advice.range_equity.value)) : "—";
+    const share = isNumber(advice.range_equity?.value) ? sharePct(advice.range_equity.value) : "—";
     const need = isNumber(advice.required) ? pct(Number(advice.required)) : "—";
     const note = row.action === "check" ? `粗略：你大概能赢 ${share}，不花钱就过牌`
       : row.action === "call" ? `粗略：你大概能赢 ${share}，跟注只要 ${need} 就够`
@@ -259,7 +263,24 @@
     return {...label, kind: "rough", note};
   }
 
+  // The big-pot guard (multiway_bot.guard_action): one pair or less of your
+  // own in a pot of 30 big blinds or more: no raise, at most half the pot,
+  // no bet on the river.
+  function guardNote(guard) {
+    const was = guard.was || {};
+    const what = was.action === "raise" ? "不加注，按价格跟或弃"
+      : guard.street === "river" ? "河牌不下注" : "最多下半个底池";
+    return `护栏：你只有一对或更小，底池已有 ${Math.round(Number(guard.pot_big_blinds))} 个大盲，${what}`;
+  }
+
   function readyVerdict(advice, controls, stack) {
+    const verdict = plainVerdict(advice, controls, stack);
+    if (!verdict || !advice.guard) return verdict;
+    return {...verdict, note: guardNote(advice.guard), guard: true,
+      ...(verdict.mix ? {mix: verdict.mix.slice(0, 1)} : {})};
+  }
+
+  function plainVerdict(advice, controls, stack) {
     if (advice.kind === "rough") return roughVerdict(advice, controls, stack);
     if (advice.kind === "multiway") return multiwayVerdict(advice, controls, stack);
     if (Array.isArray(advice.options) && advice.options.length) {
@@ -324,7 +345,7 @@
     if (item.kind === "multiway") {
       const top = (item.advice || []).map(row => ({...row, label: solverLabel(row, item.to_call, stack)}))[0];
       const same = !top || group(top.label.action) === item.chosen;
-      const share = isNumber(item.share) ? pct(Number(item.share)) : "—";
+      const share = isNumber(item.share) ? sharePct(item.share) : "—";
       const compare = [{label: same ? "你做了 · 就是建议的打法" : "你做了", text: did, value: "", best: same}];
       if (!same) compare.push({label: "按胜率该", text: short(top.label), value: "", best: true});
       return {word: GRADES[item.grade] || "", grade: item.grade, size: "",
@@ -458,17 +479,17 @@
     const range = advice?.range_equity;
     const equity = math?.equity;
     if (advice?.kind === "rough" && range && isNumber(range.value)) {
-      list.push({label: "你大概能赢", value: pct(range.value),
+      list.push({label: "你大概能赢", value: sharePct(range.value),
         note: `${range.opponents} 个对手，按 AA 真人常玩的牌粗算${isNumber(range.realize) && Number(range.realize) < 1
           ? `；翻前后面还要下注，只算 ${pct(Number(range.realize))}` : ""}`});
     } else if (range && isNumber(range.value) && num(range.opponents) > 1) {
-      list.push({label: "你对他们的牌能赢", value: pct(range.value),
+      list.push({label: "你对他们的牌能赢", value: sharePct(range.value),
         note: `按 AA 真人打法推算 ${range.opponents} 个对手可能拿的牌`});
     } else if (range && isNumber(range.value)) {
-      list.push({label: "你对他的范围能赢", value: pct(range.value),
+      list.push({label: "你对他的范围能赢", value: sharePct(range.value),
         note: isNumber(range.hands) ? `按 AA 真人打法推算，他还可能有 ${range.hands} 种牌` : "按 AA 真人打法推算他的牌"});
     } else if (equity?.available) {
-      list.push({label: "对随机牌能赢", value: pct(equity.value),
+      list.push({label: "对随机牌能赢", value: sharePct(equity.value),
         note: `${equity.opponents} 个对手；真人的牌通常更强`});
     }
     const spr = math?.spr;
@@ -695,6 +716,12 @@
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
         const tags = verdict.kind === "rough" ? [...view.tags, "粗略"] : [...view.tags];
+        if (advice.guard) {
+          tags.push("护栏");
+          const was = advice.guard.was;
+          const before = was ? short(solverLabel(was, advice.to_call ?? controls.call_amount, stack)) : null;
+          basis.unshift(`护栏改的${before ? `：原来是“${before}”` : ""}；胜率按读出的范围算，范围偏窄、胜率偏高，大底池里只有一对时不下大注、不加注`);
+        }
         const change = changed(memory, stepKey(row, history), verdict.word, now);
         if (change) {
           tags.push(`已更新：刚才是${change.from}`);
