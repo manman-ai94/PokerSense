@@ -217,15 +217,15 @@ def test_strengths_rank_every_hand_against_random_ones():
     assert three[pair] == pytest.approx(one[pair] ** 3)
 
 
-def test_bets_below_a_quarter_of_the_pot_are_not_weighed_but_all_in_is(table):
-    spot = table["checked_to"]
-    options = multiway_bot.candidates(spot)
-    pot = float(spot["pot"])
-    sizes = sorted(options.values())
-    assert sizes and all(size >= 0.25 * pot - 1e-9 for size in sizes[:-1])
-    top = max(float(action["raise_to"]) for action in spot["legal_actions"]
-              if action["kind"] == "raise_to")
-    assert max(sizes) == top - float(spot["bets"][str(spot["observing_seat"])])
+def test_bets_from_a_quarter_to_one_and_a_half_pots_are_weighed():
+    spot = {**guard_spot("turn", pot=120), "observing_seat": 4}   # half, pot, all in
+    assert multiway_bot.candidates(spot) == {"raise_to:60": 60.0,
+                                             "raise_to:120": 120.0}
+    other = [{"id": f"raise_to:{to}", "kind": "raise_to", "raise_to": str(to)}
+             for to in (10, 170)]
+    short = {**spot, "legal_actions": [*spot["legal_actions"], *other]}
+    assert set(multiway_bot.candidates(short)) == {"raise_to:60", "raise_to:120",
+                                                   "raise_to:170"}
 
 
 def test_a_bigger_bet_is_called_by_fewer_hands(table):

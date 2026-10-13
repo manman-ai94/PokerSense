@@ -44,6 +44,25 @@ against the hands that call. 30 big blinds from the 10/08-10/10 recordings
 (lines from 20 to 30 change the same decisions there, a higher one lets
 lost hands through; see the pull request).
 
+Bets and raises by the hands that call them (``sizing``, on since
+2026-10-13; ``sizing=0`` plays by the lines above): the share against the
+whole range says nothing of the hands that pay a bet, and on the recordings
+the rule's bets were called mostly by better hands. Now every legal bet or
+raise from a quarter to one and a half pots (``candidates``) is valued in
+chips against the opponents' ranges: each opponent goes on (calls, or
+raises, counted as a call) with the hands of his range at least as strong
+as the population goes on with against that size (``continue_line``), the
+rest fold; with nobody going on the pot is yours, else the showdown with
+those who did (``values``). The most valuable action is taken, a check or a
+call when no bet or raise is worth more (facing a bet, a share under the
+price still folds). How often players go on is the population's at its
+own sizes, scaled by size (``elastic`` 0.5) and by ``sticky`` 0.9: of 433
+answers to postflop bets in five recordings of 2026-10-07 to 10-09 (the
+ranges read as the window reads them), 37% went on where the model with
+``sticky`` 1 says 43%; 0.9 and 0.5 fit them best (an elasticity of 0 or 1
+and stickiness 0.8 or 1 fit worse). Overbets are not weighed: 7 of those
+answers faced more than 1.5 pots. The big-pot guard still applies after it.
+
 Parameters can follow the name, for example
 ``range_multiway@bet=0.55:raise=0.7:margin=0.05+aa_preflop`` (":" between
 them: "," separates strategies on the command line).
@@ -70,11 +89,15 @@ from .strength import CARD_ID, DECK, _EVALUATE_7
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
             "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7,
             "size": 0.66, "size3": 1.0, "raise_size": 1.0, "guard": 30.0,
-            "sizing": 1.0, "elastic": 0.5, "sticky": 1.0}
+            "sizing": 1.0, "elastic": 0.5, "sticky": 0.9}
 # The model's own bet and raise (of the pot), the sizes its continue shares
 # were seen at.
 REFERENCE = {"facing_bet": 0.66, "facing_raise": 1.0}
 MIN_SIZE = 0.25                 # smaller bets (the minimum) are not offered
+# Nor bigger ones than this (of the pot after calling): of 433 answers to
+# postflop bets in the recordings of 2026-10-07 to 10-09, 7 faced
+# more than 1.5 pots, so how players answer an overbet is not known.
+MAX_SIZE = 1.5
 RUNOUTS = 30                    # boards dealt to rank every hand's strength
 GUARD_SIZE = 0.5                # the most a guarded bet puts in, of the pot
 # phevaluator's ranks (lower is stronger) where each kind of hand ends.
@@ -276,20 +299,16 @@ def window_reader():
 
 def candidates(observation):
     """{action id: chips it puts in} of the bets or raises worth weighing:
-    every legal one of at least ``MIN_SIZE`` of the pot after calling, and
-    all in."""
-    raises = [action for action in observation["legal_actions"]
-              if action["kind"] == "raise_to"]
-    if not raises:
-        return {}
+    every legal one from ``MIN_SIZE`` to ``MAX_SIZE`` of the pot after
+    calling (all in too, when it is no bigger)."""
     me = str(observation["observing_seat"])
     mine, to_call = float(observation["bets"][me]), float(observation["to_call"] or 0)
     current = mine + to_call
     base = float(observation["pot"]) + to_call
-    top = max(float(action["raise_to"]) for action in raises)
-    return {action["id"]: float(action["raise_to"]) - mine for action in raises
-            if float(action["raise_to"]) - current >= MIN_SIZE * base - 1e-9
-            or float(action["raise_to"]) == top}
+    return {action["id"]: float(action["raise_to"]) - mine
+            for action in observation["legal_actions"] if action["kind"] == "raise_to"
+            and MIN_SIZE * base - 1e-9 <= float(action["raise_to"]) - current
+            <= MAX_SIZE * base + 1e-9}
 
 
 @lru_cache(maxsize=256)
