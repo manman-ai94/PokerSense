@@ -11,8 +11,8 @@
 ## 记录
 
 **2026-10-13 · `claude/full-audit-3hxb2f`（体检周末提交：修 main 的 Windows 红灯和发版、CI 的几处漏洞）**
-- 做了什么：main 上 Windows 检查一直红（资源包路径测试）；发版日志会打出云盘下载链接、密钥在整个发版任务里可见、更新地址允许明文 http；改名进 docs 的代码会被当成纯文档跳过测试；推到 main 的检查会互相取消；文档误写仓库“私有”。
-- 怎么做的：测试改用 `..\outside.txt`（Windows 的 zipfile 会把 `\` 换成 `/`，原来的 `a\b.txt` 在那里本就安全）；`release_build manifest` 只打印去掉链接的摘要；`RCLONE_CONFIG` 只给写 rclone.conf 那一步；`open_url` 拒绝非本机的 http；`ci_changes` 加 `--no-renames`；concurrency 只取消 PR 的旧任务；AGENTS 和发版说明改回“公开”。
+- 做了什么：main 上 Windows 检查一直红（资源包路径测试）；发版日志会打出云盘下载链接、密钥在整个发版任务里可见、更新地址允许明文 http；改名进 docs 的代码会被当成纯文档跳过测试；推到 main 的检查会互相取消；文档误写仓库“私有”；打包测试把数据目录变量漏给后面的测试，Mac 上 3 个求解器测试因此报“没装求解器”。
+- 怎么做的：测试改用 `..\outside.txt`（Windows 的 zipfile 会把 `\` 换成 `/`，原来的 `a\b.txt` 在那里本就安全）；`release_build manifest` 只打印去掉链接的摘要；`RCLONE_CONFIG` 只给写 rclone.conf 那一步；`open_url` 拒绝非本机的 http；`ci_changes` 加 `--no-renames`；concurrency 只取消 PR 的旧任务；AGENTS 和发版说明改回“公开”；那个打包测试先 setenv 再 delenv，结束时把变量清掉。
 - 怎么验证的：相关 4 个测试文件 84 通过，flake8 干净；用改 `zipfile.os.sep` 模拟 Windows，确认 `..\x` 读成 `../x` 被拒；新加打印不带链接、http 被拒、改名仍跑测试 3 个测试。
 - 还剩什么：更新清单没有签名（谁能写云盘谁就能让同事装任意程序）、启动时同步下载识别包会拖慢开窗、更新提示框没有关闭按钮；识别包含真实牌桌截图，发不发给同事要主人定。
 
