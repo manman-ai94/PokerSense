@@ -40,6 +40,8 @@ import time
 import cv2
 import numpy as np
 
+from ..code_version import code_version
+
 FPS = 30
 SIZE = (1920, 1080)
 SEGMENT_SECONDS = 60
@@ -157,7 +159,7 @@ class AARecorder:
         self.stopping = False
         self.reason = self.error = None
         self.meta = {"source": "aa-live-service", "fps": FPS, "size": list(SIZE),
-                     "strip": list(self.box), **(meta or {}),
+                     "strip": list(self.box), "code": code_version(), **(meta or {}),
                      "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
         self.thread = threading.Thread(target=self._run, daemon=True,
                                        name="aa-recorder")

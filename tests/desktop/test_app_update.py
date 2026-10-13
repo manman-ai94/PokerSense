@@ -102,6 +102,16 @@ def test_a_manifest_without_a_usable_installer_is_refused(change):
         app_update.validate_manifest(manifest(**change))
 
 
+def test_rclone_open_link_in_manifest_still_downloads_with_sha256_check(tmp_path):
+    share = "https://drive.google.com/open?id=AbC_1-x"
+    direct = app_update.direct_url(share)
+    latest = manifest(url=share)
+    files = Files({direct: INSTALLER})
+    path = app_update.download(latest, tmp_path, files)
+    assert files.opened == [direct]
+    assert path.read_bytes() == INSTALLER
+
+
 def test_download_keeps_only_a_file_whose_size_and_hash_match(tmp_path):
     latest = manifest()
     (tmp_path / "PokerSense-AA-Setup-0.2.9.exe").write_bytes(b"old")

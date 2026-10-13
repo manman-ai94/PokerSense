@@ -113,6 +113,8 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
     assert (frame[:, 711:1209] == 200).all()
     assert not frame[:, :711].any() and not frame[:, 1209:].any()
     summary = json.loads((out / "recording.json").read_text())
+    # The code that recorded it, so its numbers can be tied to a version.
+    assert set(summary["code"]) == {"version", "commit", "dirty"}
     assert summary["recorded_seconds"] == round(16 / 30, 3)
     assert summary["device_index"] == 0 and summary["strip"] == [711, 0, 1209, 1080]
     assert summary["stopped_reason"] == "stopped" and summary["error"] is None
