@@ -14,6 +14,7 @@ import uuid
 import cv2
 import numpy as np
 
+from ..code_version import code_version
 from .aa_turn_runtime import observation_runtime_status
 
 
@@ -225,6 +226,7 @@ class AARecognitionSession:
                 if generation == self._generation:
                     self._source = source
             processed = 0
+            logged_grade = {}     # per log: the grade summary written last
             while not cancel.is_set():
                 read_started = time.monotonic()
                 record = source.read()
@@ -332,8 +334,13 @@ class AARecognitionSession:
                     if begin is not None and host_received is not None:
                         video = round(host_received - begin, 3)
                 if log is not None:
+                    grade = _grade_summary(payload.get("grade_v1"))
+                    if grade == logged_grade.get(log):
+                        grade = None
+                    else:
+                        logged_grade[log] = grade
                     _append_frame_log(log, processed, record, timing, payload,
-                                      video_seconds=video)
+                                      video_seconds=video, grade=grade)
                 processed += 1
                 cancel.wait(self._interval)
         except Exception as exc:
@@ -439,9 +446,22 @@ def _recording_log(source):
     return Path(out) / "frames.jsonl", begin
 
 
-def _append_frame_log(path, processed, record, timing, payload, video_seconds=None):
+def _grade_summary(grade):
+    """The session record and the latest graded decision, without the list
+    of recent rows the window shows (they are logged one by one as ``last``
+    changes)."""
+    if not grade:
+        return None
+    return {key: value for key, value in grade.items() if key != "rows"}
+
+
+def _append_frame_log(path, processed, record, timing, payload, video_seconds=None,
+                      grade=None):
     """One JSON line per processed frame: source, timing and key fields; in
-    a recording's own log, ``video_seconds`` is where the frame is in it."""
+    a recording's own log, ``video_seconds`` is where the frame is in it.
+    The first line of a log names the code that wrote it (``code``); a line
+    carries ``grade`` when the session record of your decisions changed."""
+    path = Path(path)
     row = {"processed": processed,
            "source_frame": record.get("source_frame"),
            "source_kind": record.get("source_kind"),
@@ -451,6 +471,10 @@ def _append_frame_log(path, processed, record, timing, payload, video_seconds=No
            "fields": frame_summary(payload)}
     if video_seconds is not None:
         row["video_seconds"] = video_seconds
+    if grade is not None:
+        row["grade"] = grade
+    if not path.exists():
+        row["code"] = code_version()
     with open(path, "a", encoding="utf-8") as handle:
         handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 

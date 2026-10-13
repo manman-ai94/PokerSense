@@ -10,6 +10,11 @@
 
 ## 记录
 
+**2026-10-13 · `claude/project-thread-elzvqy`（飞轮第一期 ①：日志记上代码版本和每步打分）**
+- 做了什么：录像文件夹的 recording.json 和窗口逐帧日志 frames.jsonl 的第一行都记下当时跑的代码（版本号、提交号、有没有未提交的改动）；打分（grade_v1）一变就写进那一帧的日志（不带逐手明细）。以后每场成绩都能对上是哪版代码打的。
+- 怎么做的：新增 `code_version.py`（每个进程只读一次 git；打包版没有 git 时提交号记 None，不猜）；`aa_session._append_frame_log` 加 `grade`、首行加 `code`；`aa_recorder` 的 meta 加 `code`。
+- 怎么验证的：新增和扩充的测试，`tests/desktop`、`tests/tools` 全过，flake8 干净。还剩：三道关一条命令、录像一停自动出体检单、跨场亏损排行和成绩账本。
+
 **2026-10-13 · `fix/drive-direct-link`（PR #31，grokBOT 周末开的草稿，接手合入最新 main；Google Drive 安装包链接换成直链）**
 - 做了什么：`rclone link` 给的 `drive.google.com/open?id=…` 是网页，浏览器直接下会 400；发版写进 `latest.json` 的安装包和识别资源包链接改成 `drive.usercontent.google.com` 直链，程序下载前也再换一次，旧清单里的 `open?id=` 照样能更新。
 - 怎么做的：`release_build.py` 加 `normalize_download_url`、`direct-url` 和 `upload-commands` 子命令（附 `tools/generate_upload_commands.py`，生成 Mac 上传步骤）；`windows-release.yml` 在 `rclone link` 后过一次 `direct-url`；`app_update.fetch_verified` 下载前调 `direct_url`，sha256 和大小照旧校验。
