@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-13 · `fix/drive-direct-link`（PR #31，grokBOT 周末开的草稿，接手合入最新 main；Google Drive 安装包链接换成直链）**
+- 做了什么：`rclone link` 给的 `drive.google.com/open?id=…` 是网页，浏览器直接下会 400；发版写进 `latest.json` 的安装包和识别资源包链接改成 `drive.usercontent.google.com` 直链，程序下载前也再换一次，旧清单里的 `open?id=` 照样能更新。
+- 怎么做的：`release_build.py` 加 `normalize_download_url`、`direct-url` 和 `upload-commands` 子命令（附 `tools/generate_upload_commands.py`，生成 Mac 上传步骤）；`windows-release.yml` 在 `rclone link` 后过一次 `direct-url`；`app_update.fetch_verified` 下载前调 `direct_url`，sha256 和大小照旧校验。
+- 怎么验证的：把 main（含 #32）合进分支，无冲突；发版和更新相关测试 52 个通过、flake8 干净；云端全量测试和 PR 三项检查（数字见 PR 说明）。
+- 还剩什么：要真发一版、在 Windows 上点更新才算实测；直链对很大的文件 Google 可能仍要求确认，链接里已带 `confirm=t`。
+
 **2026-10-13 · `claude/full-audit-3hxb2f`（体检 grokBOT 周末提交：修 main 红灯、发版和 CI 漏洞、读牌跟进；先跟后加读法改为可选）**
 - 做了什么：main 的 Windows 检查红（资源包路径测试在 Windows 上不成立）；打包测试把数据目录变量漏给后面的测试（Mac 上 3 个求解器测试误报没装）；发版日志会打出云盘链接、密钥整个发版任务可见、更新地址收明文 http；代码改名进 docs 会跳过测试；推 main 的检查互相取消；文档误写仓库“私有”。读牌（#30）：排除率工具仍按旧读法量、缓存键不分读法参数、`noreads+` 等丢了读法参数。主人 10/13 定：先跟后加读法先关，`aa_preflop` 默认 slowplay=0、bluff=0（窗口回到周末前），写 `@slowplay=0.4:bluff=0.2` 才开。
 - 怎么做的：测试改 `..\outside.txt`（Windows 的 zipfile 把 `\` 换成 `/`）；monkeypatch 先 setenv 再 delenv；`public_summary` 打印不带链接；密钥只给写 rclone.conf 那步；`open_url` 拒绝非本机 http；`--no-renames`；concurrency 只取消 PR；排除率和窗口同一读法、缓存键加 `reading`、`reading_of` 穿过 `.base`；`aa_compare_advice` 的 after 明写新读法。
