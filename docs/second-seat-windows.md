@@ -103,7 +103,7 @@ $link.Save()
 - 打完点“停止”，等窗口上出现“已存好 · N 分钟”再关窗口。录像满 2 小时会自动停并存好。
 
 录像存在 `C:\PokerSense_data\PokerSense_private\aa-mac-recordings\<日期-时间>-live\`，每次一个文件夹。
-在自动上传做好之前，把整个文件夹压缩后用微信或网盘发给主人。自动上传（主人的私有 Google Drive）另做，见下面“录像回传”。
+设好“录像回传”（见下面）以后，停录、体检单写完后它会在后台自己传给主人；没设好之前，把整个文件夹压缩后用微信或网盘发给主人。
 
 检查用（不开窗口）：
 
@@ -130,15 +130,54 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 1. 接好采集卡，打开窗口点“开始”，看到牌桌后点“录像”。
 2. 10 分钟里**至少一部分时间要坐下打**（照常打或一直弃牌都行，不用管建议）。只观战看不到自己的手牌和“跟注/让牌”按钮，
    这两项量不出来，验收就过不了。
-3. 点“停止”，等“已存好”，把 `C:\PokerSense_data\PokerSense_private\aa-mac-recordings\` 里这次的整个文件夹压缩发给主人。
+3. 点“停止”，等“已存好”。设好了“录像回传”就会自己传给主人；没设好就把 `C:\PokerSense_data\PokerSense_private\aa-mac-recordings\` 里这次的整个文件夹压缩发给主人。
 
 主人那边在这段录像上跑 `tools/p30_acceptance.py`（华为 P30 的画面和主人的三星不一样，要先确认画面位置、各项识别率够不够），
 过线了才正式上桌；不过线会出一份识别任务单。
 
-## 录像回传
+## 录像回传（一次性设置，主人在场时做）
 
-自动上传到主人的私有 Google Drive 是另一项工作（停录后自动传 `<机器名>/<录像文件夹名>/`），
-做好后这里会补上一次性的登录步骤。在那之前手动发。
+停录、体检单写完后，窗口在后台用 rclone 把整个录像文件夹传到主人 Google Drive 的
+`PokerSense 同事数据/du/<录像文件夹名>/`：低优先级、限速 1 MB/s，传不上就留着下次再传，不影响录像和建议。
+登录信息只在这台电脑的 rclone 配置里，不在仓库、不在软件里。不要改这台电脑的任何网络设置（Wi-Fi、防火墙、代理、DNS）。
+
+1. 装 rclone，然后**关掉 PowerShell 再开一个新的**（让新命令生效）：
+
+   ```powershell
+   winget install --id Rclone.Rclone -e --accept-source-agreements --accept-package-agreements
+   ```
+
+   新窗口里 `rclone version` 有版本号就对了。
+
+2. 登录（**主人本人操作**：浏览器弹出 Google 登录时，主人登录他自己的账号并点“允许”；完成后在这个浏览器里退出主人的账号）：
+
+   ```powershell
+   rclone config create pokersense-upload drive scope=drive.file
+   ```
+
+   看到 `[pokersense-upload]` 和 `type = drive` 就对了。`drive.file` 表示这台电脑只能碰它自己传上去的文件，碰不到主人云盘里别的东西。
+   不要在 Google Drive 网页上自己建“PokerSense 同事数据”文件夹：第一次上传时会自动建好，手建的那个它看不见。
+
+3. 给这台电脑起名字（云盘里的文件夹名），然后检查：
+
+   ```powershell
+   cd C:\PokerSense
+   $env:PYTHONPATH = "src;."
+   .venv\Scripts\python.exe tools\flywheel_sync.py setup --machine du
+   ```
+
+   输出里 `"configured": true`、`"enabled": true`、`"machine": "du"` 都有就对了。
+   窗口里“设置和数据” → “设置与分析”有“录像自动上传”一栏，平时什么都不用管；没设好时那里写“未配置上传”。
+
+4. 想马上传已经录好的（例如第一段验收录像），窗口不用开：
+
+   ```powershell
+   .venv\Scripts\python.exe tools\flywheel_sync.py push
+   ```
+
+   最后写“都传好了。”就对了；写“没传完”就把这几行发给主人。
+
+设好后告诉主人一声“上传设好了”就行，不用发别的东西（不要发任何登录信息）。
 
 ## 主人那边（在 Mac 上，杜的助手不用做）
 
@@ -153,7 +192,14 @@ cd ~/Projects/PokerSense && PYTHONPATH=src:. .venv/bin/python tools/pack_aa_reco
 桌面上的 `aa-recognition-日期` 文件夹里有 zip、json 和蘑菇池数字样本，整个文件夹私下发给杜（微信文件、网盘私有链接），
 让他的助手放到 `C:\PokerSense_data\recognition-pack\` 再做第 4 步。里面是真实牌桌截图，只发给同意参加测试的人，不要公开分享、不要提交进仓库。
 
-杜的验收录像回来后（解压到 Mac 的数据目录里），一条命令出结论（工具和过线标准见 `tools/p30_acceptance.py`）：
+杜的录像拉回 Mac（Google Drive 桌面版同步好“PokerSense 同事数据”以后；拉到 `aa-mac-recordings/du-<录像文件夹名>/`，
+只拉传完整的，账本按机器记，可以重复跑）：
+
+```bash
+cd ~/Projects/PokerSense && PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py pull
+```
+
+验收录像拉回后（手动发来的就解压到 Mac 的数据目录里），一条命令出结论（工具和过线标准见 `tools/p30_acceptance.py`）：
 
 ```bash
 cd ~/Projects/PokerSense && PYTHONPATH=src:. .venv/bin/python tools/p30_acceptance.py run \

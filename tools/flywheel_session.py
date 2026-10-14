@@ -27,13 +27,16 @@ review of ``tools/aa_strategy_review.py`` and writes into
   hands and bomb pots apart, and the spots that lost the most;
 * a line in the ledger (default ``PokerSense_private/flywheel/ledger.jsonl``;
   the recording's folder name is the label, a session reported again replaces
-  its line).
+  its line; ``machine`` is the computer that recorded it: "本机" here, or the
+  name a recording pulled from another computer carries in ``pulled.json``,
+  see ``tools/flywheel_sync.py``).
 
 ``rank`` adds up ``hands.json`` of every recording under ``--root`` (default
 ``PokerSense_private/aa-mac-recordings``) by spot and lists the spots that
 lost the most big blinds, with the hands to look at (recording and second in
-the video). All of it is table points (积分), never money; the files stay in
-the private data folder (other players' hands).
+the video); recordings pulled from other computers count too, and ``--since``
+reads their own folder names. All of it is table points (积分), never money;
+the files stay in the private data folder (other players' hands).
 """
 
 from __future__ import annotations
@@ -58,6 +61,8 @@ from tools.aa_strategy_review import decisions as review_decisions  # noqa: E402
 
 Z95 = 1.96
 FOLDER = "flywheel"
+LOCAL = "本机"                 # the machine of a recording made here
+PULLED = "pulled.json"        # in a recording pulled from another computer
 TOP = 5                       # spots on the check-up sheet
 
 
@@ -67,6 +72,17 @@ def default_ledger():
 
 def default_root():
     return private_root() / "aa-mac-recordings"
+
+
+def origin(folder):
+    """(machine, its own folder name) of a recording: pulled from another
+    computer (``pulled.json``) or made here."""
+    folder = Path(folder)
+    try:
+        pulled = json.loads((folder / PULLED).read_text(encoding="utf-8"))
+        return str(pulled["machine"]), str(pulled["folder"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return LOCAL, folder.name
 
 
 def load(path):
@@ -429,6 +445,7 @@ def report(folder, ledger_path, *, opener=None):
     rows = load(folder / "frames.jsonl")
     summary, hands = session_hands(folder.name, rows)
     item = session_summary(folder.name, code_of(folder, rows), summary, hands)
+    item["machine"] = origin(folder)[0]
     out = folder / FOLDER
     out.mkdir(exist_ok=True)
     look = to_look_at(hands)
@@ -451,7 +468,8 @@ def report(folder, ledger_path, *, opener=None):
 
 def ledger_row(item, hands):
     """One session in the ledger: the sums its totals are added up from."""
-    row = {"label": item["label"], "code": item["code"], "stakes": item["stakes"],
+    row = {"label": item["label"], "machine": item.get("machine") or LOCAL,
+           "code": item["code"], "stakes": item["stakes"],
            "decisions": item["decisions"], "advised": item["advised"],
            "fully_advised": item["fully_advised"], "followed": item["followed"],
            "stalls_over_2s": item["stalls_over_2s"]}
@@ -495,7 +513,8 @@ def from_sums(hands, total, squares):
 
 
 def totals(rows):
-    """The sessions added up: all, and each code version apart."""
+    """The sessions added up: all, each code version apart and each machine
+    apart (older lines without one were recorded here)."""
     def add(group):
         sums = Counter()
         for row in group:
@@ -509,22 +528,25 @@ def totals(rows):
                              sums["normal.bb"] + sums["bomb_pot.bb"],
                              sums["normal.bb_squared"] + sums["bomb_pot.bb_squared"]),
             "sessions": len(group)}
-    versions = {}
+    versions, machines = {}, {}
     for row in rows:
         commit = ((row.get("code") or {}).get("commit") or "未知")[:7]
         versions.setdefault(commit, []).append(row)
+        machines.setdefault(row.get("machine") or LOCAL, []).append(row)
     return {"all": add(rows),
-            "by_code": {commit: add(group) for commit, group in versions.items()}}
+            "by_code": {commit: add(group) for commit, group in versions.items()},
+            "by_machine": {name: add(group) for name, group in machines.items()}}
 
 
 # -- the ranking over sessions ----------------------------------------------------
 
 def collect(root, since=None, commit=None):
     """``hands.json`` of the recordings under ``root``."""
-    hands, sessions = [], []
+    hands, sessions, machines = [], [], Counter()
     for path in sorted(Path(root).glob(f"*/{FOLDER}/hands.json")):
         folder = path.parent.parent
-        if since and folder.name[:len(since)] < since:
+        machine, name = origin(folder)
+        if since and name[:len(since)] < since:
             continue
         summary = path.parent / "summary.json"
         code = (json.loads(summary.read_text(encoding="utf-8")).get("code")
@@ -532,8 +554,9 @@ def collect(root, since=None, commit=None):
         if commit and not (code.get("commit") or "").startswith(commit):
             continue
         sessions.append(folder.name)
+        machines[machine] += 1
         hands += json.loads(path.read_text(encoding="utf-8"))
-    return sessions, hands
+    return sessions, hands, machines
 
 
 def main(argv=None):
@@ -560,12 +583,15 @@ def main(argv=None):
             print("\n".join(report(folder, ledger_path)))
         return 0
     if args.command == "rank":
-        sessions, hands = collect(args.root or default_root(), args.since, args.commit)
+        sessions, hands, machines = collect(args.root or default_root(), args.since,
+                                            args.commit)
         ranked = ranking(hands, args.top)
         if args.out:
-            write_json(args.out, {"sessions": sessions, "hands": len(hands),
-                                  "ranking": ranked})
-        print(f"{len(sessions)} 场、{len(hands)} 手（大盲的积分，按各手自己的级别换算）")
+            write_json(args.out, {"sessions": sessions, "machines": dict(machines),
+                                  "hands": len(hands), "ranking": ranked})
+        apart = "、".join(f"{name} {count} 场" for name, count in machines.items())
+        print(f"{len(sessions)} 场（{apart or '无'}）、{len(hands)} 手"
+              "（大盲的积分，按各手自己的级别换算）")
         for rank, group in enumerate(ranked, 1):
             print(f"{rank}. {group['spot']}：输的 {group['losing_hands']} 手共 "
                   f"{group['lost_bb']}，这类 {group['hands']} 手净 {group['net_bb']:+}")
