@@ -1,0 +1,51 @@
+{
+ "schema": "second-seat-baseline-v1",
+ "realtime": {
+  "label": "三星 S25 Ultra + UGREEN 采集卡，Mac 上按原速重放 10/07 上桌录像和 10/08 三段上桌录像（代码 a159aae，2026-10-08 测）",
+  "frames": 39464,
+  "sources": [
+   "20261007-094605-hero-play.frames.jsonl.gz",
+   "20261008-153114-live.frames.jsonl.gz",
+   "20261008-155838-live.frames.jsonl.gz",
+   "20261008-161226-live.frames.jsonl.gz"
+  ],
+  "metrics": {
+   "table": 0.9154,
+   "pot": 0.9635,
+   "street": 0.9593,
+   "board": 0.97,
+   "stacks": 0.8893,
+   "dealer": 0.8271,
+   "actor": 0.74,
+   "seats": 0.893,
+   "hero_cards": 0.6396,
+   "hero_button": 0.9986,
+   "call_amount": 0.9185
+  },
+  "n": {
+   "table": 39464,
+   "pot": 36124,
+   "street": 36124,
+   "board": 13481,
+   "stacks": 223644,
+   "dealer": 36124,
+   "actor": 36124,
+   "seats": 36124,
+   "hero_cards": 21765,
+   "hero_button": 5116,
+   "call_amount": 5338
+  }
+ },
+ "seat_states": {
+  "label": "10/06 Mac 采集卡两场观战录像（20261006-112110-spectate-table1、20261006-120822-spectate-session3b），tools/check_aa_seat_states.py 每 3 帧，两场平均；数字抄自 docs/reports/M2-SEAT-STATES-20261006.zh-CN.md",
+  "sources": [
+   "20261006-112110-spectate-table1",
+   "20261006-120822-spectate-session3b"
+  ],
+  "metrics": {
+   "all_known_supported": 0.8865,
+   "all_known_while_acting": 0.992
+  }
+ },
+ "refresh": "主人 Mac 上用当前代码重测一次后，用 baseline 子命令重写本文件（命令见 tools/p30_acceptance.py 开头）。"
+}

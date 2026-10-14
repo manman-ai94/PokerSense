@@ -30,8 +30,13 @@ SLOTS = tuple(str(slot) for slot in range(8))
 DEFAULT_PROFILE = "configs/reproduction/aa8_candidate_v2/factory.json"
 
 
-def read_states(video, *, stride=3, exclude=(), profile=DEFAULT_PROFILE):
-    """[(pts, row summary)] for every ``stride``-th frame outside ``exclude``."""
+def read_states(video, *, stride=3, exclude=(), profile=DEFAULT_PROFILE,
+                crop=(711, 1209)):
+    """[(pts, row summary)] for every ``stride``-th frame outside ``exclude``.
+
+    ``crop`` is the phone strip's columns in the 1920x1080 frame (the
+    Samsung S25 Ultra strip by default); another width is resized to the
+    498x1080 canvas the reader expects."""
     import cv2
 
     from poker_engine.desktop.aa_reader import AA8Reader
@@ -41,8 +46,8 @@ def read_states(video, *, stride=3, exclude=(), profile=DEFAULT_PROFILE):
 
     config = NormalizationConfig(
         rotate_degrees=0, source_size=(1920, 1080),
-        crop_after_rotation=(711, 0, 1209, 1080), output_size=(498, 1080),
-        version="aa8-capture-canvas-v1")
+        crop_after_rotation=(crop[0], 0, crop[1], 1080),
+        output_size=(crop[1] - crop[0], 1080), version="aa8-capture-canvas-v1")
     reader = AA8Reader(profile)
     rows, sequence, index = [], 0, 0
     for segment in video_segments(video):
@@ -55,7 +60,10 @@ def read_states(video, *, stride=3, exclude=(), profile=DEFAULT_PROFILE):
             index += 1
             if index % stride or any(start <= pts < end for start, end in exclude):
                 continue
-            payload = reader.read(normalize(frame, config), sequence, {
+            canvas = normalize(frame, config)
+            if canvas.shape[1] != 498:
+                canvas = cv2.resize(canvas, (498, 1080), interpolation=cv2.INTER_AREA)
+            payload = reader.read(canvas, sequence, {
                 "source_frame": index, "pts_seconds": pts,
                 "source_kind": "video"})
             sequence += 1
