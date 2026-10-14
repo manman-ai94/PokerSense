@@ -17,7 +17,7 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONPATH: "src;."
-      POKERSENSE_DATA_ROOT: ${{ runner.temp }}\data
+      POKERSENSE_DATA_ROOT: D:\pokersense-data
     steps:
       - uses: actions/checkout@v5
         with:
