@@ -269,12 +269,10 @@ class Uploader:
         """One pass: every recording that needs it, oldest first. False when
         one failed (the rest wait for the next pass)."""
         settings = self.settings()
+        if not settings["enabled"] or not self._check(settings):
+            return True                         # nothing to retry until set up
         todo = self.pending()
         self.waiting = len(todo)
-        if not settings["enabled"] or not todo:
-            return True
-        if not self._check(settings):
-            return True                         # nothing to retry until set up
         for folder in todo:
             if self.stopped.is_set():
                 return True
