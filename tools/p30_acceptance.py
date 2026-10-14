@@ -12,8 +12,8 @@ compared with the Samsung S25 Ultra + UGREEN baseline in one command:
 3. Seat states: every third frame read offline (``tools/check_aa_seat_states.py``);
    when the strip is elsewhere, read a second time on the strip found.
 
-Pass lines: every coverage at least 90% of the baseline's; on your turn the
-button and the amount to call at least 95% of the baseline's; the strip
+Pass lines: every coverage, your turn's button and amount to call included,
+at least 90% of the baseline's (one rule, peng 2026-10-14); the strip
 within 3 columns of the Samsung one. A spectating recording shows no hero
 cards or buttons, so those lines stay unmeasured and the verdict cannot be
 a pass. Coverage is not accuracy: a pass means "read as often as on the
@@ -41,7 +41,6 @@ DEFAULT_BASELINE = Path("configs/acceptance/second_seat_baseline_v1.json")
 SAMSUNG_STRIP = (711, 1209)        # half-open columns of the S25 Ultra picture
 STRIP_TOLERANCE = 3                # columns
 RELATIVE_LINE = 0.90               # of the baseline's coverage
-TURN_LINE = 0.95                   # of the baseline's, on your turn
 MIN_TURN_FRAMES = 50               # fewer frames on your turn: not measured
 BAR_DARK = 16                      # as aa_recorder: a black bar's brightest pixel
 HERO = "4"
@@ -206,7 +205,7 @@ def compare(measured, baseline, seat_states=None, strip=None):
     for key, label, over in TURN_FIELDS:
         got, n = measured[key]["value"], measured[key]["n"]
         note = None
-        line = None if base.get(key) is None else round(TURN_LINE * base[key], 4)
+        line = None if base.get(key) is None else round(RELATIVE_LINE * base[key], 4)
         if n < MIN_TURN_FRAMES:
             got, note = None, (f"只有 {n} 帧轮到你" if n else
                                "录像里没有轮到你的时候（观战看不到你的按钮）")

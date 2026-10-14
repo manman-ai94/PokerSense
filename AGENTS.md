@@ -97,15 +97,15 @@ PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 
 # “range_multiway+甲”：翻后几个人的底池按你对各对手范围的胜率打，其余照甲；参数可写在名字里，如 range_multiway@bet=0.4:raise=0.6+aa_preflop；
 #   加 hu=1 单挑翻牌也这样打（线是 hu_bet、hu_raise），实时窗口就是这样给单挑翻牌建议的
 # 核对轮到你时的按钮（跟注额 / 让牌 / All in）和标注是否一致
-PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> \
-    --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
+PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
+# 第二台机器（杜的华为 P30）画面验收：手机画面位置和三星的 711–1208 列差 ≤ 3 列；每一项识别率（含轮到你的按钮、跟注额）不低于三星基准的 90%，基准在 configs/acceptance/second_seat_baseline_v1.json；观战录像没有你的手牌和按钮，结论只会是“没量全”
+PYTHONPATH=src:. .venv/bin/python tools/p30_acceptance.py run --video <录像文件夹> --out <新目录>
 # 核对每手牌的行动记录：自动查漏（底池涨了没人下注等），以及和人工标注逐手比对（--hand-labels <标注.json> --recording <录像名>）
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_action_history.py --frames <测量目录>/frames.jsonl
 # 每手牌能不能在模拟牌桌上按 AA 规则重放到底（求解器的输入），停下的原因
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测量目录>/frames.jsonl
 # 改了行动记录这一层以后，在已有的测量日志上离线重算（几秒）；加 --streets 连街道也重算（改了 aa_street.py 时用）
-PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl \
-    --out <新目录>/frames.jsonl [--streets]
+PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl --out <新目录>/frames.jsonl [--streets]
 # 每场实战后（不去 AA 里截图，靠录像文件夹里的 frames.jsonl 和录像）：停下录像就自动出体检单（录像文件夹的 flywheel/体检单.txt：代码版本、建议覆盖、按本桌级别换算的成绩和 95% 区间、输得最多的局面），记进账本 PokerSense_private/flywheel/ledger.jsonl；rank 是跨场输得最多的局面排行，ledger 是账本合计（按代码版本分）。逐手细节用 tools/aa_session_report.py，真牌排除率用 tools/aa_range_exclusion.py
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_session.py report --recording <录像文件夹>   # 或 rank [--since 日期] / ledger
 # 改动上 Mac 前的三道关：和 main 比，录像重放（建议覆盖不降、卡顿不增）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8
