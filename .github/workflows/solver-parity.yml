@@ -39,3 +39,12 @@ jobs:
         with:
           name: solver-parity-windows
           path: windows.json
+      - name: Print the result (artifact host is not reachable from the analysis machine)
+        shell: python
+        run: |
+          import base64, gzip
+          data = base64.b64encode(gzip.compress(open("windows.json", "rb").read())).decode()
+          print("PARITY-BEGIN")
+          for i in range(0, len(data), 200):
+              print(data[i:i + 200])
+          print("PARITY-END")
