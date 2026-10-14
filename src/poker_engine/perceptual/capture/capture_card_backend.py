@@ -6,8 +6,11 @@ host as a UVC video device and is read through OpenCV's ``VideoCapture``.
 
 Platform notes (measured on a real setup):
 
-- The GreenLian-style capture card only produces frames under Media Foundation
-  (``CAP_MSMF``); DirectShow (``CAP_DSHOW``) returns black frames.
+- On Windows the UGREEN 25854 card is read through DirectShow (``CAP_DSHOW``),
+  the default there: under Media Foundation (``CAP_MSMF``) its first frame
+  took about 70 s (10/14, 杜's PC) or none came within 2 s (9/15, peng's PC).
+  (An older GreenLian-style card gave frames only under Media Foundation; it
+  can still be chosen.)
 - On macOS the card is read through AVFoundation (``CAP_AVFOUNDATION``), which
   is the default API there; see :func:`default_capture_api`.
 - YUY2 is preferred as the negotiated pixel format (``CAP_PROP_FOURCC``) to
@@ -55,8 +58,9 @@ _CAP_CONSTANTS = {
 
 
 def default_capture_api() -> str:
-    """The capture API used when none is chosen: AVFoundation on macOS."""
-    return "AVFOUNDATION" if sys.platform == "darwin" else "MSMF"
+    """The capture API used when none is chosen: AVFoundation on macOS,
+    DirectShow elsewhere (Windows)."""
+    return "AVFOUNDATION" if sys.platform == "darwin" else "DSHOW"
 
 
 _VideoCaptureFactory = Callable[..., Any]

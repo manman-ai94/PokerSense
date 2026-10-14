@@ -257,7 +257,7 @@ def test_backend_constructor_validation():
 
 
 @pytest.mark.parametrize("platform, expected", [
-    ("darwin", "AVFOUNDATION"), ("win32", "MSMF"), ("linux", "MSMF")])
+    ("darwin", "AVFOUNDATION"), ("win32", "DSHOW"), ("linux", "DSHOW")])
 def test_default_capture_api_follows_the_platform(monkeypatch, platform, expected):
     from poker_engine.perceptual.capture import capture_card_backend as module
     monkeypatch.setattr(module.sys, "platform", platform)

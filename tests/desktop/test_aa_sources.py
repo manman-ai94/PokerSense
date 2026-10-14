@@ -22,7 +22,7 @@ def test_capture_is_lazy_and_uses_aa_canvas():
         def capture(self, target):
             calls.append(target.window_id)
             time.sleep(0.01)
-            return SimpleNamespace(image=np.zeros((1080, 498, 3), np.uint8),
+            return SimpleNamespace(image=np.full((1080, 498, 3), 9, np.uint8),
                                    frame_seq=8)
 
         def release(self):
@@ -467,3 +467,116 @@ def test_a_card_plugged_in_after_the_window_opened_says_to_open_it_again():
     # Other errors stay as they are.
     assert late_card("采集卡没有画面了", ["UGREEN 25854"]) == "采集卡没有画面了"
     assert late_card(None, ["UGREEN 25854"]) is None
+
+
+def slow_card(lock_seconds, shows="phone"):
+    """A backend factory over one card (device 1) that gives all-zero frames
+    for ``lock_seconds`` each time it is opened (locking onto the HDMI
+    picture, as 杜's UGREEN card does on Windows), then ``shows``; ``state``
+    switches what it shows and lists the kwargs each backend got."""
+    state = {"shows": shows, "made": []}
+
+    class Backend:
+        def __init__(self, device_index, normalization=None, **kwargs):
+            if device_index != 1:
+                raise RuntimeError("could not open capture-card device index "
+                                   f"{device_index} (api=DSHOW)")
+            state["made"].append(kwargs)
+            self.normalization, self.seq, self.opened = normalization, 0, None
+
+        def capture(self, target):
+            if self.opened is None:
+                self.opened = time.monotonic()
+            time.sleep(0.005)
+            self.seq += 1
+            locking = time.monotonic() - self.opened < lock_seconds
+            frame = full_frame("black" if locking else state["shows"])
+            if self.normalization is not None:
+                frame = frame[:, 711:1209]
+            return SimpleNamespace(image=frame, frame_seq=self.seq)
+
+        def release(self):
+            self.opened = None
+
+    return Backend, state
+
+
+def test_a_card_slow_to_lock_on_windows_shows_the_phone(monkeypatch):
+    # The card is black for a while each time it is opened: looking at it
+    # waits longer than on a Mac, and reading leaves out the locking frames.
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.WINDOWS_LOOK_SECONDS", 1)
+    backend, state = slow_card(0.2)
+    source = AACaptureSource({"device_index": 1, "api": "DSHOW", "find_phone": True},
+                             backend_factory=backend)
+    try:
+        record = source.read()
+        assert record["image"].any()            # no locking frame comes through
+        assert source.device["device_check"] == "phone_between_black_bars"
+        assert source.device["device_seen"] == {"1": "phone"}
+        assert all(kwargs["detect_signal_loss"] is False for kwargs in state["made"])
+    finally:
+        source.close()
+
+
+def test_on_a_mac_black_still_means_no_phone_after_look_seconds(monkeypatch):
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOOK_SECONDS", 0.05)
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.WINDOWS_LOOK_SECONDS", 1)
+    backend, _ = slow_card(0.2)
+    source = AACaptureSource({"device_index": 1, "api": "AVFOUNDATION",
+                              "find_phone": True}, backend_factory=backend)
+    try:
+        source.read()
+        assert source.device["device_seen"] == {"1": "dark"}
+    finally:
+        source.close()
+
+
+def test_a_card_that_never_locks_says_it_has_no_phone_picture(monkeypatch):
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.LOCK_SECONDS", 0.1)
+    backend, _ = slow_card(60)
+    source = AACaptureSource({"device_index": 1, "api": "DSHOW"},
+                             backend_factory=backend)
+    started = time.monotonic()
+    try:
+        with pytest.raises(RuntimeError, match="^采集卡收不到手机画面"):
+            source.read()
+        assert time.monotonic() - started >= 0.1
+    finally:
+        source.close()
+
+
+def test_signal_lost_after_the_phone_showed_stops_at_once(monkeypatch):
+    backend, state = slow_card(0)
+    source = AACaptureSource({"device_index": 1, "api": "DSHOW"},
+                             backend_factory=backend)
+    try:
+        assert source.read()["image"].any()
+        state["shows"] = "black"                # the HDMI cable is pulled
+        with pytest.raises(RuntimeError, match="^采集卡收不到手机画面"):
+            for _ in range(100):
+                source.read()
+    finally:
+        source.close()
+
+
+def test_no_frame_says_how_long_it_waited(monkeypatch):
+    monkeypatch.setattr("poker_engine.desktop.aa_sources.FIND_WAIT_SECONDS", 0.1)
+
+    class Silent:
+        def __init__(self, **kwargs):
+            pass
+
+        def capture(self, target):
+            time.sleep(0.5)
+            return SimpleNamespace(image=full_frame("phone"), frame_seq=1)
+
+        def release(self):
+            pass
+
+    source = AACaptureSource({"device_index": 1}, backend_factory=Silent)
+    try:
+        with pytest.raises(RuntimeError, match="^采集卡 0.1 秒内没有送来第一帧画面"):
+            source.read()
+    finally:
+        source.close()

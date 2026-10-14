@@ -10,11 +10,18 @@
 
 ## 记录
 
+**2026-10-14 · `claude/fix-windows-capture-lock-2481t7`（杜的 Windows 采集卡点开始出不来画面）**
+- 做了什么：Windows 默认接口 MSMF → DirectShow（这张 UGREEN 卡 MSMF 首帧要等约 70 秒）；没画面的报错不再写死“两秒”，写实际等的秒数（第一帧 30 秒，之后 2 秒）。
+- 怎么做的：卡每次打开要约 5 秒锁信号、期间全黑：Windows 找手机时黑屏看 15 秒再判“没手机”；读画面时刚打开 15 秒内的全黑帧先跳过，见过画面后再全黑才报“收不到手机画面”。没照抄 WorkBuddy 的补丁（它整个关掉了掉信号检测）。Mac 判黑仍 5 秒、真丢信号仍立刻提示。
+- 怎么验证的：新增 5 个测试（慢锁定的卡、永不锁定、锁定后掉信号、Mac 仍 5 秒判黑、超时文案）；采集相关测试和 flake8 通过。
+- 还剩：杜拉新版本后在真卡上点开始确认。
+
 **2026-10-14 · `docs/second-seat-windows-feedback-at8ptj`（杜的助手实装反馈落进 Windows 安装说明）**
 - 做了什么：说明书补上没有 winget 时的官方下载地址（Python、Git、uv、MSYS2、rclone）、MSYS2 安装程序回滚时改用官方自解压包、编译工具加装 `libgomp`、`SigLevel` 临时改 Never 后必须改回、`.lnk` 被拦时用桌面 `PokerSense.cmd`、OpenH264 告警可以不管、管理员窗口也按用户级装（`dubious ownership` 的处理）、旧安装包版怎么卸；云盘登录可远程授权（`config_is_local=false` + 主人 Mac 上 `rclone authorize`），且不挡第一段录像。另加“采集卡两秒内未提供新帧”的排查（别的程序占着采集卡、设备编号、锁信号约 5 秒）。
 - 怎么做的：`libgomp` 是真 bug（GCC 16 把 OpenMP 拆成单独的包，不装停在 `Could NOT find OpenMP_C`）：包列表放进 `tools/setup_texassolver.py` 的 `MSYS2_PACKAGES`，Windows 编译测试用它，编译失败时提示补装命令。旧安装包版查了 `packaging/pokersense.iss`：同用 8771 端口、启动查更新、不开机自启。
 - 怎么验证的：新测试核对说明书的 pacman 命令和 `MSYS2_PACKAGES` 一致；求解器工具和第二台电脑测试、flake8 通过；CI 的 Windows 编译 job 按新包列表实编。
 - 还剩什么：杜的电脑上把 `SigLevel` 改回 `Required`、卸旧安装包版。
+
 **2026-10-14 · `docs/windows-full-gap-audit-8g97eo`（杜的 Windows 满血版：求解器、录像兜底、自检）**
 - 做了什么：Windows 源码安装也能用求解器（`tools/setup_texassolver.py` 用 MSYS2 编译和 Mac 同一提交）；求解超时强杀（实时建议 30 秒，退回范围规则）、命令只写 LF；录像 avc1 打不开自动换 mp4v，编码记进 recording.json；`--self-check` 加 `solver_ready`、`recorder_ready`。
 - 怎么做的：官方 v0.2.0 Windows 包实测不认单张组合范围（`6s5s`），不能用；作者不许转发程序，所以每台机器自己编译。自检真算一个小河牌、写几帧再读回。

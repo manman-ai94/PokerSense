@@ -44,7 +44,7 @@
 | 打开“信号灯”窗口和旧观察页 | 能 | 本地网页，用 Edge/Chrome 打开；CI 实测启动和全部页面 |
 | 翻前建议、范围胜率、粗略建议、记分牌计算 | 能 | 纯 Python + phevaluator；CI 在打包后的程序里实测（`--self-test`） |
 | 手动录入一手牌分析、复查、学习记录 | 能 | CI 实测打包后的分析进程 |
-| 采集卡实时读牌和实时建议 | 能（程序自动下载识别资源包） | 采集卡在 Windows 走 MSMF（项目最早就在 Windows 上做）；识别资源包单独发布，见下文；Windows 实机还没重新验过 |
+| 采集卡实时读牌和实时建议 | 能（程序自动下载识别资源包） | 采集卡在 Windows 默认走 DirectShow（UGREEN 25854 在 MSMF 下首帧要等约 70 秒，2026-10-14 杜的电脑上测得）；识别资源包单独发布，见下文；Windows 实机还没重新验过 |
 | 单挑转牌/河牌的求解器建议 | 源码安装能；安装包不能（自动降级） | 源码安装用 `tools/setup_texassolver.py` 在本机用 MSYS2 编译和 Mac 同一版（docs/second-seat-windows.md 4b 步，CI 的“solver build”job 实测）；作者不允许转发程序，所以不放进安装包。官方 v0.2.0 Windows 包不认单张组合范围，不能用。没有求解器时改用范围规则给建议 |
 | 窗口里的“录像”按钮 | 能 | 先用 OpenCV 的 H.264（avc1），打不开自动换 mp4v（文件大几倍，回放和体检照样能读）；用的编码记在 recording.json 的 `fourcc`。`--self-check` 的 `recorder_ready` 会实际写几帧再读回 |
 | 录像回放、开发回放 | 只有命令行 | 要带 `--replay-video` 参数启动，同事一般用不到 |
