@@ -86,17 +86,21 @@ BASE = {"realtime": {"label": "test", "metrics": {
                                 "all_known_while_acting": 0.99}}}
 
 
-def test_lines_are_ninety_percent_of_baseline_and_ninety_five_on_your_turn():
+def test_every_line_is_ninety_percent_of_the_baseline():
     strip = {"frames": 10, "strip": [711, 1209], "matches_samsung": True}
     seats = {"all_known_supported": 0.80, "all_known_while_acting": 0.99}
-    passed = compare(_measured(pot=0.81, call_amount=0.95), BASE, seats, strip)
+    # call amount: 90% of the Samsung's 92% is 82.8%; button: 90% of 100%
+    passed = compare(_measured(pot=0.81, call_amount=0.829, hero_button=0.90),
+                     BASE, seats, strip)
     assert passed["overall"] == "通过"
-    failed = compare(_measured(pot=0.80, call_amount=0.949), BASE, seats, strip)
+    lines = {row["key"]: row["line"] for row in passed["rows"]}
+    assert lines["call_amount"] == 0.828 and lines["hero_button"] == 0.9
+    failed = compare(_measured(pot=0.80, call_amount=0.827, hero_button=0.899),
+                     BASE, seats, strip)
     verdicts = {row["key"]: row["verdict"] for row in failed["rows"]}
     assert verdicts["pot"] == verdicts["call_amount"] == "不通过"
+    assert verdicts["hero_button"] == "不通过"
     assert failed["overall"] == "不通过"
-    notes = {row["key"]: row.get("note") for row in failed["rows"]}
-    assert "92.0%" in notes["call_amount"]  # the Samsung itself is under 95%
     assert "| 底池 |" in markdown(failed, BASE)
 
 

@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-14 · `feat/p30-acceptance-s0u73n`（第三期 A2 补：验收线统一成“不低于三星的 90%”）**
+- 做了什么：主人定的：第二台机器验收每一项都按“不低于三星基准的 90%”判，轮到你的按钮和跟注额也一样，去掉固定的 95%（现在跟注额线约 82.7%，按钮约 89.9%）。
+- 怎么做的：`tools/p30_acceptance.py` 只剩一条线（0.9 × 基准）；画面位置差 ≤ 3 列、轮到你少于 50 帧记“量不了”不变；AGENTS.md 加了这条命令和过线说明（合并两处折行，仍是 200 行）。
+- 怎么验证的：测试按新线判（82.9% 过、82.7% 不过），工具测试 8 个和 flake8 通过。
+- 还剩什么：无。
+
 **2026-10-14 · `feat/recording-upload-q9cmag`（第三期 A3：录像自动回流）**
 - 做了什么：停录、体检单写完后，录像文件夹（分段、`frames.jsonl`、`recording.json`、`flywheel/`）在后台用 rclone 传到主人云盘 `PokerSense 同事数据/<机器名>/<录像名>/`；Mac 上 `tools/flywheel_sync.py pull` 拉回到 `aa-mac-recordings/<机器名>-<录像名>/`，账本和 `rank` 按机器分开算。
 - 怎么做的：新 `desktop/aa_upload.py`（一个线程、低优先级、限速 1 MB/s；`upload/state.json` 记每场的文件和大小，不一样就重传，rclone `--checksum` 只补差的文件；`upload.json` 最后写，拉取只认它）；`aa_after_session.after_recording` 等体检单写完再交给上传；“设置与分析”里加开关（默认开），没 rclone 或没 `pokersense-upload` 时只显示“未配置上传”；密钥只在 rclone 自己的配置里。
