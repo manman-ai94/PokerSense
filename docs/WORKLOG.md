@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-14 · `docs/windows-second-seat-ecykdq`（第三期 A1：杜的 Windows 从源码安装）**
+- 做了什么：新 `docs/second-seat-windows.md`，给杜的 AI 助手照着执行（装 Python/Git/uv、克隆、数据文件夹、装识别资源包、接采集卡、开窗口录像、更新），末尾三句话给杜本人；仓库是公开的，克隆不用加协作者。
+- 怎么做的：`tools/pack_aa_recognition.py --install <zip>` 核对 zip 和每个文件后装进 `$POKERSENSE_DATA_ROOT/aa-live-state/recognition/`（打包时顺带蘑菇池数字样本）；源码启动设了数据文件夹时默认用 `aa-live-state`，`START-AA.cmd` 双击就找到资源包、打开采集卡。
+- 怎么验证的：新测试（装包、坏包和改过的文件都拒绝、默认数据文件夹）；Windows CI 上用真仓库的 `START-AA.cmd`：装合成资源包后自检、核心建议自测、真开窗口且采集卡可用、录像写 H.264 再读回。
+- 还剩什么：真采集卡（MSMF）、真识别资源、华为 P30 画面都没在 Windows 上验过，等杜的 10 分钟录像（A2）；录像自动回传是 A3。
+
 **2026-10-13 · `feat/postflop-soft-reading-0yv6xl`（策略第二期任务 2：翻后读牌不再一票否决过牌）**
 - 做了什么：对手过牌或跟注后，模型会下注的牌不再全扔，按权重留下（翻牌 0.35、转牌 0.35、河牌 0.25）；下注后模型会过牌的牌、跟注后模型会弃的牌照旧排除，爱下注的人照旧有“地板”。
 - 怎么做的：新 `postflop_reading.py`（`soft_kept`），`ranges` 和求解器的对手读牌都用它，缓存键带上权重；亮牌拟合值（slow 1.0/1.0/0.7 等）留作证据，按记分牌压到不明显变差；`vetoread+甲` 是旧读法的甲。
