@@ -54,7 +54,7 @@ REQUIRED_RESOURCES = (
     "ui/aa-live/index.html", "ui/aa-live/app.js", "ui/aa-live/style.css",
     "ui/aa-live/hand_input.js", "ui/aa-live/analysis_records.js",
     "ui/aa-live/signal.html", "ui/aa-live/signal.js", "ui/aa-live/signal_view.js",
-    "ui/aa-live/signal.css", "ui/aa-live/update_banner.js",
+    "ui/aa-live/signal.css", "ui/aa-live/update_banner.js", "ui/aa-live/upload.js",
     "configs/strategy/examples/terminal-multiway-river-manual.json",
     "configs/strategy/examples/threeway-river-response-manual.json",
 )

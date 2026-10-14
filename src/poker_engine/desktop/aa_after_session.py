@@ -4,7 +4,11 @@
 recording's folder in a separate process at low priority (the window keeps
 running), with its output in ``<folder>/flywheel/report.log``. It does
 nothing in a packaged build (no ``tools/`` next to the code) or when the
-folder has no window log (``frames.jsonl``)."""
+folder has no window log (``frames.jsonl``).
+
+``after_recording`` is what the capture source calls: the sheet, then the
+folder handed to the uploader the window started (``aa_upload``), which
+waits for the sheet before it sends the folder."""
 
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ import subprocess
 import sys
 
 from ..data_paths import REPO_ROOT
+from . import aa_upload
 
 TOOL = REPO_ROOT / "tools" / "flywheel_session.py"
 
@@ -38,4 +43,16 @@ def start_report(folder, *, tool=TOOL, popen=subprocess.Popen):
                      stderr=subprocess.STDOUT, **extra)
 
 
-__all__ = ["start_report"]
+def after_recording(folder, *, report=None, uploader=None):
+    """The sheet, then the upload; neither may fail the recording."""
+    process = None
+    try:
+        process = (report or start_report)(folder)
+    finally:
+        uploader = uploader or aa_upload.current()
+        if uploader is not None:
+            uploader.submit(folder, wait_for=process)
+    return process
+
+
+__all__ = ["after_recording", "start_report"]

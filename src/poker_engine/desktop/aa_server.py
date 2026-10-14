@@ -13,8 +13,10 @@ import webbrowser
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from . import aa_recorder
+from . import aa_upload
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession
 from .aa_grading import AAGrades
@@ -92,8 +94,14 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                recordings_dir=None,
                analysis_service=None, review_service=None, study_service=None,
                hand_input_service=None, analysis_records_service=None,
-               camera_list=None):
+               camera_list=None, uploader=None):
     profile_path = Path(profile_path)
+    recordings_root = (Path(recordings_dir) if recordings_dir
+                       else private_root() / "aa-mac-recordings")
+    # Recordings go back to the owner (aa_upload); only a window that can
+    # record has one, and it first looks 30 s after starting.
+    if uploader is None and allow_capture:
+        uploader = aa_upload.Uploader(recordings_root)
     # The cameras macOS lists, for the window to say whether the card is there.
     cameras = (camera_list or CameraList()) if allow_capture else None
     advice = AASolverAdvice()
@@ -131,8 +139,12 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         if idle is not None:
             threading.Thread(target=idle.watch, args=(stopped,), daemon=True,
                              name="pokersense-idle-stop").start()
+        if uploader is not None:
+            uploader.start()
         yield
         stopped.set()
+        if uploader is not None:
+            uploader.stop()
         service.stop()      # also finishes a recording before the process ends
         analysis.cancel()
         review.close()
@@ -188,6 +200,10 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     def update_banner_script():
         return FileResponse(ui_root() / "update_banner.js",
                             media_type="text/javascript")
+
+    @app.get("/upload.js")
+    def upload_script():
+        return FileResponse(ui_root() / "upload.js", media_type="text/javascript")
 
     @app.get("/classic")
     def index():
@@ -539,8 +555,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                 raise HTTPException(
                     409, "没找到采集卡画面，录像没有开始。窗口里要先认出手机牌桌"
                          "（设备编号选对，手机切到“屏幕镜像”）。")
-            root = Path(recordings_dir) if recordings_dir else (
-                private_root() / "aa-mac-recordings")
+            root = recordings_root
             free = aa_recorder.free_bytes(root) if on else None
             if free is not None and free < aa_recorder.MIN_FREE_GB * aa_recorder.GB:
                 raise HTTPException(
@@ -553,6 +568,30 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                 raise HTTPException(
                     409, f"没有{'开始' if on else '停止'}录像：{exc}") from None
             return service.snapshot()
+
+    @app.get("/api/upload")
+    def upload_status():
+        """Whether finished recordings go back to the owner (aa_upload)."""
+        if uploader is None:
+            return {"available": False,
+                    "message": "这个窗口不接采集卡，不录像，也不上传。"}
+        return uploader.status()
+
+    @app.post("/api/upload")
+    async def upload_switch(request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "无法读取 JSON") from None
+        if (not isinstance(body, dict) or set(body) != {"on"}
+                or type(body["on"]) is not bool):
+            raise HTTPException(400, "上传设置字段不受支持")
+        if uploader is None:
+            raise HTTPException(409, "这个窗口不接采集卡，不录像，也不上传")
+        try:
+            return await run_in_threadpool(uploader.set_enabled, body["on"])
+        except OSError as exc:
+            raise HTTPException(409, f"没有保存上传开关：{exc}") from None
 
     @app.post("/api/stop")
     def stop():

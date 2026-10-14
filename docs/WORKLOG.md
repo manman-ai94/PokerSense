@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-14 · `feat/recording-upload-q9cmag`（第三期 A3：录像自动回流）**
+- 做了什么：停录、体检单写完后，录像文件夹（分段、`frames.jsonl`、`recording.json`、`flywheel/`）在后台用 rclone 传到主人云盘 `PokerSense 同事数据/<机器名>/<录像名>/`；Mac 上 `tools/flywheel_sync.py pull` 拉回到 `aa-mac-recordings/<机器名>-<录像名>/`，账本和 `rank` 按机器分开算。
+- 怎么做的：新 `desktop/aa_upload.py`（一个线程、低优先级、限速 1 MB/s；`upload/state.json` 记每场的文件和大小，不一样就重传，rclone `--checksum` 只补差的文件；`upload.json` 最后写，拉取只认它）；`aa_after_session.after_recording` 等体检单写完再交给上传；“设置与分析”里加开关（默认开），没 rclone 或没 `pokersense-upload` 时只显示“未配置上传”；密钥只在 rclone 自己的配置里。
+- 怎么验证的：18 个新测试（合成录像上传、断网失败不碰录像且自动重试、二次启动补传、未配置、开关、拉回逐文件核对大小、半截/越界路径不拉、账本按机器、rank 按原录像日期），相关测试和 flake8 通过。
+- 还剩什么：主人 Mac 上真拉回一次杜的 10 分钟录像（等杜那台登录 rclone、录完，且 Mac 空闲）；Windows 上的真 rclone 还没跑过。
+
 **2026-10-13 · `feat/postflop-soft-reading-0yv6xl`（策略第二期任务 2：翻后读牌不再一票否决过牌）**
 - 做了什么：对手过牌或跟注后，模型会下注的牌不再全扔，按权重留下（翻牌 0.35、转牌 0.35、河牌 0.25）；下注后模型会过牌的牌、跟注后模型会弃的牌照旧排除，爱下注的人照旧有“地板”。
 - 怎么做的：新 `postflop_reading.py`（`soft_kept`），`ranges` 和求解器的对手读牌都用它，缓存键带上权重；亮牌拟合值（slow 1.0/1.0/0.7 等）留作证据，按记分牌压到不明显变差；`vetoread+甲` 是旧读法的甲。
