@@ -9,6 +9,8 @@ the card's number changes with the cable or hub. Black is the card with no
 picture from the phone yet (a camera always shows something): a chosen
 device that stays black is kept without opening the others, so the Mac's
 camera does not light up while the phone is locked or not mirroring yet.
+A card read on Windows gets ``WINDOWS_LOOK_SECONDS`` of black, since it
+is black while it locks onto the picture each time it is opened.
 When no device shows the phone, the first black one is used; a black card
 that lights up later (the phone unlocked or started mirroring) is then
 reported as showing the phone. When only a camera's picture was seen (the
@@ -18,6 +20,12 @@ read and its error says what is wrong. ``device`` says which one
 was used, whether it showed the phone (``device_check``) and what each
 device looked at showed (``device_seen``); the session reports it and a
 recording keeps it.
+
+All-zero frames (the card has no signal) are left out for up to
+``LOCK_SECONDS`` after the card is opened, until it shows anything else: the
+card is still locking onto the picture. All-zero frames after that, or after
+the card showed a picture, are the signal lost and stop reading with the
+plain error; a black card waiting for the phone delivers them instead.
 
 ``CameraList`` names the cameras macOS lists, so the window can say whether
 the card is there at all (a card plugged into a hub instead of the Mac is
@@ -46,7 +54,14 @@ from .aa_recorder import STRIP_LIT, AARecorder, picture
 
 FIND_DEVICES = range(4)         # device numbers looked at for the phone
 LOOK_SECONDS = 5                # black this long (mirroring may start late): no phone
+# A card read through DirectShow or Media Foundation (Windows) gives all-zero
+# frames for about 5 s each time it is opened, while it locks onto the HDMI
+# picture (10/14, 杜's UGREEN 25854, "Display capture-UVC05": 1.0-5.5 s black,
+# then the phone). Five seconds of black there is not yet "no phone".
+WINDOWS_LOOK_SECONDS = 15
+LOCK_SECONDS = 15               # all-zero frames this long after opening: still locking
 FIND_WAIT_SECONDS = 30          # the first frame may wait this long while looking
+FRAME_WAIT_SECONDS = 2          # a later frame may wait this long
 PHONE_FOUND, NO_PHONE = "phone_between_black_bars", "no_phone_found"
 
 
@@ -176,6 +191,9 @@ class AACaptureSource:
         self.after_recording = after_recording
 
     def _backend(self, index, **options):
+        # All-zero frames are judged here (``_pump``), not by the backend: it
+        # would stop at the first one, while the card is still locking on.
+        options.setdefault("detect_signal_loss", False)
         return self.backend_factory(device_index=index, api=self.api, width=1920,
                                     height=1080, fps=30, **options)
 
@@ -209,7 +227,8 @@ class AACaptureSource:
             probe = self._backend(index, normalization=None, detect_signal_loss=False)
         except Exception:
             return None
-        target, until = CaptureTarget(f"uvc-{index}"), time.monotonic() + LOOK_SECONDS
+        look = LOOK_SECONDS if self.api == "AVFOUNDATION" else WINDOWS_LOOK_SECONDS
+        target, until = CaptureTarget(f"uvc-{index}"), time.monotonic() + look
         try:
             while not self.cancel.is_set():
                 seen = picture(probe.capture(target).image)
@@ -231,10 +250,19 @@ class AACaptureSource:
                 if not self.cancel.is_set() and self._camera_only():
                     raise RuntimeError(CAMERA_ONLY)
             waiting = self._black_card()
+            opened, locked = time.monotonic(), False
             while not self.cancel.is_set():
                 host_started = time.monotonic()
                 frame = self.backend.capture(self.target)
                 host_received = time.monotonic()
+                if frame.image.any():
+                    locked = True
+                elif not waiting:
+                    if not locked and host_received - opened < LOCK_SECONDS:
+                        continue                # still locking onto the picture
+                    raise RuntimeError(
+                        f"capture-card device {self.device['device_index']} "
+                        f"reported signal loss (all-black frame)")
                 if waiting and float(frame.image.mean()) > STRIP_LIT:
                     waiting = False
                     self._lit()
@@ -305,17 +333,20 @@ class AACaptureSource:
                     self.thread = None
                     self.device_lock.release()
                     raise
-            first = self.find_phone and self.delivered is None
+            wait = (FIND_WAIT_SECONDS if self.delivered is None
+                    else FRAME_WAIT_SECONDS)
             ready = self.condition.wait_for(
                 lambda: self.error is not None or self.cancel.is_set()
                 or self.latest is not None and self.latest["source_frame"] != (
-                    self.delivered), timeout=FIND_WAIT_SECONDS if first else 2.0)
+                    self.delivered), timeout=wait)
             if self.error is not None:
                 raise self.error
             if self.cancel.is_set():
                 return None
             if not ready:
-                raise RuntimeError("采集卡两秒内未提供新帧")
+                raise RuntimeError(
+                    f"采集卡 {wait} 秒内没有送来{'第一帧' if self.delivered is None else '新的'}画面："
+                    "确认采集卡插好、没有别的程序在用它，再点开始")
             result = self.latest
             self.delivered = result["source_frame"]
             return result

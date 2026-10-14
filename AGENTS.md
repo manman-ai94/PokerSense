@@ -39,7 +39,7 @@ PYTHONPATH=src:. .venv/bin/python -m pytest
 - 支持 Python 3.11–3.13，本机用 3.12。依赖版本在 `pyproject.toml` 里精确锁定，不要放宽。
 - 前端 JS 测试需要 Node.js（`brew install node`），没装时会自动跳过。
 - 2026-10-06 在 M1 Pro 上跑过全量测试：5593 个通过，8 个跳过（都是只能在 Windows 上跑的），0 个失败。
-- 采集卡在 macOS 上走 AVFoundation，这是默认接口；Windows 上仍是 MSMF。
+- 采集卡在 macOS 上走 AVFoundation，这是默认接口；Windows 上默认 DirectShow（MSMF 下这张卡首帧要等约 70 秒）。
   2026-10-06 真机验证通过：UGREEN 25854 采集卡（AVFoundation 设备 0），1920×1080、30 帧，
   手机画面位置和 Windows 录像一致（裁切第 711–1208 列），实时识别正常。
 - 采集卡注意事项：
