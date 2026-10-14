@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-14 · `docs/windows-second-seat-ecykdq`（第三期 A1：杜的 Windows 从源码安装）**
+- 做了什么：新 `docs/second-seat-windows.md`，给杜的 AI 助手照着执行（装 Python/Git/uv、克隆、数据文件夹、装识别资源包、接采集卡、开窗口录像、更新），末尾三句话给杜本人；仓库是公开的，克隆不用加协作者。
+- 怎么做的：`tools/pack_aa_recognition.py --install <zip>` 核对 zip 和每个文件后装进 `$POKERSENSE_DATA_ROOT/aa-live-state/recognition/`（打包时顺带蘑菇池数字样本）；源码启动设了数据文件夹时默认用 `aa-live-state`，`START-AA.cmd` 双击就找到资源包、打开采集卡。
+- 怎么验证的：新测试（装包、坏包和改过的文件都拒绝、默认数据文件夹）；Windows CI 上用真仓库的 `START-AA.cmd`：装合成资源包后自检、核心建议自测、真开窗口且采集卡可用、录像写 H.264 再读回。
+- 顺带修了 Windows 安装包自测（phevaluator 子模块漏打包）。还剩什么：真采集卡（MSMF）、真识别资源、华为 P30 画面都没在 Windows 上验过，等杜的 10 分钟录像（A2）；录像自动回传是 A3。
+
 **2026-10-14 · `feat/p30-acceptance-s0u73n`（第三期 A2：第二台机器的画面验收，一条命令）**
 - 做了什么：新 `tools/p30_acceptance.py run --video <录像文件夹> --out <目录>`：查手机画面在 1920×1080 里的位置（三星是 711–1208 列）、按原速重放量各字段覆盖率、离线查 8 座状态，和三星基准放一张表，给出 通过 / 不通过 / 没量全。
 - 怎么做的：过线按任务单：覆盖率 ≥ 三星的 90%，轮到你的按钮和跟注额 ≥ 95%，画面位置差 ≤ 3 列；观战录像没有你的手牌和按钮，这几行记“量不了”，结论不会是通过。位置不对时按找到的位置再试读一次座位状态（只试算，不改三星那套）。`check_aa_seat_states.read_states` 加了 `crop` 参数，默认不变。

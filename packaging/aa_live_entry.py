@@ -81,8 +81,13 @@ RECOGNITION_MODULES = (
 
 
 def default_state():
-    """Installed builds keep one data folder across updates; a source
-    checkout keeps one per version."""
+    """Installed builds keep one data folder across updates. A source checkout
+    with a data folder set ($POKERSENSE_DATA_ROOT, e.g. a second Windows seat,
+    docs/second-seat-windows.md) uses ``aa-live-state`` there, like the Mac
+    launchers; otherwise it keeps one per version."""
+    data = os.environ.get(DATA_ROOT_ENV, "").strip()
+    if data and not getattr(sys, "frozen", False):
+        return Path(data).expanduser() / "aa-live-state"
     base = os.environ.get("LOCALAPPDATA")
     root = (Path(base) if base else Path.home() / ".local" / "share") / (
         "PokerSense-AA")
