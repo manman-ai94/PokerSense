@@ -24,6 +24,10 @@ SPEC = importlib.util.spec_from_file_location(
     "pack_aa_recognition_tool", ROOT / "tools/pack_aa_recognition.py")
 tool = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(tool)
+SOLVER_SPEC = importlib.util.spec_from_file_location(
+    "setup_texassolver_tool", ROOT / "tools/setup_texassolver.py")
+solver_tool = importlib.util.module_from_spec(SOLVER_SPEC)
+SOLVER_SPEC.loader.exec_module(solver_tool)
 WINDOWS = pytest.mark.skipif(os.name != "nt", reason="Requires Windows cmd.exe")
 # A cold CI runner can take over 30 s to import the desktop dependencies.
 TIMEOUT = 180
@@ -161,9 +165,6 @@ def test_start_aa_finds_the_installed_pack(tmp_path, checkout_venv):
 
 
 MSYS2 = Path(r"C:\msys64\usr\bin\bash.exe")
-# The guide's build tools (docs/second-seat-windows.md, 装求解器).
-PACMAN = ("pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc "
-          "mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja")
 
 
 @WINDOWS
@@ -176,8 +177,10 @@ def test_the_solver_builds_and_the_self_check_solves_with_it(tmp_path, checkout_
     """The guide's solver step: MSYS2's compiler builds the Mac's TexasSolver
     commit, and START-AA.cmd --self-check solves with it."""
     env, _ = seat(tmp_path, checkout_venv)
-    tools = subprocess.run([str(MSYS2), "-lc", PACMAN], capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", timeout=900)
+    # The guide's build tools (docs/second-seat-windows.md, 装求解器).
+    tools = subprocess.run([str(MSYS2), "-lc", solver_tool.PACMAN],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=900)
     assert tools.returncode == 0, tools.stdout[-3000:] + tools.stderr[-3000:]
     result = subprocess.run(
         [str(checkout_venv), str(ROOT / "tools/setup_texassolver.py")],

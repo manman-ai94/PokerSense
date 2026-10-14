@@ -12,10 +12,12 @@ The official v0.2.0 Windows release cannot be used: it does not read ranges
 written combination by combination ("6s5s"), which PokerSense sends whenever
 card removal or reads weight one combination differently from its class.
 
-Needs git, CMake and a MinGW-w64 GCC (which brings OpenMP). On Windows the
-MSYS2 tools are found at their usual place (``C:\\msys64\\ucrt64\\bin``) without
-changing PATH; docs/second-seat-windows.md says how to install them. The
-solver is linked statically, so it runs without the build tools' DLLs.
+Needs git, CMake and a MinGW-w64 GCC with OpenMP (``MSYS2_PACKAGES``: since
+GCC 16 MSYS2 ships OpenMP as its own package, libgomp, and without it CMake
+stops at "Could NOT find OpenMP_C"). On Windows the MSYS2 tools are found
+at their usual place (``C:\\msys64\\ucrt64\\bin``) without changing PATH;
+docs/second-seat-windows.md says how to install them. The solver is linked
+statically, so it runs without the build tools' DLLs.
 
 TexasSolver (https://github.com/bupticybee/TexasSolver) is AGPL-3.0 and its
 author asks that only the link be shared, never the program: every machine
@@ -39,6 +41,10 @@ COMMIT = "6dfb65b4d7ed081da509e8d8c3d82138c4708267"   # as setup_texassolver.sh
 WINDOWS_TOOLS = (r"C:\msys64\ucrt64\bin", r"C:\msys64\mingw64\bin", r"C:\mingw64\bin",
                  r"C:\Program Files\CMake\bin")
 NEEDED = ("git", "cmake", "g++")
+# What docs/second-seat-windows.md installs with MSYS2's pacman.
+MSYS2_PACKAGES = ("mingw-w64-ucrt-x86_64-gcc", "mingw-w64-ucrt-x86_64-libgomp",
+                  "mingw-w64-ucrt-x86_64-cmake", "mingw-w64-ucrt-x86_64-ninja")
+PACMAN = "pacman -S --noconfirm --needed " + " ".join(MSYS2_PACKAGES)
 
 
 def source_dir(root=None):
@@ -157,6 +163,9 @@ def main(argv=None, run=subprocess.run):
             binary = build(source_dir(), environ, run=run)
         except (OSError, RuntimeError) as error:
             print(f"[求解器] 没编译成：{error}", file=sys.stderr)
+            if os.name == "nt":
+                print("[求解器] 报 OpenMP 找不到时，先补装编译工具再重跑：\n"
+                      f'C:\\msys64\\usr\\bin\\bash.exe -lc "{PACMAN}"', file=sys.stderr)
             return 1
         print(f"[求解器] 编译好了：{binary}")
     result = smoke_test()
