@@ -4,11 +4,15 @@ The last test runs the real solver and is skipped where it is not installed
 (it never is on CI: the solver is built locally, outside the repository).
 """
 
+from pathlib import Path
+import sys
+import time
+
 import pytest
 
-from poker_engine.solver.texassolver import (Spot, TexasSolver, Tree, all_combos,
-                                             amount_of, combo_key, node_at, range_text,
-                                             solver_binary, strategy_of)
+from poker_engine.solver.texassolver import (
+    BINARY_ENV, SMOKE_SPOT, SolverTimeout, Spot, TexasSolver, Tree, all_combos,
+    amount_of, combo_key, node_at, range_text, smoke_test, solver_binary, strategy_of)
 
 
 def test_combo_keys_put_the_higher_card_first():
@@ -101,3 +105,91 @@ def test_the_solver_restarts_after_its_load_budget():
         assert solver._process is None and solver.restarts == 1
         assert solver.solve(spot) == first          # a new process, same answer
         assert solver._process.pid != pid
+
+
+# ---- the process: a stand-in solver, so these run everywhere ---------------
+
+FAKE = r'''
+import json, sys, time
+mode = sys.argv[1]
+log = open(sys.argv[2], "ab")
+for raw in sys.stdin.buffer:
+    log.write(raw)
+    log.flush()
+    words = raw.decode("ascii").rstrip("\n").split(" ")  # as getline, then split
+    if words[0] == "start_solve" and mode == "hang":
+        time.sleep(600)
+    if words[0] == "dump_result":
+        tree = {"strategy": {"actions": ["CHECK"], "strategy": {}}}
+        open(words[1], "w").write(json.dumps(tree))
+    if words[0] not in ("set_pot", "set_effective_stack", "set_board", "set_range_ip",
+                        "set_range_oop", "set_bet_sizes", "set_allin_threshold",
+                        "build_tree", "set_thread_num", "set_accuracy",
+                        "set_max_iteration", "set_print_interval",
+                        "set_use_isomorphism", "start_solve", "set_dump_rounds",
+                        "dump_result"):
+        sys.stdout.write("command not recognized: " + words[0] + "\n")
+        sys.stdout.flush()
+'''
+
+
+class FakeSolver(TexasSolver):
+    """TexasSolver driving the stand-in above in ``mode`` ("solve" or "hang");
+    the stand-in logs the bytes it was sent."""
+
+    def __init__(self, tmp_path, mode="solve", **options):
+        (tmp_path / "console_solver").write_text("", "utf-8")
+        (tmp_path / "fake.py").write_text(FAKE, "utf-8")
+        self.mode, self.log = mode, tmp_path / "sent.log"
+        super().__init__(tmp_path / "console_solver", **options)
+
+    def command(self):
+        return [sys.executable, str(self.binary.parent / "fake.py"), self.mode,
+                str(self.log)]
+
+
+def test_commands_end_in_a_line_feed_alone(tmp_path):
+    with FakeSolver(tmp_path) as solver:
+        assert solver.solve(SMOKE_SPOT)["strategy"]["actions"] == ["CHECK"]
+    sent = solver.log.read_bytes()
+    assert b"\r" not in sent
+    assert sent.endswith(b"pokersense_done\n")
+    assert b"\nstart_solve\n" in sent
+
+
+def test_a_solve_past_its_timeout_kills_the_solver_and_the_next_one_starts_anew(
+        tmp_path):
+    with FakeSolver(tmp_path, mode="hang", timeout=1.0) as solver:
+        solver._start()
+        hung = solver._process
+        started = time.monotonic()
+        with pytest.raises(SolverTimeout):
+            solver.solve(SMOKE_SPOT)
+        assert time.monotonic() - started < 15
+        assert hung.poll() is not None           # nothing left running
+        assert solver._process is None and solver.timeouts == 1
+        assert not list(Path(solver._workdir.name).glob("spot-*.json"))
+        solver.mode = "solve"
+        assert solver.solve(SMOKE_SPOT)["strategy"]["actions"] == ["CHECK"]
+
+
+def test_a_per_solve_timeout_overrides_the_solvers_own(tmp_path):
+    with FakeSolver(tmp_path, mode="hang", timeout=None) as solver:
+        with pytest.raises(SolverTimeout):
+            solver.solve(SMOKE_SPOT, timeout=0.5)
+
+
+def test_the_smoke_test_says_whether_the_solver_works(tmp_path, monkeypatch):
+    monkeypatch.setenv(BINARY_ENV, str(tmp_path / "missing.exe"))
+    assert smoke_test() == {"ready": False, "seconds": 0.0, "reason": "not_installed",
+                            "binary": None}
+    fake = FakeSolver(tmp_path)
+    fake.close()
+    monkeypatch.setattr(TexasSolver, "command", FakeSolver.command)
+    monkeypatch.setattr(TexasSolver, "mode", "solve", raising=False)
+    monkeypatch.setattr(TexasSolver, "log", tmp_path / "sent.log", raising=False)
+    report = smoke_test(tmp_path / "console_solver")
+    assert report["ready"] is True and report["reason"] is None
+    monkeypatch.setattr(TexasSolver, "mode", "hang", raising=False)
+    report = smoke_test(tmp_path / "console_solver", timeout=0.5)
+    assert report == {**report, "ready": False, "reason": "timeout"}

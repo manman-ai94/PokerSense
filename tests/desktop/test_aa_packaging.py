@@ -31,6 +31,28 @@ def test_public_package_offline_preflight_does_not_write(tmp_path, capsys):
     assert report["capture_enabled"] is False
     assert report["strategy_eligible"] is False
     assert not state.exists()
+    # The record button's encoder works here; the solver answers either way.
+    assert report["recorder_ready"] is True, report["recorder"]
+    assert isinstance(report["solver_ready"], bool)
+    assert report["solver"]["ready"] is report["solver_ready"]
+
+
+def test_the_self_check_reports_the_solver_and_the_recorder():
+    ready = entry.readiness(
+        solver_check=lambda: {"ready": True, "seconds": 4.0, "reason": None},
+        recorder_check=lambda: {"ready": False, "fourcc": None, "reason": "no encoder"})
+    assert ready["solver_ready"] is True and ready["recorder_ready"] is False
+    assert ready["recorder"]["reason"] == "no encoder"
+
+
+def test_only_the_self_check_solves_and_records(tmp_path, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(entry, "readiness", lambda: calls.append(1) or {})
+    monkeypatch.setattr(entry, "serve", lambda args: 0)
+    assert entry.main(["--no-update-check", "--state", str(tmp_path / "s")]) == 0
+    assert calls == []
+    assert entry.main(["--self-check", "--state", str(tmp_path / "s")]) == 0
+    assert calls == [1]
 
 
 def test_missing_public_files_fail_before_state_or_server(

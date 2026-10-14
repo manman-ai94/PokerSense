@@ -155,7 +155,8 @@ def record(out, *, index=None, api=None, seconds=1200, segment_seconds=60):
         segments.close()
         cap.release()
         elapsed = time.monotonic() - begin
-        meta.update(recorded_seconds=round(segments.seconds, 3),
+        meta.update(fourcc=getattr(segments, "fourcc", None),
+                    recorded_seconds=round(segments.seconds, 3),
                     captured_frames=captured,
                     captured_fps=round(captured / elapsed, 2) if elapsed else None)
         (out / "recording.json").write_text(json.dumps(meta, indent=1),

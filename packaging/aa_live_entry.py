@@ -147,7 +147,8 @@ def parser():
     result.add_argument("--version", action="version",
                         version=f"PokerSense-AA {__version__}")
     result.add_argument("--self-check", action="store_true",
-                        help="Read-only package/resource check; no server")
+                        help="Package/resource check, one tiny solve and a few "
+                             "recorded frames in a temporary folder; no server")
     result.add_argument("--state", type=Path, default=default_state())
     result.add_argument("--profile", type=Path,
                         help="External private AA model profile, never bundled")
@@ -208,6 +209,19 @@ def package_report(args):
         "recognition_bundle": "INSTALLED" if args.bundle_sha256 else "NOT_INSTALLED",
         "update_configured": bool(app_update.configured_url(args.update_url)),
     }
+
+
+def readiness(solver_check=None, recorder_check=None):
+    """What --self-check adds: the solver solves one tiny river spot
+    (heads-up turn and river advice; without it the range rule advises) and
+    the recorder writes and reads back a few frames (the record button)."""
+    if solver_check is None:
+        from poker_engine.solver.texassolver import smoke_test as solver_check
+    if recorder_check is None:
+        from poker_engine.desktop.aa_recorder import check_writer as recorder_check
+    solver, recorder = solver_check(), recorder_check()
+    return {"solver_ready": solver["ready"], "solver": solver,
+            "recorder_ready": recorder["ready"], "recorder": recorder}
 
 
 def self_test():
@@ -489,6 +503,8 @@ def main(argv=None):
     if args.allow_capture and args.profile is None:
         cli.error("--allow-capture requires an explicit external --profile")
     report = package_report(args)
+    if args.self_check:
+        report.update(readiness())
     if args.self_check or report["missing_resources"]:
         print(json.dumps(report, ensure_ascii=True, indent=2))
         return 2 if report["missing_resources"] else 0

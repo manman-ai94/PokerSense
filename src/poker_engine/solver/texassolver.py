@@ -1,10 +1,12 @@
 """Run TexasSolver's command-line solver for one heads-up postflop street.
 
 TexasSolver (https://github.com/bupticybee/TexasSolver, AGPL-3.0) is built on
-this machine by ``tools/setup_texassolver.sh`` and only ever called as a
-separate program; nothing of it is part of this repository. Its location is
-``$POKERSENSE_TEXASSOLVER`` or the data directory's
-``third_party/TexasSolver-console/install/console_solver``.
+this machine by ``tools/setup_texassolver.sh`` (macOS) or downloaded from its
+official release by ``tools/setup_texassolver.py`` (Windows), and only ever
+called as a separate program; nothing of it is part of this repository. Its
+location is ``$POKERSENSE_TEXASSOLVER`` or the data directory's
+``third_party/TexasSolver-console/install/console_solver`` (``.exe`` on
+Windows), with the solver's ``resources`` folder next to it.
 
 The solver loads a 2.6-million-line hand table when it starts (about 3.5 s),
 so one process is kept running and fed one spot after another on its
@@ -12,6 +14,10 @@ standard input; each spot is solved from the start of the current street
 and only that street's strategy is read back. A running solver never frees
 the trees it built (about 10 MB per turn, far more per flop), so it is
 restarted once the solves it has done add up to roughly a few hundred MB.
+A solve that takes longer than its timeout kills the process (the next solve
+starts a new one) and raises ``SolverTimeout``. Commands are written as bytes
+ending in "\n" alone: a text pipe on Windows would end them in "\r\n", and the
+solver compares command words exactly.
 
 Solver conventions used here:
 
@@ -34,6 +40,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+import time
 
 from poker_engine.data_paths import data_root
 
@@ -42,6 +49,11 @@ RANKS = "23456789TJQKA"
 SUITS = "cdhs"
 DONE = "pokersense_done"
 STREETS = {3: "flop", 4: "turn", 5: "river"}
+TIMEOUT = 300.0              # seconds one solve may take (a flop takes about a minute)
+
+
+class SolverTimeout(RuntimeError):
+    """A solve ran past its timeout; the solver process was killed."""
 
 
 def solver_binary():
@@ -179,30 +191,36 @@ class TexasSolver:
     # leaves up to several hundred MB behind, a turn about 10 MB, a river little.
     LOAD = {3: 1.0, 4: 0.04, 5: 0.005}
 
-    def __init__(self, binary=None, threads=8, accuracy=0.5, max_iterations=200):
+    def __init__(self, binary=None, threads=8, accuracy=0.5, max_iterations=200,
+                 timeout=TIMEOUT):
         self.binary = Path(binary) if binary else solver_binary()
         if self.binary is None:
             raise FileNotFoundError("TexasSolver is not installed; run "
-                                    "tools/setup_texassolver.sh")
+                                    "tools/setup_texassolver.sh (macOS) or "
+                                    "tools/setup_texassolver.py (Windows)")
         self.threads, self.accuracy = threads, accuracy
         self.max_iterations = max_iterations
+        self.timeout = timeout
         self._workdir = tempfile.TemporaryDirectory(prefix="texassolver-")
         self._process = None
         self._lock = threading.Lock()
         self._count = 0
         self._load = 0.0
         self.restarts = 0
+        self.timeouts = 0
+
+    def command(self):
+        """The solver's command line."""
+        return [str(self.binary), "-r", str(self.binary.parent / "resources")]
 
     def _start(self):
-        resources = self.binary.parent / "resources"
         self._process = subprocess.Popen(
-            [str(self.binary), "-r", str(resources)], cwd=self._workdir.name,
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            text=True, bufsize=1)
+            self.command(), cwd=self._workdir.name,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
-    def solve(self, spot, accuracy=None, max_iterations=None):
-        """The street's strategy tree; accuracy and iterations default to the
-        solver's own settings."""
+    def solve(self, spot, accuracy=None, max_iterations=None, timeout=None):
+        """The street's strategy tree; accuracy, iterations and the timeout
+        (seconds, None for the solver's own) default to the solver's settings."""
         with self._lock:
             if self._process is None or self._process.poll() is not None:
                 self._start()
@@ -212,12 +230,36 @@ class TexasSolver:
                                   self.accuracy if accuracy is None else accuracy,
                                   self.max_iterations if max_iterations is None
                                   else max_iterations)
-            self._process.stdin.write("\n".join(lines + [DONE]) + "\n")
-            self._process.stdin.flush()
-            for line in self._process.stdout:
-                if line.strip() == f"command not recognized: {DONE}":
-                    break
-            else:
+            process = self._process
+            expired = threading.Event()
+
+            def expire():
+                expired.set()
+                process.kill()
+
+            limit = self.timeout if timeout is None else timeout
+            timer = threading.Timer(limit, expire) if limit else None
+            if timer is not None:
+                timer.daemon = True
+                timer.start()
+            finished = False
+            try:
+                process.stdin.write(("\n".join(lines + [DONE]) + "\n").encode("ascii"))
+                process.stdin.flush()
+                for line in process.stdout:
+                    if line.strip() == f"command not recognized: {DONE}".encode():
+                        finished = True
+                        break
+            except OSError:              # the pipe closed: the process is gone
+                pass
+            finally:
+                if timer is not None:
+                    timer.cancel()
+            if expired.is_set() or not finished:
+                self._discard()
+                if expired.is_set():
+                    self.timeouts += 1
+                    raise SolverTimeout(f"TexasSolver took over {limit:g} s; stopped")
                 raise RuntimeError("TexasSolver stopped before finishing the spot")
             if not output.is_file():
                 raise RuntimeError("TexasSolver did not write a strategy")
@@ -229,15 +271,36 @@ class TexasSolver:
                 self.restarts += 1
             return tree
 
+    def _discard(self):
+        """Kill the process and wait until it is gone (Windows keeps its files
+        open until then), leaving nothing half-written behind."""
+        process, self._process, self._load = self._process, None, 0.0
+        if process is None:
+            return
+        if process.poll() is None:
+            process.kill()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            pass
+        for stream in (process.stdin, process.stdout):
+            try:
+                stream.close()
+            except OSError:
+                pass
+        for leftover in Path(self._workdir.name).glob("spot-*.json"):
+            leftover.unlink(missing_ok=True)
+
     def _stop(self):
         if self._process is not None and self._process.poll() is None:
-            self._process.stdin.close()
             try:
+                self._process.stdin.close()
                 self._process.wait(timeout=10)
+            except OSError:
+                pass
             except subprocess.TimeoutExpired:
-                self._process.kill()
-        self._process = None
-        self._load = 0.0
+                pass
+        self._discard()
 
     def close(self):
         self._stop()
@@ -250,5 +313,35 @@ class TexasSolver:
         self.close()
 
 
-__all__ = ["Spot", "TexasSolver", "Tree", "all_combos", "amount_of", "combo_key",
-           "node_at", "range_text", "solver_binary", "strategy_of"]
+SMOKE_SPOT = Spot(board=("Qs", "Jh", "2h", "7c", "3d"), pot=10, stack=20,
+                  range_ip={"QhQd": 1.0, "6s5s": 1.0}, range_oop={"KcJc": 1.0},
+                  tree=Tree(bets=(100,), raises=(), donks=()))
+
+
+def smoke_test(binary=None, timeout=60.0):
+    """Solve one tiny river spot: {"ready": bool, "seconds", "reason"}. The
+    solver loading its hand table takes most of the time (3.5 s on a Mac)."""
+    started = time.monotonic()
+    try:
+        solver = TexasSolver(binary, threads=1, accuracy=1.0, max_iterations=20,
+                             timeout=timeout)
+    except FileNotFoundError:
+        return {"ready": False, "seconds": 0.0, "reason": "not_installed",
+                "binary": None}
+    try:
+        tree = solver.solve(SMOKE_SPOT)
+        ready = bool(tree.get("strategy", {}).get("actions"))
+        reason = None if ready else "no_strategy"
+    except SolverTimeout:
+        ready, reason = False, "timeout"
+    except (OSError, RuntimeError, ValueError) as error:
+        ready, reason = False, f"failed: {error}"
+    finally:
+        solver.close()
+    return {"ready": ready, "seconds": round(time.monotonic() - started, 2),
+            "reason": reason, "binary": str(solver.binary)}
+
+
+__all__ = ["SMOKE_SPOT", "SolverTimeout", "Spot", "TexasSolver", "Tree", "all_combos",
+           "amount_of", "combo_key", "node_at", "range_text", "smoke_test",
+           "solver_binary", "strategy_of"]

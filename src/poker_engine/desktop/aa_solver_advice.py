@@ -151,7 +151,7 @@ from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
-from poker_engine.solver.texassolver import amount_of, combo_key
+from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
 from .aa_reads import AAReads
 from .aa_session import frame_summary
@@ -162,6 +162,9 @@ from .aa_stakes import settle_stakes, stakes_report
 HERO = 4                        # your seat: bottom centre
 SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
 THREADS = 4                     # solver threads (the scoreboard uses one)
+# Seconds: a solve this late is past your turn; the solver is stopped and the
+# range rule answers.
+SOLVE_TIMEOUT = 30.0
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
 SWITCH_SECONDS = 0.0001         # thread switch while a background job runs
@@ -623,7 +626,7 @@ class AASolverAdvice:
             observation["pot_offset"] = str(pot - Decimal(observation["pot"]))
         if self._bot is None:
             self._bot = SolverBot("solver_turn", human=True, threads=THREADS,
-                                  base=self._preflop_policy())
+                                  base=self._preflop_policy(), timeout=SOLVE_TIMEOUT)
         self._quick[key] = self._submit(self._quick_rule, self._with_reads(observation),
                                         fields, time.monotonic())
         return self._submit(self._solve, observation, time.monotonic())
@@ -799,6 +802,8 @@ class AASolverAdvice:
             strategy, villain = self._bot.solved_spot(observation, SALT)
         except Fallback as reason:
             return {"status": "abstain", "reason": str(reason)}
+        except SolverTimeout:
+            return {"status": "abstain", "reason": "solver_timeout"}
         try:
             edge = range_report(observation, villain)
         except (KeyError, ValueError):     # never lose the advice over it

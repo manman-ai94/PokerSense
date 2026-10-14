@@ -21,6 +21,12 @@ recorded is kept) once a new segment finds less than ``STOP_FREE_GB``. The
 size written so far is in the status (``megabytes``): about 0.1-1.5 GB an
 hour on the recordings made so far.
 
+The encoder is OpenCV's H.264 (``avc1``). Where it does not open (a Windows
+without the media encoders, such as an "N" edition) segments are MPEG-4
+(``mp4v``) instead: larger files, read back by the same tools. The encoder
+used is in ``recording.json`` (``fourcc``). ``check_writer`` tries both on a
+few frames for the program's self-check.
+
 A recording is only worth it when it shows the phone. The capture card puts
 the phone's portrait screen between black bars (``picture``): measured on
 the recordings, the bars are 0 while a computer camera, which also gives a
@@ -34,6 +40,7 @@ import json
 from pathlib import Path
 import queue
 import shutil
+import tempfile
 import threading
 import time
 
@@ -75,19 +82,59 @@ def free_bytes(path):
     return shutil.disk_usage(path).free
 
 
-def avc1_writer(path, fps, size):
-    return cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"avc1"), fps, size)
+FOURCCS = ("avc1", "mp4v")          # H.264 first; MPEG-4 where H.264 is missing
+
+
+def fourcc_writer(code):
+    """A writer factory for one OpenCV fourcc; it names its code (``fourcc``)."""
+    def make(path, fps, size):
+        return cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*code), fps, size)
+    make.fourcc = code
+    return make
+
+
+avc1_writer = fourcc_writer("avc1")
+WRITERS = tuple(fourcc_writer(code) for code in FOURCCS)
+
+
+def check_writer(writers=WRITERS, size=SIZE, frames=5):
+    """Whether a recording could be written here: the first encoder of
+    ``writers`` that opens writes a few frames to a temporary file, which is
+    read back. {"ready", "fourcc", "reason"}."""
+    with tempfile.TemporaryDirectory(prefix="pokersense-recorder-") as folder:
+        segments = SegmentWriter(folder, size=size, writer_factory=writers,
+                                 segment_seconds=60)
+        frame = np.zeros((size[1], size[0], 3), np.uint8)
+        frame[:, size[0] // 3:2 * size[0] // 3] = 200
+        try:
+            segments.offer(frame, (frames - 1) / segments.fps)
+            segments.close()
+        except Exception as error:      # noqa: BLE001 - reported, never raised
+            return {"ready": False, "fourcc": None, "reason": str(error)}
+        capture = cv2.VideoCapture(str(Path(folder) / "segment_0000.mp4"))
+        count = 0
+        while count < frames and capture.read()[0]:
+            count += 1
+        capture.release()
+    ready = count > 0
+    return {"ready": ready, "fourcc": segments.fourcc,
+            "reason": None if ready else "written video does not read back"}
 
 
 class SegmentWriter:
     """Segments on a fixed clock: ``offer(frame, seconds)`` fills the clock up
-    to ``seconds`` with ``frame``, the newest frame at that time."""
+    to ``seconds`` with ``frame``, the newest frame at that time.
+
+    ``writer_factory`` is one factory or several tried in order: the first
+    whose writer opens is used for every segment (``fourcc`` names it)."""
 
     def __init__(self, out, *, fps=FPS, size=SIZE, segment_seconds=SEGMENT_SECONDS,
-                 writer_factory=avc1_writer):
+                 writer_factory=WRITERS):
         self.out = Path(out)
         self.fps, self.size, self.segment_seconds = fps, size, segment_seconds
-        self.writer_factory = writer_factory
+        several = isinstance(writer_factory, (tuple, list))
+        self.factories = tuple(writer_factory) if several else (writer_factory,)
+        self.fourcc = None
         self.written = self.seg_written = 0
         self.segment = self.writer = None
         self.seg_start = 0.0
@@ -111,11 +158,19 @@ class SegmentWriter:
         self.close()
         self.segment = 0 if self.segment is None else self.segment + 1
         self.seg_start, self.seg_written = self.written / self.fps, 0
-        writer = self.writer_factory(self.out / f"segment_{self.segment:04d}.mp4",
-                                     self.fps, self.size)
-        if not writer.isOpened():
-            raise RuntimeError("the H.264 encoder did not open")
-        self.writer = writer
+        path = self.out / f"segment_{self.segment:04d}.mp4"
+        for factory in self.factories:
+            writer = factory(path, self.fps, self.size)
+            if writer.isOpened():
+                # Later segments keep the encoder that worked.
+                self.factories = (factory,)
+                self.fourcc = getattr(factory, "fourcc", None)
+                self.writer = writer
+                return
+            writer.release()
+        raise RuntimeError("no video encoder opened (tried "
+                           + ", ".join(str(getattr(f, "fourcc", "?"))
+                                       for f in self.factories) + ")")
 
     def close(self):
         """Finish the current segment and list it in ``segments.csv``."""
@@ -144,7 +199,7 @@ class AARecorder:
     """One recording of the strips the capture source delivers."""
 
     def __init__(self, out, normalization, *, meta=None, clock=time.monotonic,
-                 writer_factory=avc1_writer, limit_seconds=LIMIT_SECONDS,
+                 writer_factory=WRITERS, limit_seconds=LIMIT_SECONDS,
                  free=free_bytes, stop_free=STOP_FREE_GB * GB, on_finished=None):
         self.box = strip_box(normalization)
         self.out = Path(out)
@@ -226,7 +281,8 @@ class AARecorder:
             except Exception as exc:
                 self.error = self.error or exc
             self._measure()
-            self.meta.update(recorded_seconds=round(self.segments.seconds, 3),
+            self.meta.update(fourcc=self.segments.fourcc,
+                             recorded_seconds=round(self.segments.seconds, 3),
                              megabytes=self.megabytes,
                              offered_frames=self.offered, skipped_frames=self.skipped,
                              stopped_reason=self.reason,
@@ -250,5 +306,6 @@ class AARecorder:
                 "error": None if self.error is None else str(self.error)}
 
 
-__all__ = ["AARecorder", "free_bytes", "GB", "MIN_FREE_GB", "picture", "SegmentWriter",
-           "STOP_FREE_GB", "strip_box"]
+__all__ = ["AARecorder", "check_writer", "FOURCCS", "fourcc_writer", "free_bytes", "GB",
+           "MIN_FREE_GB", "picture", "SegmentWriter", "STOP_FREE_GB", "strip_box",
+           "WRITERS"]
