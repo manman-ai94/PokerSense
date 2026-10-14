@@ -212,7 +212,9 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 主人那边在这段录像上跑 `tools/p30_acceptance.py`（华为 P30 的画面和主人的三星不一样，要先确认画面位置、各项识别率够不够），
 过线了才正式上桌；不过线会出一份识别任务单。
 
-## 录像回传（一次性设置，主人在场时做）
+## 录像回传（一次性设置，要主人登录一次 Google）
+
+**这一步不挡第一段录像**：没设好之前照常录，录完把录像文件夹压缩后用微信或网盘私下发给主人就行。
 
 停录、体检单写完后，窗口在后台用 rclone 把整个录像文件夹传到主人 Google Drive 的
 `PokerSense 同事数据/du/<录像文件夹名>/`：低优先级、限速 1 MB/s，传不上就留着下次再传，不影响录像和建议。
@@ -239,6 +241,22 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
    ```powershell
    rclone config create pokersense-upload drive scope=drive.file
    ```
+
+   **主人不在这台电脑旁边时**（远程授权，主人在自己的 Mac 上登录）：杜的助手改跑
+
+   ```powershell
+   rclone config create pokersense-upload drive scope=drive.file config_is_local=false
+   ```
+
+   它会打印 `Execute the following on the machine with the web browser`，下面一行是
+   `rclone authorize "drive" "<一串字母>"`，然后停在 `config_token>` 等输入。把**这一整行 `rclone authorize` 命令原样**
+   （两段引号都要：第二段是编码后的 `scope=drive.file`，少了它主人授权的就是整个云盘）私聊发给主人。主人在 Mac 的“终端”里跑这行
+   （Mac 没有 rclone 时先 `brew install rclone`），浏览器弹出 Google 登录，登录主人自己的账号、点“允许”；终端里
+   `Paste the following into your remote machine --->` 和 `<---End paste` 之间那一行就是令牌。
+   主人把令牌私聊发回，杜的助手粘到 `config_token>` 后面回车；后面再问到的（例如 `Shared Drive`）直接回车用默认值。
+
+   **令牌就是钥匙**：拿到它的人能往主人云盘里传文件、改删这台电脑传上去的文件。只走私聊，不发群、不截图、不写进任何文件或仓库；
+   粘贴成功后，主人和杜都把那条聊天消息删掉。
 
    看到 `[pokersense-upload]` 和 `type = drive` 就对了。`drive.file` 表示这台电脑只能碰它自己传上去的文件，碰不到主人云盘里别的东西。
    不要在 Google Drive 网页上自己建“PokerSense 同事数据”文件夹：第一次上传时会自动建好，手建的那个它看不见。
