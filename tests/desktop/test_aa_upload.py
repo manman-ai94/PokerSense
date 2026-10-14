@@ -15,13 +15,14 @@ HEADERS = {"X-AA-Live": "1"}
 
 class FakeRclone:
     """``run(args, timeout)`` the way rclone answers, with ``cloud`` as the
-    remote ``pokersense-upload:``. ``offline`` fails transfers like a lost
-    network; ``remotes`` is what ``listremotes`` lists."""
+    remote ``pokersense-upload:``. ``failing`` makes every transfer fail the
+    way rclone reports one (no real network is ever touched); ``remotes`` is
+    what ``listremotes`` lists."""
 
     def __init__(self, cloud, remotes=("pokersense-upload",)):
         self.cloud = Path(cloud)
         self.remotes = list(remotes)
-        self.offline = False
+        self.failing = False
         self.calls = []
 
     def where(self, path):
@@ -34,7 +35,7 @@ class FakeRclone:
         command = args[1]
         if command == "listremotes":
             return 0, "".join(f"{name}:\n" for name in self.remotes)
-        if self.offline:
+        if self.failing:
             return 1, ("2026/10/14 Failed to copy: dial tcp: lookup www.googleapis.com:"
                        " no such host\nrefresh token: secret-should-not-show\n")
         if command == "copy":
@@ -103,11 +104,11 @@ def test_a_finished_recording_goes_up_whole_with_its_list_last(tmp_path):
     assert len(rclone.copies()) == 2
 
 
-def test_offline_upload_fails_quietly_and_is_tried_again(tmp_path):
+def test_a_failed_upload_leaves_the_recording_alone_and_is_tried_again(tmp_path):
     folder = recording(tmp_path / "recordings", "20261014-201500-live")
     before = aa_upload.manifest(folder)
     rclone = FakeRclone(tmp_path / "cloud")
-    rclone.offline = True
+    rclone.failing = True
     up = uploader(tmp_path, rclone, delay=0, retry_waits=(0.05,))
     assert up.upload_all() is False
     assert aa_upload.manifest(folder) == before        # the recording untouched
@@ -116,10 +117,10 @@ def test_offline_upload_fails_quietly_and_is_tried_again(tmp_path):
     assert "上次上传没成功" in status["message"] and "no such host" in status["message"]
     log = (tmp_path / "upload" / "upload.log").read_text(encoding="utf-8")
     assert "没传完" in log and "secret" not in log and "token" not in log
-    # The thread tries again by itself once the network is back.
+    # The thread tries again by itself; this time rclone succeeds.
     up.start()
     try:
-        rclone.offline = False
+        rclone.failing = False
         deadline = time.monotonic() + 5
         while (time.monotonic() < deadline
                and not (tmp_path / "upload" / "state.json").exists()):
