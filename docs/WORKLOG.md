@@ -11,7 +11,7 @@
 ## 记录
 
 **2026-10-14 · `docs/second-seat-windows-feedback-at8ptj`（杜的助手实装反馈落进 Windows 安装说明）**
-- 做了什么：说明书补上没有 winget 时的官方下载地址（Python、Git、uv、MSYS2、rclone）、MSYS2 安装程序回滚时改用官方自解压包、编译工具加装 `libgomp`、`SigLevel` 临时改 Never 后必须改回、`.lnk` 被拦时用桌面 `PokerSense.cmd`、OpenH264 告警可以不管、管理员窗口也按用户级装（`dubious ownership` 的处理）、旧安装包版怎么卸；云盘登录可远程授权（`config_is_local=false` + 主人 Mac 上 `rclone authorize`），且不挡第一段录像。
+- 做了什么：说明书补上没有 winget 时的官方下载地址（Python、Git、uv、MSYS2、rclone）、MSYS2 安装程序回滚时改用官方自解压包、编译工具加装 `libgomp`、`SigLevel` 临时改 Never 后必须改回、`.lnk` 被拦时用桌面 `PokerSense.cmd`、OpenH264 告警可以不管、管理员窗口也按用户级装（`dubious ownership` 的处理）、旧安装包版怎么卸；云盘登录可远程授权（`config_is_local=false` + 主人 Mac 上 `rclone authorize`），且不挡第一段录像。另加“采集卡两秒内未提供新帧”的排查（别的程序占着采集卡、设备编号、锁信号约 5 秒）。
 - 怎么做的：`libgomp` 是真 bug（GCC 16 把 OpenMP 拆成单独的包，不装停在 `Could NOT find OpenMP_C`）：包列表放进 `tools/setup_texassolver.py` 的 `MSYS2_PACKAGES`，Windows 编译测试用它，编译失败时提示补装命令。旧安装包版查了 `packaging/pokersense.iss`：同用 8771 端口、启动查更新、不开机自启。
 - 怎么验证的：新测试核对说明书的 pacman 命令和 `MSYS2_PACKAGES` 一致；求解器工具和第二台电脑测试、flake8 通过；CI 的 Windows 编译 job 按新包列表实编。
 - 还剩什么：杜的电脑上把 `SigLevel` 改回 `Required`、卸旧安装包版。
