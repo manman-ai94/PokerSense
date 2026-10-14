@@ -57,8 +57,10 @@ class Fallback(Exception):
 
 class SolverBot(_Policy):
     def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16,
-                 human=False, base=None):
+                 human=False, base=None, timeout=None):
         self.name = name
+        # Seconds one solve may take (None: the solver's own limit).
+        self.timeout = timeout
         # Advising a person: their past actions are read with the population
         # model, as an opponent's are, since the bot's own policy never takes
         # some of the actions a person does (and would leave no range).
@@ -219,7 +221,8 @@ class SolverBot(_Policy):
         if key in self._solutions:
             self._solutions.move_to_end(key)
             return self._solutions[key]
-        tree = shared_solver(self.threads).solve(spot, accuracy, iterations)
+        tree = shared_solver(self.threads).solve(spot, accuracy, iterations,
+                                                 timeout=self.timeout)
         self._solutions[key] = tree
         if len(self._solutions) > self._cache_size:
             self._solutions.popitem(last=False)

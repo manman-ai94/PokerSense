@@ -1,7 +1,7 @@
 # 第二台电脑（Windows）从源码安装
 
 给杜那台 Windows 电脑的 AI 助手看：照顺序执行命令，每步后面写了“看到什么就对了”。
-没有安装包、没有求解器（窗口自动改用范围规则给建议，这是已有的行为）。
+没有安装包；求解器在这台电脑上自己编译（4b 步），和主人 Mac 上的是同一版。
 软件只显示建议，**绝不**替人点击或下注；人始终是唯一操作者。
 
 助手的规矩：
@@ -40,7 +40,7 @@ uv venv --python 3.12 .venv
 uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 ```
 
-不装 `solver-tools`，也不装求解器。
+`desktop` 里已经包含建议要用的计算库；求解器在 4b 步单独装。
 
 如果以后仓库改成私有：主人在 GitHub 仓库 Settings → Collaborators 把杜的 GitHub 账号加成协作者（只读 Read），
 克隆时用杜的账号登录。现在不需要。
@@ -73,6 +73,29 @@ $env:PYTHONPATH = "src;."
 `C:\PokerSense_data\aa-live-state\recognition\`；蘑菇池的数字样本装到
 `C:\PokerSense_data\PokerSense_private\aa_mushroom_bank_v1\bank.npz`。
 主人发来新的资源包时，重复这一步。
+
+## 4b. 装求解器（单挑转牌、河牌的建议）
+
+TexasSolver 是第三方开源程序（AGPL），作者只允许分享链接、不允许转发程序本身，所以在这台电脑上
+从源码编译，版本和主人 Mac 上的一样。官方 v0.2.0 的 Windows 安装包**不能用**：它不认 PokerSense
+发给它的单张组合范围。先装编译工具（MSYS2，约 1–2 GB，只装一次）：
+
+```powershell
+winget install -e --id MSYS2.MSYS2
+C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
+```
+
+然后编译（十分钟左右，会从 GitHub 下载 TexasSolver 的源码）：
+
+```powershell
+cd C:\PokerSense
+$env:PYTHONPATH = "src;."
+.venv\Scripts\python.exe tools\setup_texassolver.py
+```
+
+这里看到最后一行“[求解器] 试算通过”就对了。求解器装在
+`C:\PokerSense_data\third_party\TexasSolver-console\install\console_solver.exe`，窗口自己会找到，不用设别的。
+编译好的程序和源码都不要发给别人、不要放进仓库文件夹。没装成功时窗口照常能用：单挑转牌、河牌改用范围规则给建议。
 
 ## 5. 接采集卡
 
@@ -111,7 +134,10 @@ $link.Save()
 C:\PokerSense\launch\aa\START-AA.cmd --self-check
 ```
 
-输出里 `"capture_enabled": true` 和 `"recognition_bundle": "INSTALLED"` 都有就对了。
+输出里 `"capture_enabled": true`、`"recognition_bundle": "INSTALLED"`、`"solver_ready": true`、
+`"recorder_ready": true` 都有就对了。它会真算一个很小的河牌局面、写几帧录像再读回来（在临时文件夹里，
+算完就删），所以要等十来秒。`"recorder"` 里的 `"fourcc"` 是录像用的编码：`avc1`（H.264）最好；
+这台电脑没有 H.264 编码器时自动用 `mp4v`，文件大几倍，主人那边照样能读。
 
 ## 7. 更新（只在主人说要更新时）
 

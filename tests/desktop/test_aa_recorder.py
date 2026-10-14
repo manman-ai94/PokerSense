@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from poker_engine.desktop.aa_recorder import (
-    GB, AARecorder, SegmentWriter, free_bytes, strip_box)
+    FOURCCS, GB, AARecorder, SegmentWriter, check_writer, free_bytes, strip_box)
 from poker_engine.desktop.aa_sources import AACaptureSource
 from poker_engine.desktop.aa_video_source import AAVideoSource
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
@@ -68,6 +68,53 @@ def test_a_writer_that_does_not_open_is_an_error(tmp_path):
         segments.offer(np.zeros((1080, 1920, 3), np.uint8), 0.0)
 
 
+def named(code, opened=True):
+    """A writer factory named like ``aa_recorder.fourcc_writer``'s."""
+    def make(*args):
+        return Writer(*args, opened=opened)
+    make.fourcc = code
+    return make
+
+
+def test_without_h264_segments_fall_back_to_mpeg4_and_keep_it(tmp_path):
+    assert FOURCCS == ("avc1", "mp4v")
+    tried = []
+
+    def avc1(*args):
+        tried.append("avc1")
+        return Writer(*args, opened=False)
+    avc1.fourcc = "avc1"
+    segments = SegmentWriter(tmp_path, fps=10, size=(4, 2), segment_seconds=1,
+                             writer_factory=(avc1, named("mp4v")))
+    segments.offer(np.zeros((2, 4, 3), np.uint8), 1.5)     # two segments
+    segments.close()
+    assert segments.fourcc == "mp4v"
+    assert tried == ["avc1"]                    # not tried again for the second
+    assert [w.opened for w in Writer.made] == [False, True, True]
+    assert Writer.made[0].released             # the refused writer is let go
+
+
+def test_no_encoder_at_all_names_what_was_tried(tmp_path):
+    segments = SegmentWriter(tmp_path, writer_factory=(named("avc1", False),
+                                                       named("mp4v", False)))
+    with pytest.raises(RuntimeError, match=r"encoder.*avc1, mp4v"):
+        segments.offer(np.zeros((1080, 1920, 3), np.uint8), 0.0)
+
+
+def test_this_machine_can_write_a_recording_and_read_it_back():
+    """The real OpenCV encoders: H.264 where there is one (macOS, Windows),
+    else MPEG-4 (the Linux CI)."""
+    report = check_writer()
+    assert report["ready"] is True, report
+    assert report["fourcc"] in FOURCCS
+
+
+def test_the_writer_check_reports_a_missing_encoder():
+    report = check_writer(writers=(named("avc1", False),))
+    assert report["ready"] is False and report["fourcc"] is None
+    assert "encoder" in report["reason"]
+
+
 def test_the_strip_goes_back_where_it_was_cropped():
     assert strip_box(AA8) == (711, 0, 1209, 1080)
     turned = NormalizationConfig(rotate_degrees=90, source_size=(1920, 1080),
@@ -101,7 +148,7 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
         finished.append((folder, (folder / "recording.json").exists()))
 
     recorder = AARecorder(out, AA8, meta={"device_index": 0}, clock=clock,
-                          writer_factory=Writer, on_finished=done)
+                          writer_factory=named("avc1"), on_finished=done)
     strip = np.full((1080, 498, 3), 200, np.uint8)
     recorder.offer(strip)
     wait_for(lambda: Writer.made and Writer.made[0].frames)
@@ -125,6 +172,7 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
     assert summary["recorded_seconds"] == round(16 / 30, 3)
     assert summary["device_index"] == 0 and summary["strip"] == [711, 0, 1209, 1080]
     assert summary["stopped_reason"] == "stopped" and summary["error"] is None
+    assert summary["fourcc"] == "avc1"         # the encoder that wrote it
     assert (out / "segments.csv").exists()
     recorder.offer(strip)                         # after the stop: ignored
     assert recorder.offered == 2

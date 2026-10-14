@@ -156,6 +156,42 @@ def test_start_aa_finds_the_installed_pack(tmp_path, checkout_venv):
     report = json.loads(result.stdout[result.stdout.index("{"):])
     assert report["capture_enabled"] is True
     assert report["recognition_bundle"] == "INSTALLED"
+    assert report["recorder_ready"] is True, report["recorder"]
+    assert report["recorder"]["fourcc"] in ("avc1", "mp4v")
+
+
+MSYS2 = Path(r"C:\msys64\usr\bin\bash.exe")
+# The guide's build tools (docs/second-seat-windows.md, 装求解器).
+PACMAN = ("pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc "
+          "mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja")
+
+
+@WINDOWS
+@pytest.mark.skipif(not MSYS2.is_file(), reason="Needs MSYS2 (on every CI runner)")
+# Building takes about ten minutes: CI runs it as a job of its own
+# (.github/workflows/ci.yml, "solver build").
+@pytest.mark.skipif(not os.environ.get("POKERSENSE_SOLVER_BUILD_TEST"),
+                    reason="Set POKERSENSE_SOLVER_BUILD_TEST=1 to build the solver")
+def test_the_solver_builds_and_the_self_check_solves_with_it(tmp_path, checkout_venv):
+    """The guide's solver step: MSYS2's compiler builds the Mac's TexasSolver
+    commit, and START-AA.cmd --self-check solves with it."""
+    env, _ = seat(tmp_path, checkout_venv)
+    tools = subprocess.run([str(MSYS2), "-lc", PACMAN], capture_output=True,
+                           text=True, encoding="utf-8", errors="replace", timeout=900)
+    assert tools.returncode == 0, tools.stdout[-3000:] + tools.stderr[-3000:]
+    result = subprocess.run(
+        [str(checkout_venv), str(ROOT / "tools/setup_texassolver.py")],
+        env={**env, "PYTHONPATH": f"src{os.pathsep}."}, cwd=ROOT,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=2400)
+    assert result.returncode == 0, result.stdout[-5000:] + result.stderr[-5000:]
+    assert "试算通过" in result.stdout
+    command, options = start_aa(["--self-check"], env)
+    result = subprocess.run(command, capture_output=True, timeout=TIMEOUT, **options)
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(result.stdout[result.stdout.index("{"):])
+    assert report["solver_ready"] is True, report["solver"]
+    assert report["recorder_ready"] is True, report["recorder"]
 
 
 @WINDOWS
