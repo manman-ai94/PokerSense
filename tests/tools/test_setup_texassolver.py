@@ -20,6 +20,13 @@ def test_it_builds_the_same_commit_as_the_mac():
     assert f'COMMIT="{tool.COMMIT}"' in script
 
 
+def test_the_guide_installs_the_same_build_tools():
+    """GCC 16 split OpenMP into libgomp; the guide's pacman line must have it."""
+    guide = (ROOT / "docs/second-seat-windows.md").read_text("utf-8")
+    assert "mingw-w64-ucrt-x86_64-libgomp" in tool.MSYS2_PACKAGES
+    assert f'bash.exe -lc "{tool.PACMAN}"' in guide
+
+
 def test_commands_fetch_the_commit_and_build_only_the_console_solver(tmp_path):
     commands = tool.build_commands(tmp_path / "src", jobs=3,
                                    generator="Ninja", is_windows=True)
