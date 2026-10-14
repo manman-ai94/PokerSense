@@ -123,10 +123,17 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 
 `git pull` 报错（例如本地有改动）就停下来，把报错发给主人，不要强行覆盖。
 
-## 第一次：先录 10 分钟验收，不打
+## 第一次：先录 10 分钟验收
 
-装好后先不要上桌打牌：接好采集卡，随便进一桌**观战**，点“录像”录 10 分钟，停止后把录像文件夹发给主人。
-主人那边在这段录像上量识别率（华为 P30 的画面和主人的三星不一样，要先确认读得准），过线了才上桌。
+装好后先录一段 10 分钟的验收录像，主人确认读得准了才算正式上桌：
+
+1. 接好采集卡，打开窗口点“开始”，看到牌桌后点“录像”。
+2. 10 分钟里**至少一部分时间要坐下打**（照常打或一直弃牌都行，不用管建议）。只观战看不到自己的手牌和“跟注/让牌”按钮，
+   这两项量不出来，验收就过不了。
+3. 点“停止”，等“已存好”，把 `C:\PokerSense_data\PokerSense_private\aa-mac-recordings\` 里这次的整个文件夹压缩发给主人。
+
+主人那边在这段录像上跑 `tools/p30_acceptance.py`（华为 P30 的画面和主人的三星不一样，要先确认画面位置、各项识别率够不够），
+过线了才正式上桌；不过线会出一份识别任务单。
 
 ## 录像回传
 
@@ -145,6 +152,13 @@ cd ~/Projects/PokerSense && PYTHONPATH=src:. .venv/bin/python tools/pack_aa_reco
 
 桌面上的 `aa-recognition-日期` 文件夹里有 zip、json 和蘑菇池数字样本，整个文件夹私下发给杜（微信文件、网盘私有链接），
 让他的助手放到 `C:\PokerSense_data\recognition-pack\` 再做第 4 步。里面是真实牌桌截图，只发给同意参加测试的人，不要公开分享、不要提交进仓库。
+
+杜的验收录像回来后（解压到 Mac 的数据目录里），一条命令出结论（工具和过线标准见 `tools/p30_acceptance.py`）：
+
+```bash
+cd ~/Projects/PokerSense && PYTHONPATH=src:. .venv/bin/python tools/p30_acceptance.py run \
+  --video <杜的录像文件夹> --out <新的结果文件夹>
+```
 
 ## 哪里不对找谁
 
