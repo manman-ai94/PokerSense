@@ -10,7 +10,7 @@
 
 ## 记录
 
-**2026-10-14 · `docs/second-seat-capture-dshow`（说明书跟上采集卡修复 #50）**
+**2026-10-14 · `docs/second-seat-windows-feedback-at8ptj`（说明书跟上采集卡修复 #50）**
 - 做了什么：第二台电脑说明书第 5 节“没画面”排查改成新版本的样子：新报错文案（30 秒第一帧 / 2 秒新画面，注明旧文案）、Windows 默认 DirectShow 不用选（别换 MSMF）、程序自己等采集卡锁信号，点开始等 10–20 秒，一般不用停了再开。
 - 怎么做的：文案和秒数照 #50 合并后的 `aa_sources.py`（`WINDOWS_LOOK_SECONDS`、`LOCK_SECONDS`、超时报错）和 `default_capture_api` 核对。
 - 怎么验证的：只改文档；对过代码里的字符串。
