@@ -1,0 +1,41 @@
+name: solver parity (temporary)
+
+# 一次性：在 Windows 测试机上编译和 Mac 同一版 TexasSolver，解 16 个固定的合成局面，
+# 结果上传成 artifact，拿去和 Mac 上同一批的结果比。只在这个分支上跑，不合并进 main。
+on:
+  push:
+    branches: [docs/windows-full-gap-audit-8g97eo]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parity-windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: "1"
+      PYTHONPATH: "src;."
+      POKERSENSE_DATA_ROOT: ${{ runner.temp }}\data
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[dev,desktop]"
+      - name: Build tools (as docs/second-seat-windows.md 4b)
+        run: >-
+          C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed
+          mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja"
+      - name: Build the solver
+        run: python tools/setup_texassolver.py
+      - name: Solve the parity spots
+        run: python tools/solver_parity.py run --out windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solver-parity-windows
+          path: windows.json
