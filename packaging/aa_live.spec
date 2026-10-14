@@ -2,7 +2,8 @@
 # Private profiles, models, recordings and credentials remain external.
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, copy_metadata
+from PyInstaller.utils.hooks import (collect_data_files, collect_submodules,
+                                    copy_metadata)
 
 root = Path(SPECPATH).resolve().parent
 a = Analysis(
@@ -24,7 +25,10 @@ a = Analysis(
                    "uvicorn.protocols.http.auto", "uvicorn.protocols.http.h11_impl",
                    "uvicorn.protocols.websockets.auto",
                    "uvicorn.protocols.websockets.websockets_impl",
-                   "uvicorn.lifespan.on", "uvicorn.lifespan.off"],
+                   "uvicorn.lifespan.on", "uvicorn.lifespan.off"]
+    # phevaluator imports its submodules lazily (module __getattr__), which
+    # the analysis cannot see: `from phevaluator import evaluate_cards`.
+    + collect_submodules("phevaluator"),
     excludes=["matplotlib", "pandas", "torch", "pytest"],
     noarchive=False,
 )
