@@ -17,14 +17,20 @@ and ``upload.json``) it says what went wrong, against the Samsung baseline of
   stalls over two seconds;
 * opponents: the hands whose other seats' actions are clean enough for the
   AA population statistics (``tools/aa_population_stats.py``; the tester's
-  own seat is left out, as peng's is).
-
-The tester's own decisions and results are not reviewed.
+  own seat is left out, as peng's is);
+* results (``tools/luck_results.py``): what the advice won at his seat, in
+  big blinds per 100 hands as played and with the luck of the cards dealt
+  and of all-in runouts taken out, with the interval that stays right
+  however often it is looked at; and the same for every recording of that
+  machine so far. His play is not judged: a decision's line says what the
+  advice was and whether it was followed, nothing more.
 
     PYTHONPATH=src:. .venv/bin/python tools/tester_review.py run \\
         --recording <录像文件夹> [...] --state <复盘目录> --out <这次的输出目录>
     PYTHONPATH=src:. .venv/bin/python tools/tester_review.py population \\
         --state <复盘目录> --out <aa_population_stats.json>
+    PYTHONPATH=src:. .venv/bin/python tools/tester_review.py results \\
+        --state <复盘目录> --out <成绩.json>
 
 A recording folder is the cloud copy (with ``upload.json``) or one pulled to
 this computer (``pulled.json``); its machine and own name come from there.
@@ -33,7 +39,12 @@ same files (``--again`` reviews them again), writes ``<机器>-<录像>.json``
 for each, ``复盘单.md`` (totals only, with the change since that machine's
 last review) and ``三行.txt`` into ``--out``, and adds to the state:
 ``reviewed.jsonl`` (a line per recording) and ``hands.jsonl`` (its hand lines
-for the population statistics). ``population`` builds the statistics from the
+for the population statistics), ``results.jsonl`` (a line per hand with
+its result and luck) and ``decisions.jsonl`` (a line per decision: the
+advice, what he did, the hand's result). The sheet's results are totals,
+for the recording and for the machine so far. ``results`` writes the
+totals so far per machine (and all machines together) as JSON and prints
+them in plain lines. ``population`` builds the statistics from the
 base sample of ``<复盘目录>/population-base.json`` (``{"hands": <hand lines>,
 "hero_logs": [...], "minutes": {...}}``, the path relative to that file)
 plus every reviewed recording, the testers' own seats left out. All of it
@@ -57,12 +68,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from poker_engine.desktop import aa_upload  # noqa: E402
 from tools import aa_population_stats as pop  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
+from tools import luck_results  # noqa: E402
 from tools import p30_acceptance as p30  # noqa: E402
 from tools.aa_session_report import session_report  # noqa: E402
 from tools.flywheel_sync import digest_of  # noqa: E402
 
 REVIEWED = "reviewed.jsonl"
 HANDS = "hands.jsonl"
+RESULTS = "results.jsonl"
+DECISIONS = "decisions.jsonl"
 BASE = "population-base.json"
 SHEET = "复盘单.md"
 LINES = "三行.txt"
@@ -212,23 +226,37 @@ def recording_facts(folder):
                             if megabytes and seconds else None)}
 
 
+def played(machine, log, rows, code):
+    """(hand result lines, decision lines) of the tester's seat
+    (``luck_results``), each marked with the machine."""
+    if not rows:
+        return [], []
+    hands, ledger = luck_results.hand_lines(log, rows, code)
+    return ([{"machine": machine, **line} for line in hands],
+            [{"machine": machine, **line} for line in ledger])
+
+
 def review(folder, baseline, machine=None):
-    """Everything this tool says about one recording."""
+    """Everything this tool says about one recording, its population lines,
+    and its result and decision lines (private)."""
     folder = Path(folder)
     machine, name, digest = identify(folder, machine)
     rows = [row for row in fly.load(folder / "frames.jsonl") if row.get("fields")]
     log = f"{machine}-{name}"
     measured = p30.field_coverage(rows) if rows else None
     lines, usable = opponents(log, rows)
+    facts = recording_facts(folder)
+    hands, ledger = played(machine, log, rows, facts["code"])
     result = {"machine": machine, "folder": name, "log": log, "digest": digest,
-              "recording": recording_facts(folder), "frames": len(rows),
+              "recording": facts, "frames": len(rows),
               "speed": speed(rows),
               "recognition": p30.compare(measured, baseline) if rows else None,
               "stakes_read": stakes_read(rows),
               "advice": advice(log, rows) if rows else None,
-              "opponents_usable": usable}
+              "opponents_usable": usable,
+              "results": luck_results.summarize(hands)}
     result["problems"] = problems(result)
-    return result, lines
+    return result, lines, hands, ledger
 
 
 def _pct(value):
@@ -371,8 +399,10 @@ def change(before, after):
     return moved
 
 
-def sheet(results, day):
-    """The day's review sheet (totals only) and its three lines."""
+def sheet(results, day, totals=None):
+    """The day's review sheet (totals only) and its three lines. ``totals``:
+    {machine: ``luck_results.summarize`` of all its recordings so far}."""
+    totals = totals or {}
     text = [f"# 同事录像复盘 · {day}", ""]
     if not results:
         text.append("没有新录像。")
@@ -408,9 +438,16 @@ def sheet(results, day):
         if since:
             text.append(f"和上次（{since['folder']}）比："
                         + ("；".join(since["moved"]) or "没有明显变化"))
+        if item.get("results"):
+            text += ["", "成绩（积分）："]
+            text += [f"- {line}" for line in luck_results.plain_lines(item["results"])]
+        text.append("")
+    for machine, summary in sorted(totals.items()):
+        text += [f"## {machine} 到今天为止的成绩", ""]
+        text += [f"- {line}" for line in luck_results.plain_lines(summary)]
         text.append("")
     if not results:
-        return "\n".join(text) + "\n", ["没有新录像", "—", "—"]
+        return "\n".join(text).rstrip() + "\n", ["没有新录像", "—", "—"]
     worth = [item for item in results
              if not short(item["recording"]["minutes"])] or results
     found = [line for item in worth for line in item["problems"]]
@@ -429,7 +466,11 @@ def sheet(results, day):
              + (f"；{speeds}" if speeds else ""),
              ("问题：" + "；".join(line.split("（")[0] for line in found[:TOP_PROBLEMS])
               if found else "没有要看的问题"),
-             f"对手统计新加 {usable} 手能用的牌局"]
+             f"对手统计新加 {usable} 手能用的牌局" + "".join(
+                 f"；{machine} 累计 {summary['hands']} 手扣掉运气 "
+                 f"{summary['adjusted_bb_per_100']:+g} bb/100（{summary['verdict']}）"
+                 for machine, summary in sorted(totals.items())
+                 if summary.get("hands"))]
     return "\n".join(text).rstrip() + "\n", lines
 
 
@@ -446,13 +487,15 @@ def run(args):
         if not short(item.get("minutes")):
             earlier[item["machine"]] = item
     stored = read_lines(state / HANDS)
+    kept = read_lines(state / RESULTS)
+    ledger_lines = read_lines(state / DECISIONS)
     results = []
     for folder in sorted(args.recording, key=lambda path: Path(path).name):
         machine, name, digest = identify(folder, args.machine)
         if (f"{machine}-{name}", digest) in done and not args.again:
             print(f"{machine}/{name}：已经复盘过")
             continue
-        result, lines = review(folder, baseline, args.machine)
+        result, lines, hands, decisions = review(folder, baseline, args.machine)
         entry = {"machine": machine, "folder": name, "log": result["log"],
                  "digest": digest, "started": result["recording"]["started"],
                  "minutes": result["recording"]["minutes"],
@@ -473,14 +516,43 @@ def run(args):
             json.dumps(result, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         ledger = [item for item in ledger if item["log"] != result["log"]] + [entry]
         stored = [line for line in stored if line["log"] != result["log"]] + lines
+        kept = [line for line in kept if line["log"] != result["log"]] + hands
+        ledger_lines = [line for line in ledger_lines
+                        if line["log"] != result["log"]] + decisions
         print(f"{machine}/{name}：{len(result['problems'])} 个问题")
     write_lines(state / REVIEWED, ledger)
     write_lines(state / HANDS, stored)
+    write_lines(state / RESULTS, kept)
+    write_lines(state / DECISIONS, ledger_lines)
     day = args.day or datetime.now(los_angeles()).strftime("%Y-%m-%d")
-    text, lines = sheet(results, day)
+    totals = machine_totals(kept, {item["machine"] for item in results})
+    text, lines = sheet(results, day, totals)
     (out / SHEET).write_text(text, encoding="utf-8")
     (out / LINES).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
+    return 0
+
+
+def machine_totals(lines, machines):
+    """{machine: summary of its result lines so far}."""
+    return {machine: luck_results.summarize(
+        [line for line in lines if line.get("machine") == machine])
+        for machine in sorted(machines)}
+
+
+def results_so_far(args):
+    """Every machine's results so far, and all machines together: totals
+    only, as JSON, and in plain lines."""
+    lines = read_lines(Path(args.state) / RESULTS)
+    machines = {line.get("machine") for line in lines}
+    report = {"machines": machine_totals(lines, machines),
+              "all": luck_results.summarize(lines)}
+    Path(args.out).write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n",
+                              encoding="utf-8")
+    for machine, summary in report["machines"].items():
+        print(f"{machine}：" + "；".join(luck_results.plain_lines(summary)))
+    if not machines:
+        print("还没有成绩")
     return 0
 
 
@@ -523,8 +595,12 @@ def main(argv=None):
     build = commands.add_parser("population")
     build.add_argument("--state", type=Path, required=True)
     build.add_argument("--out", type=Path, required=True)
+    total = commands.add_parser("results")
+    total.add_argument("--state", type=Path, required=True)
+    total.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
-    return run(args) if args.command == "run" else population(args)
+    return {"run": run, "population": population,
+            "results": results_so_far}[args.command](args)
 
 
 if __name__ == "__main__":
