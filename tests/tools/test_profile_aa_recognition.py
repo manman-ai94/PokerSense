@@ -34,10 +34,13 @@ class SlowReader:
 
     def read(self, image, frame, sample):
         assert image.shape == (1080, 498, 3)
-        self.seen.append((frame, sample["pts_seconds"]))
+        self.seen.append((frame, sample["pts_seconds"], sample["source_frame"]))
         supported = self.scene(image)
         self.money(image)
-        return {"scene_supported": supported}
+        return {"scene_supported": supported, "source_id": sample["source_id"],
+                "money": float(image[0, 0, 0]) + self.shift}
+
+    shift = 0
 
 
 SlowReader.read.__code__ = SlowReader.read.__code__.replace(
@@ -49,8 +52,10 @@ def test_strips_cut_the_phone_from_every_nth_frame(tmp_path):
     got = list(tool.strips(video, start=0.5, step=4, count=5))
     assert len(got) == 5
     expected = [round(n / 30, 3) for n in (16, 20, 24, 28, 32)]
-    assert [round(at, 3) for at, _ in got] == expected
-    assert all(strip.shape == (1080, 498, 3) for _, strip in got)
+    assert [round(at, 3) for at, _, _ in got] == expected
+    # Frame numbers skip the frames not read, like the capture card's counter.
+    assert [number for _, number, _ in got] == [16, 20, 24, 28, 32]
+    assert all(strip.shape == (1080, 498, 3) for _, _, strip in got)
     assert not list(tool.strips(video, start=0, step=1, count=50,
                                 exclude=((0.0, 9.0),)))
 
@@ -84,6 +89,35 @@ def test_profile_with_the_recorder_running(tmp_path):
                           load="recorder", scratch=scratch)
     assert result["recorder"]["offered"] > 0
     assert (scratch / "recording" / "recording.json").is_file()
+    # Timed only: the profiler would also see the recorder's thread.
+    assert result["profiled_ms"] is None and "steps" not in result
+
+
+def test_profile_with_the_window_asking_for_its_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(tool, "POLL_SECONDS", 0.001)
+    video = recording(tmp_path / "rec", seconds=4)
+    result = tool.profile(video, SlowReader, start=0, step=1, count=60,
+                          load="status")
+    assert result["status"]["answers"] > 0
+    assert result["status"]["kilobytes"]["p50"] > 0
+    assert result["payload_kilobytes"]["n"] == 60
+
+
+def test_two_runs_compare_field_by_field(tmp_path):
+    video = recording(tmp_path / "rec")
+    first, second, third = (tmp_path / name for name in ("a", "b", "c"))
+    tool.profile(video, SlowReader, start=0, step=3, count=8, hashes=first)
+    tool.profile(video, SlowReader, start=0, step=3, count=8, hashes=second)
+    assert tool.compare(first, second)["same"] is True
+
+    class Shifted(SlowReader):
+        shift = 1
+
+    tool.profile(video, Shifted, start=0, step=3, count=8, hashes=third)
+    result = tool.compare(first, third)
+    assert result["same"] is False
+    assert result["fields_differing"] == {"money": {"frames": 8, "first": 0}}
+    assert tool.main(["compare", str(first), str(third)]) == 1
 
 
 def test_log_totals(tmp_path):

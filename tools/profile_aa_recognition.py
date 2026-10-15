@@ -10,17 +10,24 @@ video frame, as the window samples them) and recognizes each twice: once
 plainly timed, once under Python's profiler, which splits the time over the
 reader's steps (scene, glyphs, money, cards, seats, ...). The same command on
 two computers says which step makes one slower. ``--load recorder`` runs the
-window's recorder at 30 frames a second alongside, as it does live, to see
-what encoding the video takes away from recognition. ``--threads N`` limits
-OpenCV's and the math libraries' worker threads to N.
+window's recorder at 30 frames a second alongside, as it does live;
+``--load status`` asks for the window's state four times a second, as the
+signal window does (``/api/status``: the latest result copied and encoded);
+with a load the run is timed only (Python 3.12's profiler sees every
+thread). ``--threads N`` limits OpenCV's and the math libraries' worker
+threads to N. ``--hashes FILE`` writes a fingerprint of each frame's result,
+per field; ``compare A B`` says which fields differ between two runs (two
+versions of the code on the same frames).
 
-Both print a JSON line of totals and function names, never table data.
+All print JSON lines of totals, function names and fingerprints, never
+table data.
 
     PYTHONPATH=src:. .venv/bin/python tools/profile_aa_recognition.py log \\
         <recording folder or frames.jsonl> [...]
     PYTHONPATH=src:. .venv/bin/python tools/profile_aa_recognition.py run \\
         --video <recording folder> [--start 120] [--frames 300] [--step 4] \\
-        [--load recorder] [--threads N] [--exclude 300-820]
+        [--load recorder|status] [--threads N] [--exclude 300-820] [--hashes FILE]
+    PYTHONPATH=src:. .venv/bin/python tools/profile_aa_recognition.py compare A B
 """
 
 from __future__ import annotations
@@ -41,6 +48,8 @@ DEFAULT_PROFILE = "configs/reproduction/aa8_candidate_v2/factory.json"
 PARENTS = (("aa_reader.py", "read"), ("aa8_candidate_v2.py", "read"),
            ("aa8_holdout_predict.py", "read"))
 TOP = 25                    # functions listed by their own time
+SOURCE_ID = "profile-aa-recognition"     # one source for both runs of a compare
+POLL_SECONDS = 0.25         # the signal window asks again 250 ms after an answer
 THREAD_VARIABLES = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
                     "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS")
 
@@ -230,9 +239,11 @@ def computer():
 # -- run ------------------------------------------------------------------------
 
 def strips(video, *, start=0.0, step=4, count=300, exclude=()):
-    """(timeline seconds, phone strip) of every ``step``-th video frame from
-    ``start``, ``count`` of them, outside ``exclude`` windows; cut exactly as
-    the window cuts the capture card's picture."""
+    """(timeline seconds, video frame number, phone strip) of every
+    ``step``-th video frame from ``start``, ``count`` of them, outside
+    ``exclude`` windows; cut exactly as the window cuts the capture card's
+    picture. The frame number counts like the card's: it skips the frames
+    not read."""
     import cv2
     from poker_engine.desktop.aa_video_source import video_segments
     from poker_engine.perceptual.capture.normalization import (
@@ -263,7 +274,7 @@ def strips(video, *, start=0.0, step=4, count=300, exclude=()):
                 if not ok:
                     break
                 given += 1
-                yield at, normalize(frame, config)
+                yield at, round(at * fps), normalize(frame, config)
         finally:
             capture.release()
         if given >= count:
@@ -306,6 +317,73 @@ class RecorderLoad:
                 "megabytes": status.get("megabytes")}
 
 
+class StatusLoad:
+    """The signal window asking for the state: every ``POLL_SECONDS`` after
+    an answer, the latest result copied and encoded as ``/api/status`` does
+    it (``aa_session`` copies the payload; FastAPI encodes the answer)."""
+
+    def __init__(self):
+        import threading
+        self.latest = None
+        self.lock = threading.Lock()
+        self.times, self.sizes = [], []
+        self.stop_event = threading.Event()
+        self.thread = threading.Thread(target=self._poll, daemon=True)
+        self.thread.start()
+
+    def _poll(self):
+        import copy
+        from fastapi.encoders import jsonable_encoder
+        while not self.stop_event.wait(POLL_SECONDS):
+            with self.lock:
+                payload = self.latest
+            if payload is None:
+                continue
+            began = time.perf_counter()
+            body = json.dumps(jsonable_encoder({"payload": copy.deepcopy(payload)}),
+                              ensure_ascii=False, allow_nan=False,
+                              separators=(",", ":")).encode("utf-8")
+            self.times.append((time.perf_counter() - began) * 1000)
+            self.sizes.append(len(body) / 1024)
+
+    def close(self):
+        self.stop_event.set()
+        self.thread.join()
+        return {"answers": len(self.times), "ms": spread(self.times),
+                "kilobytes": spread(self.sizes)}
+
+
+def fingerprints(payload):
+    """A short fingerprint of each field of a result: equal fingerprints,
+    equal values. Only the fingerprints leave the computer."""
+    import hashlib
+    return {key: hashlib.sha256(json.dumps(
+        value, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        default=str).encode()).hexdigest()[:16] for key, value in payload.items()}
+
+
+def compare(first, second):
+    """Which fields differ, in how many frames, between two ``--hashes`` files."""
+    def rows(path):
+        return [json.loads(line) for line in Path(path).read_text(
+            encoding="utf-8").splitlines() if line.strip()]
+    left, right = rows(first), rows(second)
+    differ, missing = {}, {}
+    for a, b in zip(left, right):
+        if (a["at"], a["source_frame"]) != (b["at"], b["source_frame"]):
+            raise SystemExit("the two runs did not read the same frames")
+        for key in set(a["fields"]) | set(b["fields"]):
+            if key not in a["fields"] or key not in b["fields"]:
+                missing[key] = missing.get(key, 0) + 1
+            elif a["fields"][key] != b["fields"][key]:
+                differ.setdefault(key, {"frames": 0, "first": a["frame"]})
+                differ[key]["frames"] += 1
+    return {"frames": min(len(left), len(right)),
+            "frame_counts": [len(left), len(right)],
+            "same": not differ and not missing and len(left) == len(right),
+            "fields_differing": differ, "fields_missing": missing}
+
+
 def _label(function, root):
     file, line, name = function
     try:
@@ -344,33 +422,44 @@ def breakdown(stats, frames, root):
 
 
 def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
-            load=None, scratch=None):
-    """Recognize the strips twice (timed, then profiled); totals per frame."""
+            load=None, scratch=None, hashes=None):
+    """Recognize the strips twice (timed, then profiled); totals per frame.
+    With a ``load`` the frames are only timed."""
     import cProfile
     import hashlib
     import pstats
     import cv2
     from poker_engine.desktop.aa_session import frame_summary
-    timed, profiled = reader_factory(), reader_factory()
+    timed = reader_factory()
+    profiled = reader_factory() if load is None else None
     profiler = cProfile.Profile()
-    background = RecorderLoad(scratch) if load == "recorder" else None
+    recorder = RecorderLoad(scratch) if load == "recorder" else None
+    status = StatusLoad() if load == "status" else None
     times = {key: [] for key in ("recognition_ms", "profiled_ms", "hash_ms",
                                  "json_ms", "preview_ms", "summary_ms")}
+    sizes = []
     table = 0
     frame = -1
+    out = None if hashes is None else open(hashes, "w", encoding="utf-8")
     try:
-        for frame, (at, image) in enumerate(strips(
+        for frame, (at, number, image) in enumerate(strips(
                 video, start=start, step=step, count=count, exclude=exclude)):
-            if background is not None:
-                background.latest = image
+            if recorder is not None:
+                recorder.latest = image
             began = time.perf_counter()
-            sample = {"pts_seconds": at, "source_frame": frame,
+            sample = {"pts_seconds": at, "source_frame": number,
+                      "source_id": SOURCE_ID,
                       "sha256": hashlib.sha256(image.tobytes()).hexdigest()}
             hashed = time.perf_counter()
             payload = timed.read(image, frame, sample)
             read = time.perf_counter()
-            payload = json.loads(json.dumps(payload, allow_nan=False))
+            text = json.dumps(payload, allow_nan=False)
+            payload = json.loads(text)
             encoded = time.perf_counter()
+            sizes.append(len(text) / 1024)
+            if status is not None:
+                with status.lock:
+                    status.latest = payload
             cv2.imencode(".jpg", image)
             previewed = time.perf_counter()
             json.dumps(frame_summary(payload), ensure_ascii=False)
@@ -382,21 +471,32 @@ def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
                                    ("preview_ms", encoded, previewed),
                                    ("summary_ms", previewed, summarized)):
                 times[key].append((high - low) * 1000)
+            if out is not None:
+                out.write(json.dumps({"frame": frame, "at": round(at, 4),
+                                      "source_frame": number,
+                                      "fields": fingerprints(payload)}) + "\n")
+            if profiled is None:
+                continue
             began = time.perf_counter()
             profiler.enable()
             profiled.read(image, frame, sample)
             profiler.disable()
             times["profiled_ms"].append((time.perf_counter() - began) * 1000)
     finally:
-        recorder = background.close() if background is not None else None
+        loads = {"recorder": recorder.close() if recorder is not None else None,
+                 "status": status.close() if status is not None else None}
+        if out is not None:
+            out.close()
     frames = frame + 1
     if not frames:
         raise SystemExit("no frames read from the recording")
     result = {"frames": frames, "table_frames": table, "step": step,
-              "start": start, "load": load, "recorder": recorder,
+              "start": start, "load": load, **loads,
+              "payload_kilobytes": spread(sizes),
               **{key: spread(values) for key, values in times.items()}}
-    result.update(breakdown(pstats.Stats(profiler), frames,
-                            Path(__file__).resolve().parents[1]))
+    if profiled is not None:
+        result.update(breakdown(pstats.Stats(profiler), frames,
+                                Path(__file__).resolve().parents[1]))
     return result
 
 
@@ -421,15 +521,24 @@ def main(argv=None):
                      help="every N-th video frame (4 = 7.5 a second, as on the Mac)")
     run.add_argument("--exclude", action="append", default=[],
                      help="seconds to skip, e.g. 300-820")
-    run.add_argument("--load", choices=("recorder",),
-                     help="also run the window's recorder, as live")
+    run.add_argument("--load", choices=("recorder", "status"),
+                     help="also run the window's recorder, or its state requests")
     run.add_argument("--threads", type=int,
                      help="limit OpenCV and math-library worker threads")
+    run.add_argument("--hashes", type=Path,
+                     help="write each frame's per-field fingerprints here")
+    pair = commands.add_parser("compare", help="fields that differ between two runs")
+    pair.add_argument("first", type=Path)
+    pair.add_argument("second", type=Path)
     args = parser.parse_args(argv)
     if args.command == "log":
         for item in log_command(args.paths):
             print(json.dumps(item, ensure_ascii=False))
         return 0
+    if args.command == "compare":
+        result = compare(args.first, args.second)
+        print(json.dumps(result, ensure_ascii=False))
+        return 0 if result["same"] else 1
     if args.threads is not None:
         _limit_threads(args.threads)
     import cv2
@@ -442,7 +551,7 @@ def main(argv=None):
         result = profile(args.video, lambda: AA8Reader(args.profile),
                          start=args.start, step=args.step, count=args.frames,
                          exclude=parse_windows(args.exclude), load=args.load,
-                         scratch=scratch)
+                         scratch=scratch, hashes=args.hashes)
     print(json.dumps({"computer": computer(), "threads": args.threads,
                       "video": args.video.name, **result}, ensure_ascii=False))
     return 0
