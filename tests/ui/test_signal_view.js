@@ -304,6 +304,12 @@ assert.deepEqual([graded.word, graded.size, graded.note, graded.detail, graded.c
 assert.equal(graded.compare[0].label, "你做了 · 就是最好的打法");
 graded = gradeView({...preflopGrade, lost_big_blinds: 0.02, grade: "best"});
 assert.equal(graded.note, "和加注到 14 差不多，都可以");
+// All in against a raise to 14: the way is graded, the chips are not.
+graded = gradeView({...preflopGrade, action: {kind: "all_in", amount: "200"}, chosen: "raise",
+  lost_big_blinds: 0, grade: "fine", size_graded: false});
+assert.deepEqual([graded.word, graded.note, graded.compare[0].label],
+  ["可以", "方向和建议一样，下注多少没评分", "你做了 · 方向和建议一样"]);
+assert.ok(graded.detail.endsWith("方向和建议一样，下注多少没评分"));
 // A value that rounds to zero has no sign.
 graded = gradeView({...preflopGrade, options: [{action: "raise", big_blinds: 3.11, chips_in: "14", to: "14"},
   {action: "call", big_blinds: -0.04, chips_in: "4"}, {action: "fold", big_blinds: 0}], lost_big_blinds: 3.15});
