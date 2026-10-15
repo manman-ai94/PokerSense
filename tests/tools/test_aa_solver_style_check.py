@@ -52,3 +52,29 @@ def test_reads_sort_opponents():
     assert villain_type({"postflop": 3, "aggression": 0.0}) == "unknown"
     assert villain_type(PASSIVE) == "passive" and villain_type(WILD) == "aggressive"
     assert villain_type({"postflop": 20, "aggression": 0.3}) == "normal"
+
+
+def test_the_decisions_a_style_rule_would_change_are_counted_and_listed():
+    rows = [
+        # QJ high, nothing to call: bets 40% -> the no-bluff rule checks.
+        row(["Qs", "Jc"], BOARD, [{"action": "check", "frequency": 0.6},
+                                  {"action": "bet", "frequency": 0.4, "chips": "50"}],
+            0, 100, PASSIVE),
+        # Kings facing 100 into 100 from a passive player: folds.
+        row(["Kc", "9h"], BOARD, [{"action": "call", "frequency": 0.7},
+                                  {"action": "fold", "frequency": 0.3}],
+            100, 200, PASSIVE, decision=1),
+        # The same from a player read as aggressive over many decisions: calls.
+        row(["Kc", "9h"], BOARD, [{"action": "call", "frequency": 1.0}], 100, 200,
+            {"hands": 300, "postflop": 200, "aggression": 0.6}, decision=2),
+        # The turn: no rule.
+        row(["Qs", "Jc"], BOARD[:4], [{"action": "bet", "frequency": 1.0}], 0, 100,
+            PASSIVE, street="turn", decision=3),
+    ]
+    listed = []
+    out = summary(count(rows, Counter(), listed))
+    assert out["river|passive|style_nobluff"] == {"decisions": 1, "moved": 0.4}
+    assert out["river|passive|style_nocatch"] == {"decisions": 1, "moved": 0.7}
+    assert "river|aggressive|style_nocatch" not in out
+    assert [(change["decision"], change["rule"]) for change in listed] == [
+        (0, "nobluff"), (1, "nocatch")]
