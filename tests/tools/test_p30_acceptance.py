@@ -55,6 +55,24 @@ def test_coverage_counts_each_field_over_the_frames_it_applies_to():
     assert result["spectating"] is False
 
 
+def test_between_hands_a_kept_street_is_wrong_and_unknown_is_right():
+    # Synthetic frames: a hand on the river, then the table between hands
+    # (board cleared, pot 0). One version keeps the river and cannot read
+    # the pot; the other clears the street.
+    river = frame(board=("2c", "3d", "4h", "5s", "6d"), street="river", pot="80")
+    kept = [river] + [frame(street="river", pot=None)] * 2 + [
+        frame(street="river", pot="0")] * 2
+    cleared = [river] + [frame(street=None, pot="0")] * 4
+    assert field_coverage(kept)["street"] == {"value": 0.2, "n": 5}
+    assert field_coverage(cleared)["street"] == {"value": 1.0, "n": 5}
+    # Between hands preflop is right too; while chips are in the pot a kept
+    # street is the showdown's (the board flickers), and unknown is a miss.
+    assert field_coverage([frame(street="preflop", pot="0")])["street"]["value"] == 1.0
+    held = [frame(street="river", pot="80"), frame(street=None, pot="80"),
+            frame(street=None, pot=None)]
+    assert field_coverage(held)["street"] == {"value": round(1 / 3, 4), "n": 3}
+
+
 def advised(hand, decision, status, *, street="flop", visible=True,
             board=("2c", "3d", "4h", None, None)):
     row = frame(board=board, street=street, actor=4,

@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from decimal import Decimal, InvalidOperation
 import gzip
 import json
 from pathlib import Path
@@ -108,7 +109,7 @@ def field_coverage(rows):
     return {
         "table": _share(len(table), len(fields)),
         "pot": _share(sum(f.get("pot") is not None for f in table), len(table)),
-        "street": _share(sum(f.get("street") is not None for f in table), len(table)),
+        "street": _share(sum(street_right(f) for f in table), len(table)),
         "board": _share(sum(len(cards) >= 3 for cards in with_board), len(with_board)),
         "stacks": _share(sum((f.get("stacks") or {}).get(slot) is not None
                              for f, slot in seats), len(seats)),
@@ -127,6 +128,31 @@ def field_coverage(rows):
         **postflop_coverage(fields),
         "spectating": not with_cards,
     }
+
+
+def _pot_amount(value):
+    try:
+        return Decimal(str(value)) if value is not None else None
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def street_right(f):
+    """Whether the street shown counts for the street line: any street read
+    while a hand is played. Between hands (no board card and the pot read
+    as 0) there is no street to read, so unknown or preflop is right there.
+    A flop, turn or river with no board card and no chips read in the pot is
+    the last hand's street kept too long, and is wrong (10/15 release check:
+    a version that kept it scored higher than one that cleared it)."""
+    street = f.get("street")
+    if any(f.get("board") or ()):
+        return street is not None
+    pot = _pot_amount(f.get("pot"))
+    if street in POSTFLOP and (pot is None or pot == 0):
+        return False
+    if pot == 0:
+        return street in (None, "preflop")
+    return street is not None
 
 
 def postflop_coverage(fields):
