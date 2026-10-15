@@ -6,11 +6,18 @@ is read from their actions with the population model and your share of the
 pot against those ranges is worked out (``ranges``); then
 
 - facing a bet: raise about the pot when the share is at least ``raise``,
-  call when it beats the price (``to_call / (pot + to_call)``) by ``margin``,
-  otherwise fold;
+  call when it beats the price by ``margin``, otherwise fold;
 - with nothing to call: bet when the share is at least ``bet``, otherwise
   check; about two thirds of the pot (``size``) against two opponents, the
   pot (``size3``) against three or more.
+
+The share and the price are of the chips you can win (``side_pots``, since
+2026-10-15): with an opponent all in for less, your share of each side pot
+is against the players in it; facing a bet above your stack, the chips you
+cannot match are not in the price; and the price is of the pot after rake.
+Before, the share was of beating everyone and the price
+``to_call / (pot + to_call)``, which is what this still is with stacks of one
+depth and no rake.
 
 With ``hu=1`` the heads-up flop is played the same way, with its own cuts
 ``hu_bet`` and ``hu_raise`` (one opponent's fair share is a half, not a
@@ -58,6 +65,7 @@ from phevaluator import evaluate_cards
 from .bots import _Policy, _rng, opponents_in_hand, raise_toward
 from .preflop_reading import reading_model, reading_of
 from .ranges import opponent_ranges, ranges_equity
+from .side_pots import pots, price
 
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
             "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7,
@@ -98,7 +106,7 @@ class RangeMultiwayBot(_Policy):
         ranges = opponent_ranges(observation, self.model)
         share, _ = ranges_equity(observation["own_hole"], observation["board"], ranges,
                                  trials=int(self.params["trials"]),
-                                 seed=rng.randrange(2 ** 31))
+                                 seed=rng.randrange(2 ** 31), pots=pots(observation))
         if share is None:
             self.counts["no_equity"] += 1
             return self.base.decide(observation, rng)
@@ -135,8 +143,7 @@ def cuts(observation, params=DEFAULTS):
     to_call = float(observation["to_call"] or 0)
     if to_call == 0:
         return {"bet": params["bet"]}
-    price = to_call / (float(observation["pot"]) + to_call)
-    return {"call": price + params["margin"], "raise": params["raise"]}
+    return {"call": price(observation) + params["margin"], "raise": params["raise"]}
 
 
 def choose(observation, share, params=DEFAULTS):
@@ -210,8 +217,8 @@ def guard_action(observation, action, share, params=DEFAULTS):
         return action
     to_call = float(observation["to_call"] or 0)
     if to_call > 0:
-        price = to_call / (float(observation["pot"]) + to_call)
-        return "check_call" if share >= price + params["margin"] else "fold"
+        enough = share >= price(observation) + params["margin"]
+        return "check_call" if enough else "fold"
     if observation["street"] == "river":
         return "check_call"
     current = max(float(value) for value in observation["bets"].values())

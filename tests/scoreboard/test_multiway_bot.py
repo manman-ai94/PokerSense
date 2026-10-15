@@ -6,7 +6,7 @@ import random
 
 import pytest
 
-from poker_engine.scoreboard import multiway_bot
+from poker_engine.scoreboard import multiway_bot, side_pots
 from poker_engine.scoreboard.bots import (_rng, make_policy, opponents_in_hand,
                                           raise_toward)
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
@@ -92,7 +92,12 @@ def test_the_bet_is_the_pot_into_three_or_more_opponents(monkeypatch, table):
 def test_facing_a_bet_raise_call_or_fold_by_the_price(monkeypatch, table):
     spot = table["facing"]
     to_call = float(spot["to_call"])
-    price = to_call / (float(spot["pot"]) + to_call)
+    price = side_pots.price(spot)
+    # Without side pots the price is of the pot after rake (5% at most 5 big
+    # blinds), a little above the old to_call / (pot + to_call).
+    assert price > to_call / (float(spot["pot"]) + to_call)
+    after_rake = side_pots.matched(spot) * side_pots.kept(spot)
+    assert price == pytest.approx(to_call / after_rake)
     assert bot_with(monkeypatch, 0.7).decide(spot, random.Random(0)).startswith(
         "raise_to") or not any(a["kind"] == "raise_to" for a in spot["legal_actions"])
     assert bot_with(monkeypatch, price + 0.01).decide(spot, random.Random(0)) == (
