@@ -422,16 +422,16 @@ def breakdown(stats, frames, root):
 
 
 def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
-            load=None, scratch=None, hashes=None):
+            load=None, scratch=None, hashes=None, profiled=True):
     """Recognize the strips twice (timed, then profiled); totals per frame.
-    With a ``load`` the frames are only timed."""
+    With a ``load``, or ``profiled`` false, the frames are only timed."""
     import cProfile
     import hashlib
     import pstats
     import cv2
     from poker_engine.desktop.aa_session import frame_summary
     timed = reader_factory()
-    profiled = reader_factory() if load is None else None
+    profiled = reader_factory() if load is None and profiled else None
     profiler = cProfile.Profile()
     recorder = RecorderLoad(scratch) if load == "recorder" else None
     status = StatusLoad() if load == "status" else None
@@ -525,6 +525,8 @@ def main(argv=None):
                      help="also run the window's recorder, or its state requests")
     run.add_argument("--threads", type=int,
                      help="limit OpenCV and math-library worker threads")
+    run.add_argument("--timed-only", action="store_true",
+                     help="time the frames without the profiled second pass")
     run.add_argument("--hashes", type=Path,
                      help="write each frame's per-field fingerprints here")
     pair = commands.add_parser("compare", help="fields that differ between two runs")
@@ -551,7 +553,8 @@ def main(argv=None):
         result = profile(args.video, lambda: AA8Reader(args.profile),
                          start=args.start, step=args.step, count=args.frames,
                          exclude=parse_windows(args.exclude), load=args.load,
-                         scratch=scratch, hashes=args.hashes)
+                         scratch=scratch, hashes=args.hashes,
+                         profiled=not args.timed_only)
     print(json.dumps({"computer": computer(), "threads": args.threads,
                       "video": args.video.name, **result}, ensure_ascii=False))
     return 0

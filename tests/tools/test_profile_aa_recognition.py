@@ -98,6 +98,7 @@ def test_profile_with_the_window_asking_for_its_state(tmp_path, monkeypatch):
     video = recording(tmp_path / "rec", seconds=4)
     result = tool.profile(video, SlowReader, start=0, step=1, count=60,
                           load="status")
+    assert result["profiled_ms"] is None
     assert result["status"]["answers"] > 0
     assert result["status"]["kilobytes"]["p50"] > 0
     assert result["payload_kilobytes"]["n"] == 60
@@ -107,7 +108,9 @@ def test_two_runs_compare_field_by_field(tmp_path):
     video = recording(tmp_path / "rec")
     first, second, third = (tmp_path / name for name in ("a", "b", "c"))
     tool.profile(video, SlowReader, start=0, step=3, count=8, hashes=first)
-    tool.profile(video, SlowReader, start=0, step=3, count=8, hashes=second)
+    timed = tool.profile(video, SlowReader, start=0, step=3, count=8, hashes=second,
+                         profiled=False)
+    assert timed["profiled_ms"] is None and timed["recognition_ms"]["n"] == 8
     assert tool.compare(first, second)["same"] is True
 
     class Shifted(SlowReader):
