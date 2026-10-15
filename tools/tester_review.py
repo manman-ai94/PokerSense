@@ -418,7 +418,15 @@ def sheet(results, day):
     hands = sum((item["advice"] or {}).get("hands", 0) for item in results)
     usable = sum(item["opponents_usable"][0] for item in results)
     machines = "、".join(sorted({item["machine"] for item in results}))
-    lines = [f"复盘了 {machines} 的 {len(results)} 场录像（{minutes:.0f} 分钟，{hands} 手）",
+    # Every recording's speed, even a fast one: the slow-computer work
+    # follows it from day to day.
+    speeds = "；".join(
+        f"{item['folder'].removesuffix('-live')} 读帧 "
+        f"{item['speed']['frames_per_second']:g}/秒、识别 "
+        f"{item['speed']['recognition_ms']} 毫秒/帧"
+        for item in results if item["speed"]["frames_per_second"] is not None)
+    lines = [f"复盘了 {machines} 的 {len(results)} 场录像（{minutes:.0f} 分钟，{hands} 手）"
+             + (f"；{speeds}" if speeds else ""),
              ("问题：" + "；".join(line.split("（")[0] for line in found[:TOP_PROBLEMS])
               if found else "没有要看的问题"),
              f"对手统计新加 {usable} 手能用的牌局"]

@@ -89,7 +89,8 @@ def test_a_run_reviews_new_recordings_once(tmp_path, capsys):
     assert "- 电脑太慢：每秒只读 2.5 帧" in sheet
     assert "轮到他 1 次，1 次窗口没给建议（庄位没认清 1）" in sheet
     lines = (out / review.LINES).read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "复盘了 du 的 1 场录像（18 分钟，1 手）"
+    assert lines[0] == ("复盘了 du 的 1 场录像（18 分钟，1 手）；"
+                        "20261015-102047 读帧 2.5/秒、识别 300 毫秒/帧")
     assert lines[1].startswith("问题：电脑太慢：每秒只读 2.5 帧；轮到他 1 次")
     assert "（" not in lines[1]
     capsys.readouterr()
