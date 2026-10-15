@@ -182,8 +182,13 @@ class _Range:
         return self.hands[bisect(self.totals, rng.random() * self.totals[-1])][0]
 
 
-def ranges_equity(hero, board, ranges, *, trials=TRIALS, seed=0):
+def ranges_equity(hero, board, ranges, *, trials=TRIALS, seed=0, pots=None):
     """(share of the pot you win, hands left per opponent) against ``ranges``.
+
+    ``pots``: [(chips, seats)] when the pot is split into a main pot and side
+    pots (``side_pots.pots``): your share of each is against the seats that
+    can win it, and the share returned is of all their chips together. By
+    default one pot against everyone.
 
     Returns (None, counts) when an opponent has no hand left, or when the
     ranges cannot be dealt together without sharing cards.
@@ -193,6 +198,14 @@ def ranges_equity(hero, board, ranges, *, trials=TRIALS, seed=0):
     counts = {seat: len(part.hands) for seat, part in parts.items()}
     if not parts or not all(counts.values()):
         return None, counts
+    order = list(parts)
+    if pots is None:
+        pots = [(1.0, order)]
+    total = sum(chips for chips, _ in pots)
+    # Each pot as (its part of the chips, the places in ``order`` of the seats
+    # that can win it); one pot against everyone weighs exactly 1.
+    split = [(chips / total, [order.index(seat) for seat in seats if seat in parts])
+             for chips, seats in pots]
     rng = random.Random(seed)
     first, second = (CARD_ID[card] for card in hero)
     known = [CARD_ID[card] for card in board]
@@ -211,15 +224,24 @@ def ranges_equity(hero, board, ranges, *, trials=TRIALS, seed=0):
         full = (*known, *rest)
         mine = _EVALUATE_7(first, second, *full)
         ranks = [_EVALUATE_7(x, y, *full) for x, y in hands]
-        best = min(ranks)
-        if mine < best:
-            won += 1.0
-        elif mine == best:
-            won += 1.0 / (1 + ranks.count(mine))
+        for weight, seats in split:
+            won += weight * _won(mine, [ranks[place] for place in seats])
         dealt += 1
     if dealt < trials / 2:
         return None, counts
     return won / dealt, counts
+
+
+def _won(mine, ranks):
+    """Your share of one pot against the hands ``ranks`` (lower is better)."""
+    if not ranks:
+        return 1.0
+    best = min(ranks)
+    if mine < best:
+        return 1.0
+    if mine == best:
+        return 1.0 / (1 + ranks.count(mine))
+    return 0.0
 
 
 __all__ = ["FLOOR_FROM", "FLOOR_SLOPE", "MAX_FLOOR", "TRIALS", "floor",
