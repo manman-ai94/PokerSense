@@ -5,11 +5,12 @@ and, facing a bet, expects the bettor to bluff at one too. The AA players
 call a lot (heads-up they fold to a flop bet 42% of the time) and, in the
 2009 games the population model comes from, players who were not
 aggressive rarely bluffed big river bets: of the hands shown behind a
-heads-up river bet of three quarters of the pot or more, 8-10% (passive)
+heads-up river bet of three quarters of the pot or more, 8-9% (passive)
 and 15-18% (the rest but the aggressive) were no pair of their own, against
-24-27% for the aggressive; behind a river raise 2-6%, against 9-13%
-(``tools/phh_showdown_check.py``, 2026-10-15). One pair calling there wins
-about that share plus part of the pairs: under the 30% a big bet asks.
+24-27% for the aggressive; behind a river raise 2-6%, against 8-13%
+(``tools/phh_showdown_check.py``, 2026-10-15, rerun after a fix). One pair
+calling there wins about that share plus part of the pairs: under the 30% a
+big bet asks.
 
 Two rules change the solver's river answer, each on its own:
 
@@ -24,7 +25,12 @@ Two rules change the solver's river answer, each on its own:
 
 Both are off unless named (``solver_turn@nobluff@nocatch+...`` on the
 scoreboard, ``LIVE`` in the window): the table default changes only on AA
-recording or showdown evidence.
+recording or showdown evidence. On the scoreboard (2026-10-15, mixed stacks,
+two batches) ``nobluff`` lost 2.4 and 3.6 big blinds a hundred hands on the
+AA real-player table, where a river bluff wins the pot often enough.
+``nocatch`` fired twice in 32,000 hands: the scoreboard
+players bet half the pot on the river, never big, so only recordings can
+show what it is worth.
 """
 
 from __future__ import annotations
