@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -78,6 +79,16 @@ def test_default_tests_follow_the_changed_files():
         "tests/tools/test_flywheel_gates.py"]
 
 
+def test_default_tests_look_in_the_checkout_given(tmp_path):
+    (tmp_path / "tests" / "desktop").mkdir(parents=True)
+    changed = ["ui/aa-live/signal_view.js", "tests/ui/test_signal_view.js",
+               "src/poker_engine/desktop/aa_reader.py", "tests/tools/test_gone.py",
+               "src/poker_engine/solver/texassolver.py"]
+    # The page's JavaScript tests run from tests/desktop; a test file the
+    # checkout no longer has and a package without tests are left out.
+    assert gates.default_tests(changed, root=tmp_path) == ["tests/desktop"]
+
+
 def test_lines_say_each_gate_in_plain_words():
     result = {"base": "a" * 40, "head": "b" * 40, "head_dirty": True, "gates": {
         "replay": None,
@@ -94,12 +105,47 @@ def test_lines_say_each_gate_in_plain_words():
     assert text[-1] == "三道关：没过"
 
 
-def test_main_checks_out_the_base_and_cleans_it_up(tmp_path, capsys):
-    before = gates.git("worktree", "list")
+def test_main_checks_out_the_base_and_cleans_it_up(tmp_path, capsys, monkeypatch):
+    # Only this run's worktree: tests in other workers add their own meanwhile.
+    made = []
+    real = gates.base_tree
+    monkeypatch.setattr(gates, "base_tree",
+                        lambda ref, folder: made.append(folder) or real(ref, folder))
     status = gates.main(["--base", "HEAD", "--no-tests", "--out", str(tmp_path)])
     assert status == 1  # nothing ran, so nothing passed
     result = json.loads((tmp_path / "gates.json").read_text(encoding="utf-8"))
     assert result["base"] == gates.git("rev-parse", "HEAD")
     assert result["gates"] == {"replay": None, "sim": None, "tests": None}
     assert "三道关：一道都没跑" in capsys.readouterr().out
-    assert gates.git("worktree", "list") == before
+    listed = gates.git("worktree", "list", "--porcelain")
+    assert len(made) == 1 and not made[0].exists()
+    assert str(made[0]) not in listed and str(made[0].resolve()) not in listed
+
+
+def test_a_relative_out_is_the_same_folder_for_both_versions(tmp_path,
+                                                             monkeypatch):
+    # Each version's tools run inside its own checkout: a relative --out must
+    # not land inside the base's temporary worktree.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(gates, "base_tree",
+                        lambda ref, folder: folder.mkdir() or "base")
+    monkeypatch.setattr(gates, "remove_tree", lambda folder: folder.rmdir())
+    given = []
+
+    def tool(tree, args, log):
+        target = Path(args[args.index("--out") + 1])
+        given.append(target)
+        if not target.is_absolute():
+            return 1                           # it would write inside ``tree``
+        report = _report(3, 1, 0, [_hand(1, "call")])
+        target.write_text(json.dumps(report), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(gates, "run_tool", tool)
+    frames = tmp_path / "frames.jsonl"
+    frames.write_text("", encoding="utf-8")
+    gates.main(["--frames", str(frames), "--no-tests", "--out", "gates-out"])
+    assert given and all(path.is_absolute() for path in given)
+    saved = tmp_path / "gates-out" / "gates.json"
+    result = json.loads(saved.read_text(encoding="utf-8"))
+    assert result["gates"]["replay"]["passed"] is True

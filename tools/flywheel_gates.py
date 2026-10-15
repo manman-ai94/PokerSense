@@ -209,21 +209,26 @@ def changed_files(base_commit):
     return sorted({name for name in names if (ROOT / name).exists()})
 
 
-def default_tests(changed):
-    """The changed test files and the test folders of the changed packages."""
+def default_tests(changed, root=ROOT):
+    """The changed test files and the test folders of the changed packages
+    (the window's page: ``tests/desktop``, which runs its JavaScript tests),
+    as they are in the checkout ``root``."""
     paths = set()
     for name in changed:
         parts = Path(name).parts
-        if parts[0] == "tests" and name.endswith(".py"):
+        if parts[0] == "tests" and name.endswith(".py") and (root / name).exists():
             paths.add(name)
         elif parts[:2] == ("src", "poker_engine") and len(parts) > 3:
-            if (ROOT / "tests" / parts[2]).is_dir():
+            if (root / "tests" / parts[2]).is_dir():
                 paths.add(f"tests/{parts[2]}")
-        elif parts[0] == "tools" and (ROOT / "tests" / "tools").is_dir():
+        elif (parts[0] == "ui" or parts[:2] == ("tests", "ui")) and (
+                root / "tests" / "desktop").is_dir():
+            paths.add("tests/desktop")
+        elif parts[0] == "tools" and (root / "tests" / "tools").is_dir():
             stem = Path(name).stem
-            candidate = ROOT / "tests" / "tools" / f"test_{stem}.py"
+            candidate = root / "tests" / "tools" / f"test_{stem}.py"
             if candidate.exists():
-                paths.add(candidate.relative_to(ROOT).as_posix())
+                paths.add(candidate.relative_to(root).as_posix())
     # A folder already covers the files in it.
     return sorted(p for p in paths
                   if not any(p != q and p.startswith(q + "/") for q in paths))
@@ -290,6 +295,9 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     args.head_strategy = args.head_strategy or args.strategy
+    # Each version's tools run inside their own checkout: a relative --out
+    # would land in the base's temporary worktree and go with it.
+    args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
     head = git("rev-parse", "HEAD")
     dirty = bool(git("status", "--porcelain", "--untracked-files=no"))

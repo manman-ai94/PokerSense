@@ -36,7 +36,8 @@ owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
   written last: a recording without it, or whose files do not match it, is
   still on its way and the pull leaves it alone.
 * rclone is the one in the settings (``rclone``, a full path: ``flywheel_sync.py
-  setup`` keeps the one it finds), else the one on the window's PATH, else
+  setup`` keeps the one it finds; passed over once it is gone, say after an
+  upgrade), else the one on the window's PATH, else
   one in the usual places (on Windows ``C:\\rclone``, winget's links and the
   PATH as it is now in the registry: a window started before rclone was put
   on the PATH does not see it there).
@@ -175,8 +176,10 @@ def rclone_places():
 
 def find_rclone(configured="", *, which=shutil.which, places=None):
     """The rclone to run: the configured one, the one on PATH, or one in the
-    usual places; "" when there is none."""
-    if configured:
+    usual places; "" when there is none. A configured full path that is gone
+    (an upgrade moved rclone to a new folder) is passed over."""
+    if configured and not (os.path.isabs(configured)
+                           and not os.path.isfile(configured)):
         return configured
     found = which("rclone")
     if found:
