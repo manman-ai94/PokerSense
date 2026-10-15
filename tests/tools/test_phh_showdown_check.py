@@ -83,6 +83,26 @@ def test_categories_count_only_the_players_own_cards():
     assert category(["2h", "3c"], ["As", "Ks", "Qs", "Js", "Ts"]) == "nothing"
 
 
+def test_a_pocket_pair_that_plays_over_a_paired_board_is_a_pair():
+    two_pair = ["Kh", "Kd", "7s", "7c", "2h"]
+    assert category(["Qh", "Qc"], two_pair) == "pair"      # KKQQ7 beats the board
+    assert category(["9h", "9c"], two_pair) == "pair"
+    assert category(["Qc", "3d"], ["Kh", "Kd", "7s", "7c", "Qh"]) == "pair"
+    assert category(["Ah", "2c"], two_pair) == "nothing"    # only the kicker
+    assert category(["8h", "2c"], two_pair) == "nothing"    # 22 does not play
+    assert category(["6h", "6c"], two_pair) == "nothing"    # under the board's 77
+    assert category(["Ah", "Qc"], two_pair) == "nothing"
+    full_house = ["Kh", "Kd", "Ks", "7c", "7h"]
+    assert category(["Qh", "Qc"], full_house) == "pair"     # KKKQQ
+    assert category(["Ah", "Qc"], full_house) == "nothing"
+    trips = ["Kh", "Kd", "Ks", "7c", "5h"]
+    assert category(["Ah", "Qc"], trips) == "nothing"
+    one_pair = ["Kh", "Kd", "7s", "5c", "2h"]
+    assert category(["Qh", "Qc"], one_pair) == "pair"
+    assert category(["5h", "9c"], one_pair) == "pair"
+    assert category(["Ah", "Qc"], one_pair) == "nothing"
+
+
 def test_buckets_and_sizes():
     assert player_bucket(49, 0) == "few"
     assert player_bucket(100, 10) == "passive"
