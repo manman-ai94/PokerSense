@@ -32,7 +32,7 @@ uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev,desktop,solver-tools,perceptual]"
 
 # 全量测试约 10 分钟；pyproject 里已默认 -q。CI 和下面一样分两步：先按 CPU 核数并行，再单独跑计时测试
-PYTHONPATH=src:. .venv/bin/python -m pytest -n auto --dist worksteal -m "not timing" && PYTHONPATH=src:. .venv/bin/python -m pytest -m timing
+PYTHONPATH=src:. .venv/bin/python -m pytest -n auto --dist loadfile -m "not timing" && PYTHONPATH=src:. .venv/bin/python -m pytest -m timing
 .venv/bin/python -m flake8 src tests tools research/hu_root research/coverage_bridge
 ```
 

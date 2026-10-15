@@ -90,7 +90,7 @@ jobs:
           'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
           'runner_os': os.environ['RUNNER_OS'], 'python': sys.version, 'pytest': pytest.__version__,
           'node': subprocess.check_output(['node', '--version'], text=True).strip(),
-          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'worksteal', '-m', 'not timing']},
+          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'loadfile', '-m', 'not timing']},
           'timing_scope': {'arguments': ['-v', '-ra', '-m', 'timing']},
           'reference_scope': 'tests/tools/test_strategy_eval_independent_oracle_v1.py'};
           payload = json.dumps(data, ensure_ascii=True, indent=2);
@@ -99,9 +99,10 @@ jobs:
       - name: pytest
         id: full_pytest
         # 测试大半时间在等（计时、子进程、本机服务），不在算：按 CPU 核数分几个进程同时跑，
-        # 一个不少。带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
+        # 一个不少。loadfile：同一个测试文件留在同一个进程里（模块级的共用准备不被拆开）。
+        # 带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
         run: >-
-          python -m pytest -v -ra -n auto --dist worksteal -m "not timing"
+          python -m pytest -v -ra -n auto --dist loadfile -m "not timing"
           --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/full.xml"
       - name: pytest (timing, one process)
         id: timing_pytest
@@ -207,7 +208,7 @@ jobs:
           'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
           'runner_os': os.environ['RUNNER_OS'], 'python': sys.version, 'pytest': pytest.__version__,
           'node': subprocess.check_output(['node', '--version'], text=True).strip(),
-          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'worksteal', '-m', 'not timing']},
+          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'loadfile', '-m', 'not timing']},
           'timing_scope': {'arguments': ['-v', '-ra', '-m', 'timing']},
           'reference_scope': 'tests/tools/test_strategy_eval_independent_oracle_v1.py'};
           payload = json.dumps(data, ensure_ascii=True, indent=2);
@@ -216,9 +217,10 @@ jobs:
       - name: pytest
         id: full_pytest
         # 测试大半时间在等（计时、子进程、本机服务），不在算：按 CPU 核数分几个进程同时跑，
-        # 一个不少。带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
+        # 一个不少。loadfile：同一个测试文件留在同一个进程里（模块级的共用准备不被拆开）。
+        # 带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
         run: >-
-          python -m pytest -v -ra -n auto --dist worksteal -m "not timing"
+          python -m pytest -v -ra -n auto --dist loadfile -m "not timing"
           --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/full.xml"
       - name: pytest (timing, one process)
         id: timing_pytest

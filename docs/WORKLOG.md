@@ -12,7 +12,7 @@
 ## 记录
 
 ### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
-- 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist worksteal -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头。
+- 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头。
 - 起因：Windows 测试一步 20 分钟（6416 个测试一个进程跑，大半时间在等计时和子进程）；#55 因工作日志和 main 冲突，GitHub 一个多小时没跑检查。
 - 怎么做的：pytest-xdist 3.8.0 进 dev；并行时多个进程抢系统临时目录里同一个采集卡锁，conftest 给每个测试自己的锁文件（生产代码不动）。
 - 怎么验证的：本地 4 核 6404 过 + 17 跳过 + 计时 7 过 = 6428，和 Windows CI 总数一样，5 分钟（单进程约 50 分钟）；union 用 bare 仓库 merge-tree 试过两边新记录都保留。
