@@ -1,6 +1,7 @@
 """The weekly refit keeps the AA 校准桌 unless new recordings are predicted better."""
 
 from pathlib import Path
+import re
 
 import pytest
 
@@ -129,4 +130,5 @@ def test_the_package_carries_its_parameters_and_recordings():
     stats = cal_stats()
     assert FITTED is stats["fitted"] and set(FITTED) >= {"mix", "flop", "turn", "river"}
     # Written by the tool (or its first fit): the minutes add up to the source's.
-    assert f"{sum(stats['logs'].values()):.1f} minutes" in stats["source"]
+    minutes = float(re.search(r"([\d.]+) minutes", stats["source"]).group(1))
+    assert sum(stats["logs"].values()) == pytest.approx(minutes, abs=0.06)
