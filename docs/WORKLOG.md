@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-15 · `claude/release-check-lhgy4q`（装新版前的复查：一条命令）**
+- 做了什么：新 `tools/release_check.py <装着的版本> <新版>`：两版各检出到临时工作区，跑测试和 flake8、录像日志重放（建议覆盖、建议变了几处、按哪条规则、事后对着亮牌估值）、按原速重放（字段覆盖率、卡顿、丢帧、延迟、实时建议；同一版量过的有缓存）、杜的 P30 验收，出一页 `复查单.md` 和 `release_check.json`；`--plan` 先说要跑多久，信号灯窗口开着不跑。
+- 怎么做的：都调现有工具（`aa_session_report`、`aa_compare_advice`、`measure_aa_realtime --advice`、`p30_acceptance`、`flywheel_gates`）。旧工具三处缺口：`aa_compare_advice` 只能比同一份代码里的两种读法；日志重放把单挑求解器当作立刻算完；日志重放的“卡顿”是日志里原有的，两版必然一样。所以求解器和卡顿放到按原速重放里量。9/9 保留录像 300–820 秒强制跳过。
+- 怎么验证的：新测试 12 个、`flywheel_gates` 测试，flake8；云端 4 段 Mac 测量日志真跑：main 比 #55 建议变了 0 处（83 手、171 个决策，4 分钟），#42 前后变了 1 处（转牌范围规则 加注→过牌，胜率 41%→29%）。
+- 还剩：按原速重放和 P30 验收要在 Mac 上第一次真跑（要识别包和录像）。
+
 **2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（云盘里出了 11 个同名“PokerSense 同事数据”）**
 - 做了什么：每次传完一场、写 `upload.json` 之前，跑 `rclone dedupe --dedupe-mode merge --max-depth 3 <remote>:`，把同名文件夹并成一个（只并文件夹，不动文件；`drive.file` 只看得见这台电脑自己传的）；并失败只记日志，不挡上传。
 - 起因：Google Drive 允许同名文件夹，限流时 rclone 重试建文件夹、或两次传输同时建，就会多出一个。

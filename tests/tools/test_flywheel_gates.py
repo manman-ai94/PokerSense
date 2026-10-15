@@ -78,6 +78,16 @@ def test_default_tests_follow_the_changed_files():
         "tests/tools/test_flywheel_gates.py"]
 
 
+def test_default_tests_look_in_the_checkout_given(tmp_path):
+    (tmp_path / "tests" / "desktop").mkdir(parents=True)
+    changed = ["ui/aa-live/signal_view.js", "tests/ui/test_signal_view.js",
+               "src/poker_engine/desktop/aa_reader.py", "tests/tools/test_gone.py",
+               "src/poker_engine/solver/texassolver.py"]
+    # The page's JavaScript tests run from tests/desktop; a test file the
+    # checkout no longer has and a package without tests are left out.
+    assert gates.default_tests(changed, root=tmp_path) == ["tests/desktop"]
+
+
 def test_lines_say_each_gate_in_plain_words():
     result = {"base": "a" * 40, "head": "b" * 40, "head_dirty": True, "gates": {
         "replay": None,
