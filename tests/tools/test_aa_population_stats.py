@@ -112,3 +112,22 @@ def test_reduce_takes_the_last_history_and_the_pot_before_each_action(tmp_path):
     assert record["log"] == "m" and record["dealer"] == 3
     assert record["actions"][0]["pot_before"] == "20"
     assert record["seats_first"] == {"0": "active", "1": "empty"}
+
+
+def test_counts_kept_as_events_add_up_to_the_same_numbers():
+    hero_hand = [act("preflop", 3, "fold"), act("preflop", 4, "raise", "30", "20"),
+                 act("preflop", 5, "fold"), act("preflop", 0, "fold"),
+                 act("preflop", 1, "fold"), act("preflop", 2, "fold")]
+    hands = [hand(LIMP_ISO_CBET), hand(hero_hand, log="seated"),
+             {**hand(LIMP_ISO_CBET), "complete": False}]
+    minutes = {"spectate": 30, "seated": 30}
+    direct = stats.build(hands, hero_logs={"seated"}, minutes=minutes)
+    # What an opponents-only extract keeps (tools/refit_aa_cal.py), through JSON.
+    kept = [{"log": item["log"], "complete": item["complete"],
+             "events": json.loads(json.dumps(
+                 stats.hand_events(item, item["log"] == "seated")))
+             if item["complete"] else None} for item in hands]
+    assert stats.build(kept, minutes=minutes) == direct
+    group, events = stats.hand_events(hand(hero_hand, log="seated"), True)
+    assert group == "players_4-6"
+    assert not any(key.startswith("CO|") for _, key, _ in events)   # seat 4 is CO
