@@ -19,9 +19,35 @@ from tools.aa_pot_candidate import (
 from tools.aa8_action_transfer import inventory, load, sha
 
 
-def pot_patch(image, prefix=None, threshold=.90):
+def label_line(binary, colon):
+    """``binary`` with only the run of inked rows that holds the label.
+
+    On some phones (杜's Huawei P30) the top of the chip icon under the pot
+    reaches the bottom row of the pot region, below a blank gap; taken as part
+    of the number it makes the digit crop too tall to read. The label's run
+    is the one with the most ink left of the colon."""
+    label = (binary[:, max(colon - 34, 0):colon + 3] > 0).sum(axis=1)
+    inked = binary.any(axis=1)
+    runs, start = [], None
+    for y in range(len(inked) + 1):
+        if y < len(inked) and inked[y]:
+            start = y if start is None else start
+        elif start is not None:
+            runs.append((start, y))
+            start = None
+    if not runs:
+        return binary
+    top, bottom = max(runs, key=lambda run: label[run[0]:run[1]].sum())
+    kept = np.zeros_like(binary)
+    kept[top:bottom] = binary[top:bottom]
+    return kept
+
+
+def pot_patch(image, prefix=None, threshold=.90, label_rows_only=False):
     """The pot's digits after the "底池:" label, found by matching ``prefix``
-    (a reviewed rasterization of the label) at ``threshold`` or better."""
+    (a reviewed rasterization of the label) at ``threshold`` or better.
+    ``label_rows_only`` drops ink on rows detached from the label (see
+    ``label_line``)."""
     patch = region(image)
     binary = pot_mask(patch)
     colon = colon_x(binary)
@@ -31,6 +57,8 @@ def pot_patch(image, prefix=None, threshold=.90):
         colon = matches[0] if len(matches) == 1 else None
     if colon is None:
         return None
+    if label_rows_only:
+        binary = label_line(binary, colon)
     ys, xs = np.where(binary[:, colon + 3:] > 0)
     if not len(xs):
         return None

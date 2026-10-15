@@ -159,6 +159,9 @@ def _live_pipeline(pipeline):
     1081 read at .80 against 669 at .90; 400 frames that had one read the
     same, and every one looked at by eye (18 that differed from a nearby
     reading, 12 more at random) was right.
+    Only the run of inked rows holding the label is read (``label_line``): on
+    杜's Huawei P30 the chip icon under the pot reaches the region's bottom
+    row, and taken as part of the number it made every pot unreadable.
     The module object is replaced, not changed: the frozen offline tools keep
     .90."""
     from tools.aa8_unmarked_money import pot_patch
@@ -168,7 +171,8 @@ def _live_pipeline(pipeline):
     def unique_pot_patch(image, prefixes):
         candidates = {}
         for prefix in prefixes:
-            patch = pot_patch(image, prefix, threshold=POT_LABEL_MATCH)
+            patch = pot_patch(image, prefix, threshold=POT_LABEL_MATCH,
+                              label_rows_only=True)
             if patch is not None:
                 key = (patch.shape, hashlib.sha256(patch.tobytes()).hexdigest())
                 candidates[key] = patch

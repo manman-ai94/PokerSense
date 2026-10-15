@@ -55,6 +55,37 @@ def test_coverage_counts_each_field_over_the_frames_it_applies_to():
     assert result["spectating"] is False
 
 
+def advised(hand, decision, status, *, street="flop", visible=True,
+            board=("2c", "3d", "4h", None, None)):
+    row = frame(board=board, street=street, actor=4,
+                controls={"visible": visible, "button": "call", "call_amount": "8"})
+    row["fields"]["actions_v1"] = {"hand_id": hand}
+    row["fields"]["solver_advice"] = {"status": status, "street": street,
+                                      "decision": decision}
+    return row
+
+
+def test_after_the_flop_the_board_and_advice_on_your_decisions():
+    rows = [advised("h1", 0, "computing"), advised("h1", 0, "ready"),
+            advised("h1", 1, "abstain"),
+            advised("h2", 0, "ready", visible=False),          # not your turn
+            advised("h2", 1, "abstain", street="turn",
+                    board=("2c", "3d", "4h", None, None)),     # turn card unread
+            advised("h3", 0, "ready", street="preflop", board=(None,) * 5)]
+    result = field_coverage(rows)
+    # one of three postflop decisions on your turn got advice
+    assert result["postflop_advice"] == {"value": round(1 / 3, 4), "n": 3}
+    # board read in full on 4 of the 5 postflop frames
+    assert result["postflop_board"] == {"value": 0.8, "n": 5}
+    few = compare(result, BASE)
+    rows = {row["key"]: row for row in few["rows"]}
+    assert rows["postflop_advice"]["verdict"] == "量不了"   # too few decisions
+    assert rows["postflop_board"]["verdict"] == "不通过"     # line 85.5%
+    measured = _measured(postflop_advice=0.5)
+    assert {row["key"]: row["verdict"] for row in compare(measured, BASE)["rows"]}[
+        "postflop_advice"] == "不通过"                          # line 72%
+
+
 def test_spectating_recording_leaves_your_turn_unmeasured():
     rows = [frame(hero=None) for _ in range(10)]
     measured = field_coverage(rows)
@@ -71,7 +102,8 @@ def test_spectating_recording_leaves_your_turn_unmeasured():
 def _measured(**values):
     measured = {key: {"value": 0.99, "n": 1000} for key in (
         "table", "pot", "street", "board", "stacks", "dealer", "actor", "seats",
-        "hero_cards", "hero_button", "call_amount")}
+        "hero_cards", "hero_button", "call_amount", "postflop_board",
+        "postflop_advice")}
     for key, value in values.items():
         measured[key] = {"value": value, "n": 1000}
     measured["spectating"] = False
@@ -81,7 +113,8 @@ def _measured(**values):
 BASE = {"realtime": {"label": "test", "metrics": {
     "table": 0.9, "pot": 0.9, "street": 0.9, "board": 0.9, "stacks": 0.9,
     "dealer": 0.8, "actor": 0.7, "seats": 0.9, "hero_cards": 0.6,
-    "hero_button": 1.0, "call_amount": 0.92}},
+    "hero_button": 1.0, "call_amount": 0.92, "postflop_board": 0.95,
+    "postflop_advice": 0.8}},
     "seat_states": {"metrics": {"all_known_supported": 0.88,
                                 "all_known_while_acting": 0.99}}}
 
@@ -162,7 +195,8 @@ def test_committed_baseline_has_every_line():
     metrics = baseline["realtime"]["metrics"]
     assert all(isinstance(metrics[key], float) for key in (
         "table", "pot", "street", "board", "stacks", "dealer", "actor", "seats",
-        "hero_cards", "hero_button", "call_amount"))
+        "hero_cards", "hero_button", "call_amount", "postflop_board",
+        "postflop_advice"))
     assert set(baseline["seat_states"]["metrics"]) == {
         "all_known_supported", "all_known_while_acting"}
 
