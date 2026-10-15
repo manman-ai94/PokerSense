@@ -251,6 +251,22 @@ class NoisyBot(_Policy):
     def decide(self, observation, rng):
         return self.noisy(observation, self.base.decide(observation, rng), rng)
 
+    def distribution(self, observation, rng):
+        """{kind: probability} of the action, for ``fidelity``: the base's
+        action and the shares that depart from it, as ``noisy`` draws them."""
+        action = self.base.decide(observation, rng)
+        kind = "f" if action == "fold" else "c" if action == "check_call" else "r"
+        if observation["street"] == "preflop":
+            return {kind: 1.0}
+        if kind == "r":
+            return {"c": self.slow, "r": 1 - self.slow}
+        if kind == "f":
+            return {"c": self.sticky, "f": 1 - self.sticky}
+        if (float(observation["to_call"] or 0) == 0
+                and raise_toward(observation, STAB_SIZE) is not None):
+            return {"r": self.stab, "c": 1 - self.stab}
+        return {"c": 1.0}
+
     def noisy(self, observation, action, rng):
         if observation["street"] == "preflop":
             return action

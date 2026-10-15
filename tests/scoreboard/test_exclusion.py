@@ -274,7 +274,8 @@ def test_noisy_players_by_name_and_without_noise_play_as_their_base():
 
 def test_the_existing_pools_are_unchanged_and_noisy_is_added():
     assert POOLS["noisy"] == ("noisy+aa_real",)
-    assert {name: pool for name, pool in POOLS.items() if name != "noisy"} == {
+    assert {name: pool for name, pool in POOLS.items()
+            if name not in ("noisy", "aa_cal")} == {
         "population": ("population",), "aa": ("aa_population",),
         "aa_real": ("aa_real",), "styles": ("tag", "lag", "rock", "station"),
         "reg": ("reg",), "maniac": ("maniac",), "nit": ("nit",),

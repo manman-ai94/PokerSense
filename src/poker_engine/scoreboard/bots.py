@@ -253,6 +253,9 @@ def make_policy(name):
     if name == "aa_real":
         from .aa_real import AARealBot          # imports this module
         return AARealBot()
+    if name == "aa_cal":
+        from .calibrated import CalibratedBot   # imports this module
+        return CalibratedBot()
     if name in OPPONENT_NAMES:
         from .opponents import ToughBot         # imports this module
         return ToughBot(name)
