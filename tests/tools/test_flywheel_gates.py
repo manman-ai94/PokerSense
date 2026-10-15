@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -119,3 +120,32 @@ def test_main_checks_out_the_base_and_cleans_it_up(tmp_path, capsys, monkeypatch
     listed = gates.git("worktree", "list", "--porcelain")
     assert len(made) == 1 and not made[0].exists()
     assert str(made[0]) not in listed and str(made[0].resolve()) not in listed
+
+
+def test_a_relative_out_is_the_same_folder_for_both_versions(tmp_path,
+                                                             monkeypatch):
+    # Each version's tools run inside its own checkout: a relative --out must
+    # not land inside the base's temporary worktree.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(gates, "base_tree",
+                        lambda ref, folder: folder.mkdir() or "base")
+    monkeypatch.setattr(gates, "remove_tree", lambda folder: folder.rmdir())
+    given = []
+
+    def tool(tree, args, log):
+        target = Path(args[args.index("--out") + 1])
+        given.append(target)
+        if not target.is_absolute():
+            return 1                           # it would write inside ``tree``
+        report = _report(3, 1, 0, [_hand(1, "call")])
+        target.write_text(json.dumps(report), encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(gates, "run_tool", tool)
+    frames = tmp_path / "frames.jsonl"
+    frames.write_text("", encoding="utf-8")
+    gates.main(["--frames", str(frames), "--no-tests", "--out", "gates-out"])
+    assert given and all(path.is_absolute() for path in given)
+    saved = tmp_path / "gates-out" / "gates.json"
+    result = json.loads(saved.read_text(encoding="utf-8"))
+    assert result["gates"]["replay"]["passed"] is True
