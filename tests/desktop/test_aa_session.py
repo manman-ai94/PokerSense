@@ -576,3 +576,30 @@ def test_the_status_says_which_device_the_source_found():
     finally:
         session.stop()
         wait_until(lambda: source.closed.is_set())
+
+
+def test_each_snapshot_gets_its_own_copy_of_the_result():
+    class Nested(Reader):
+        def read(self, image, sequence, sample):
+            return {"hero": ["Ah", "Kd"], "pot": {"value": 12.5}, "actions": [
+                {"seat": 3, "amount": None}], "strategy_eligible": False}
+
+    source = Source()
+    session = AARecognitionSession(lambda _: source, Nested)
+    session.start({})
+    try:
+        wait_until(lambda: session.snapshot()["payload"] is not None)
+        first = session.snapshot()["payload"]
+        first["actions"][0]["seat"] = 7
+        first["hero"].append("Qs")
+        second = session.snapshot()["payload"]
+        assert second["actions"] == [{"seat": 3, "amount": None}]
+        assert second["hero"] == ["Ah", "Kd"] and second["pot"] == {"value": 12.5}
+        assert second is not first
+        # The window's status gets the published JSON text itself.
+        status = session.status_snapshot()
+        assert json.loads(status["payload"]) == second and status["payload"]
+        assert status["realtime"]["reason"] == session.snapshot()["realtime"]["reason"]
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())

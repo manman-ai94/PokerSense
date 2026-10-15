@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 
 import cv2
@@ -109,8 +110,22 @@ def test_profile_with_the_window_asking_for_its_state(tmp_path, monkeypatch):
                           load="status")
     assert result["profiled_ms"] is None
     assert result["status"]["answers"] > 0
+    assert result["status"]["path"] == "published-json"
     assert result["status"]["kilobytes"]["p50"] > 0
     assert result["payload_kilobytes"]["n"] == 60
+
+
+def test_the_status_is_answered_as_this_checkout_does_it(monkeypatch):
+    payload = {"a": [1, None, "七"], "b": {"c": 1.5}}
+    text = json.dumps(payload, allow_nan=False)
+    path, answer = tool.status_answer()
+    assert path == "published-json"
+    # Code from before the window kept the published JSON text.
+    monkeypatch.setitem(sys.modules, "poker_engine.desktop.aa_server", None)
+    old, before = tool.status_answer()
+    assert old == "copy-and-encode"
+    assert json.loads(answer(text, payload)) == {"payload": payload}
+    assert json.loads(before(text, payload)) == {"payload": payload}
 
 
 def test_two_runs_compare_field_by_field(tmp_path):

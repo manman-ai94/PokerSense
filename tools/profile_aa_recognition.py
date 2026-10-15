@@ -317,13 +317,37 @@ class RecorderLoad:
                 "megabytes": status.get("megabytes")}
 
 
+def status_answer():
+    """How this checkout answers ``/api/status`` for the latest result, given
+    as (its published JSON text, the parsed result): the text spliced into the
+    answer as it is, or, before the window kept that text, the result copied
+    (``aa_session``) and encoded value by value (FastAPI)."""
+    try:
+        from poker_engine.desktop.aa_server import status_json
+        from poker_engine.desktop.aa_session import EncodedJSON
+    except ImportError:
+        import copy
+        from fastapi.encoders import jsonable_encoder
+
+        def answer(text, payload):
+            return json.dumps(jsonable_encoder({"payload": copy.deepcopy(payload)}),
+                              ensure_ascii=False, allow_nan=False,
+                              separators=(",", ":")).encode("utf-8")
+        return "copy-and-encode", answer
+
+    def answer(text, payload):
+        return status_json({"payload": EncodedJSON(text)}).body
+    return "published-json", answer
+
+
 class StatusLoad:
     """The signal window asking for the state: every ``POLL_SECONDS`` after
-    an answer, the latest result copied and encoded as ``/api/status`` does
-    it (``aa_session`` copies the payload; FastAPI encodes the answer)."""
+    an answer, the latest result answered as this checkout's ``/api/status``
+    does it (``status_answer``)."""
 
     def __init__(self):
         import threading
+        self.path, self.answer = status_answer()
         self.latest = None
         self.lock = threading.Lock()
         self.times, self.sizes = [], []
@@ -332,25 +356,21 @@ class StatusLoad:
         self.thread.start()
 
     def _poll(self):
-        import copy
-        from fastapi.encoders import jsonable_encoder
         while not self.stop_event.wait(POLL_SECONDS):
             with self.lock:
-                payload = self.latest
-            if payload is None:
+                latest = self.latest
+            if latest is None:
                 continue
             began = time.perf_counter()
-            body = json.dumps(jsonable_encoder({"payload": copy.deepcopy(payload)}),
-                              ensure_ascii=False, allow_nan=False,
-                              separators=(",", ":")).encode("utf-8")
+            body = self.answer(*latest)
             self.times.append((time.perf_counter() - began) * 1000)
             self.sizes.append(len(body) / 1024)
 
     def close(self):
         self.stop_event.set()
         self.thread.join()
-        return {"answers": len(self.times), "ms": spread(self.times),
-                "kilobytes": spread(self.sizes)}
+        return {"path": self.path, "answers": len(self.times),
+                "ms": spread(self.times), "kilobytes": spread(self.sizes)}
 
 
 def fingerprints(payload):
@@ -459,7 +479,7 @@ def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
             sizes.append(len(text) / 1024)
             if status is not None:
                 with status.lock:
-                    status.latest = payload
+                    status.latest = text, payload
             cv2.imencode(".jpg", image)
             previewed = time.perf_counter()
             json.dumps(frame_summary(payload), ensure_ascii=False)
