@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（云盘里出了 11 个同名“PokerSense 同事数据”）**
+- 做了什么：每次传完一场、写 `upload.json` 之前，跑 `rclone dedupe --dedupe-mode merge --max-depth 3 <remote>:`，把同名文件夹并成一个（只并文件夹，不动文件；`drive.file` 只看得见这台电脑自己传的）；并失败只记日志，不挡上传。
+- 起因：Google Drive 允许同名文件夹，限流时 rclone 重试建文件夹、或两次传输同时建，就会多出一个。
+- 怎么验证的：单元测试（顺序是 copy → dedupe → upload.json，dedupe 失败照样传完并记日志）；flake8。拉取那边本来就只认文件和 `upload.json` 对得上的录像，被拆到两个文件夹的会等下次合并后再拉。
+- 还剩：主人那 11 个旧文件夹改名为“旧”即可，新通道看不见它们。
+
 **2026-10-15 · `docs/roadmap-20261015`（审计本地和 GitHub、清理旧分支、路线图补到 10/15）**
 - 做了什么：工作从 Claude 项目对话回到 Mac 上的 Claude Code。本机 main 快进到 GitHub（落后 12 个提交）；删掉本地 62 个和 GitHub 上 83 个已合并的旧分支、5 个旧工作区；ROADMAP 补上 10/09–10/15（飞轮第一期、策略第二期、第三期第二台机器）。
 - 怎么做的：先把所有分支、标签和工作区里没提交的改动存进数据目录 `git-backup/cleanup-20261015/`（`all-refs.bundle` 等）；没进 main 的 2 个本地分支改成 `archive/` 标签；GitHub 上只删完整进了 main、10/13 以后没动过、没挂 PR 的分支。
