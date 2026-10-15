@@ -12,6 +12,12 @@
 
 ## 记录
 
+**2026-10-15 · `claude/nightly-automation-60jgce`（#56 的同名文件夹合并从来没跑成）**
+- 做了什么：上传后的 `rclone dedupe` 从 `--dedupe-mode merge` 改成 `skip`：rclone 没有 merge 这个模式，每次都报 `unknown mode for dedupe` 只记进日志，同名文件夹一个也没并。合并深度改成按设置算到录像的 `flywheel/`（默认 4 层）。
+- 怎么做的：rclone 除 `list` 外每种模式都先合并同名文件夹；`skip` 对文件只删“同名且内容一样”的多余副本，内容不同的不动。
+- 怎么验证的：测试里的假 rclone 改成照真 rclone（v1.75.2 源码）只认 9 种模式，旧代码在它上面失败；新增“合并失败照样传完、写 upload.json、记成已传、不重传”；上传和拉取测试 23 个、flake8 通过。夜间代码体检发现。
+- 还剩：同时上传的两个进程没有跨进程的锁，合并扫的是整个云盘根目录，留给上传线程看。
+
 ### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
 - 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头；“Build Legacy macOS”只在打包文件改动时跑，新的 main 推送取消还在排队的旧打包。
 - 起因：Windows 测试一步 20 分钟（6416 个测试一个进程跑，大半时间在等计时和子进程）；#55 因工作日志和 main 冲突，GitHub 一个多小时没跑检查；每次合并都多占一台 macOS 打包，10/15 14:38–14:43 UTC 连合 3 个 PR 后，账号那几台 macOS 被占满，PR 的 macOS 检查排 16–22 分钟没等到机器就被 GitHub 取消（打包自己也有 2 次这样被取消）。
