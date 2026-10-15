@@ -43,6 +43,7 @@ class FakeRclone:
             shutil.copytree(args[2], self.where(args[3]), dirs_exist_ok=True)
             return 0, ""
         if command == "dedupe":
+            check_dedupe(args)
             return 0, ""
         if command == "copyto":
             target = self.where(args[3])
@@ -53,6 +54,20 @@ class FakeRclone:
 
     def copies(self):
         return [args for args in self.calls if args[1] in ("copy", "copyto")]
+
+
+# What rclone's ``dedupe --dedupe-mode`` accepts (fs/operations/dedupe.go,
+# DeduplicateMode.Set, v1.75.2); anything else fails with "unknown mode for
+# dedupe" before it looks at the remote.
+DEDUPE_MODES = ("interactive", "skip", "first", "newest", "oldest", "rename",
+                "largest", "smallest", "list")
+
+
+def check_dedupe(args):
+    """Fail the test where real rclone would refuse the command."""
+    mode = args[args.index("--dedupe-mode") + 1]
+    assert mode.lower() in DEDUPE_MODES, f"rclone: unknown mode for dedupe {mode!r}"
+    int(args[args.index("--max-depth") + 1])
 
 
 def recording(root, name, *, finished=True, sheet=True):
@@ -118,6 +133,7 @@ def test_same_named_folders_are_merged_before_the_list_is_written(tmp_path):
 
         def __call__(self, args, timeout):
             if args[1] == "dedupe":
+                check_dedupe(args)
                 self.calls.append(args)
                 return self.merge_code, "Failed to dedupe: rate limit"
             return super().__call__(args, timeout)
@@ -128,13 +144,47 @@ def test_same_named_folders_are_merged_before_the_list_is_written(tmp_path):
     order = [args[1] for args in rclone.calls if args[1] != "listremotes"]
     assert order == ["copy", "dedupe", "copyto"]
     dedupe = next(args for args in rclone.calls if args[1] == "dedupe")
-    assert dedupe[2:7] == ["--dedupe-mode", "merge", "--max-depth", "3",
+    # Down to <folder>/<machine>/<recording>/flywheel; "skip" merges folders
+    # (only "list" does not) and leaves files that differ alone.
+    assert dedupe[2:7] == ["--dedupe-mode", "skip", "--max-depth", "4",
                            "pokersense-upload:"]
     recording(tmp_path / "recordings", "20261015-120000-live")
     rclone.merge_code = 1
     assert up.upload_all() is True
     log = (tmp_path / "upload" / "upload.log").read_text(encoding="utf-8")
     assert "同名文件夹没合并" in log
+
+
+def test_a_failed_merge_never_blocks_or_fails_the_upload(tmp_path):
+    """rclone refusing or failing the merge (rate limit, timeout, a bad
+    flag: 2026-10-15 every merge failed with "unknown mode for dedupe") still
+    uploads every file and ``upload.json`` and counts the recording as done."""
+    folder = recording(tmp_path / "recordings", "20261015-102047-live")
+
+    class Rclone(FakeRclone):
+        def __call__(self, args, timeout):
+            if args[1] == "dedupe":
+                self.calls.append(args)
+                return 1, 'Failed to dedupe: unknown mode for dedupe "merge"'
+            return super().__call__(args, timeout)
+
+    rclone = Rclone(tmp_path / "cloud")
+    up = uploader(tmp_path, rclone)
+    assert up.upload_all() is True
+    assert up.last_error is None
+    sent = tmp_path / "cloud" / "PokerSense 同事数据" / "du" / folder.name
+    marker = json.loads((sent / "upload.json").read_text(encoding="utf-8"))
+    assert marker["files"] == aa_upload.manifest(folder)["files"]
+    state = json.loads((tmp_path / "upload" / "state.json").read_text(encoding="utf-8"))
+    assert folder.name in state
+    copies = len(rclone.copies())
+    assert up.upload_all() is True               # done: not sent again
+    assert len(rclone.copies()) == copies
+
+
+def test_the_merge_reaches_the_flywheel_folders_under_a_deeper_folder():
+    assert aa_upload.merge_depth({"folder": "PokerSense 同事数据"}) == 4
+    assert aa_upload.merge_depth({"folder": "Shared/PokerSense 同事数据"}) == 5
 
 
 def test_a_failed_upload_leaves_the_recording_alone_and_is_tried_again(tmp_path):
