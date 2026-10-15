@@ -65,8 +65,7 @@ PYTHONPATH=src:. .venv/bin/python tools/measure_aa_realtime.py --video <录像> 
 # 核对 8 个座位的在局状态：覆盖率，以及和人工逐座位标注的对比
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_seat_states.py --video <录像> [--labels <标注.json>]
 # 策略记分牌：在模拟的 AA 8 人桌上给策略打分（bb/100 和 95% 区间），按 AA 官方规则抽水（5%，封顶 5BB）
-# 对手默认是照真人牌谱打的“真人人群”；--pool aa 换成按 AA 真人翻前频率调过的人群（主要检验），
-# --pool styles 换成 4 种风格机器人。策略名“甲/乙”表示翻前用甲、翻后用乙
+# 对手默认是照真人牌谱打的“真人人群”；--pool aa 换成按 AA 真人翻前频率调过的人群（主要检验），--pool styles 换成 4 种风格机器人。策略名“甲/乙”表示翻前用甲、翻后用乙
 PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 2000 --pool aa --strategies rfi_table/population,aa_preflop --reference rfi_table/population
 # 加 --mushroom 3：按 AA 规则收蘑菇（庄位 3BB，小盲赢底池拿走蘑菇池）；“nomushroom+甲”是看不见蘑菇池的甲
 # 实时窗口读蘑菇池金额用的数字样本库（私有数据，不提交）：从录像里按“每手加 6、小盲赢了清零”自动标注
@@ -89,8 +88,7 @@ PYTHONPATH=src:. .venv/bin/python tools/build_aa_preflop_stats.py <测量目录>
 # AA 真人翻前翻后打法统计（按位置、人数；给对手模型用）：先逐个日志抽牌局，再统计
 PYTHONPATH=src:. .venv/bin/python tools/aa_population_stats.py reduce <测量目录>/frames.jsonl --name <名字> >> hands.jsonl
 PYTHONPATH=src:. .venv/bin/python tools/aa_population_stats.py build hands.jsonl --hero-logs <坐着打的日志名,...> --minutes <名字>=<分钟> ... --out <文件>
-# 求解器策略（solver_turn：单挑转牌、河牌用 TexasSolver；solver_flop：再加翻牌）。先安装求解器。
-# 很慢也很占内存：solver_flop 600 局 4 个进程约 1.5 小时；每个翻牌求解要约 1GB 内存，进程不要开多
+# 求解器策略（solver_turn：单挑转牌、河牌用 TexasSolver；solver_flop：再加翻牌）。先安装求解器。很慢也很占内存：solver_flop 600 局 4 个进程约 1.5 小时；每个翻牌求解要约 1GB 内存，进程不要开多
 tools/setup_texassolver.sh
 PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 4 --strategies rfi_table,solver_turn,solver_flop --reference rfi_table
 # “solver_turn+aa_preflop”：求解器策略换用 aa_preflop 做翻前（和多人底池），并按 AA 真人推算对手范围
@@ -98,7 +96,7 @@ PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 
 #   加 hu=1 单挑翻牌也这样打（线是 hu_bet、hu_raise），实时窗口就是这样给单挑翻牌建议的
 # 核对轮到你时的按钮（跟注额 / 让牌 / All in）和标注是否一致
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
-# 第二台机器（杜的华为 P30）画面验收：手机画面位置和三星的 711–1208 列差 ≤ 3 列；每一项识别率（含轮到你的按钮、跟注额）不低于三星基准的 90%，基准在 configs/acceptance/second_seat_baseline_v1.json；观战录像没有你的手牌和按钮，结论只会是“没量全”
+# 第二台机器（杜的华为 P30）画面验收：手机画面位置和三星的 711–1208 列差 ≤ 3 列；每一项识别率（含轮到你的按钮、跟注额）不低于三星基准的 90%，基准在 configs/acceptance/second_seat_baseline_v1.json；观战录像没有你的手牌和按钮，结论只会是“没量全”。同事每天上传的录像用 `tools/tester_review.py run --recording <云盘里的录像> --state PokerSense_private/tester-review --out <目录>` 复盘（电脑读帧速度、各项识别、轮到他没建议的次数、能统计对手的手；`population` 把这些手加进 AA 真人统计）
 PYTHONPATH=src:. .venv/bin/python tools/p30_acceptance.py run --video <录像文件夹> --out <新目录>
 # 核对每手牌的行动记录：自动查漏（底池涨了没人下注等），以及和人工标注逐手比对（--hand-labels <标注.json> --recording <录像名>）
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_action_history.py --frames <测量目录>/frames.jsonl
@@ -108,8 +106,10 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测�
 PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl --out <新目录>/frames.jsonl [--streets]
 # 每场实战后（不去 AA 里截图，靠录像文件夹里的 frames.jsonl 和录像）：停下录像就自动出体检单（录像文件夹的 flywheel/体检单.txt：代码版本、建议覆盖、按本桌级别换算的成绩和 95% 区间、输得最多的局面），记进账本 PokerSense_private/flywheel/ledger.jsonl；rank 是跨场输得最多的局面排行，ledger 是账本合计（按代码版本分）。逐手细节用 tools/aa_session_report.py，真牌排除率用 tools/aa_range_exclusion.py
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_session.py report --recording <录像文件夹>   # 或 rank [--since 日期] / ledger
-# 改动上 Mac 前的三道关：和 main 比，录像重放（建议覆盖不降、卡顿不增）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8
+# 改动上 Mac 前的三道关：和 main 比，录像日志重放（建议覆盖不降；卡顿要按原速重放才量得出）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_gates.py --frames <录像文件夹>/frames.jsonl [...] --pools aa_real,noisy --out <目录>
+# 装新版前的复查（给杜或 Mac 装之前，合并后的 main 和装着的那版比一次，主人不打牌时在 Mac 上跑）：测试、录像日志重放（建议变了几处、为什么）、按原速重放（覆盖率、卡顿，旧版有缓存）、杜的 P30 验收，出一页复查单；先加 --plan 看要多久
+PYTHONPATH=src:. .venv/bin/python tools/release_check.py <装着的版本> <新版> --recording <录像文件夹> [...] --measure <三星录像文件夹> --p30 <杜的录像文件夹> --out <目录>
 ```
 
 浏览器会自动打开“信号灯”窗口，选好画面来源点“开始”；旧观察页（本桌设置、详细数据、复查）在右上角

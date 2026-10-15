@@ -9,7 +9,8 @@ check-raise, size as a share of the pot) and, when that player's cards are
 shown at a river showdown, what they held on the final board:
 
 - ``strong``: two pair of their own or better (``multiway_bot.weak_hand``);
-- ``pair``: one pair using a hole card (top pair included);
+- ``pair``: a pair using a hole card that plays (top pair included; QQ on
+  K K 7 7 2 too, as KKQQ7);
 - ``nothing``: no pair of their own (a missed draw, or the board plays).
 
 Bets that won without a showdown are never seen, so the shares describe the
@@ -37,6 +38,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
+from itertools import combinations
 import json
 import math
 from pathlib import Path
@@ -45,7 +47,7 @@ import zipfile
 
 from phevaluator import evaluate_cards
 
-from poker_engine.scoreboard.multiway_bot import _board_kind, hand_kind, weak_hand
+from poker_engine.scoreboard.multiway_bot import weak_hand
 
 STREETS = ("preflop", "flop", "turn", "river")
 PLAYERS = range(7, 10)               # the 7-9 player games, as the population stats
@@ -69,14 +71,27 @@ def player_bucket(decisions, aggressive):
     return "aggressive" if share > AGGRESSIVE else "normal"
 
 
+def own_pair_plays(hole, board):
+    """Whether the best five cards hold a pair (or more) made with one of
+    ``hole``: QQ on K K 7 7 2 plays as KKQQ7, A2 there only as a kicker."""
+    cards = list(hole) + list(board)
+    scored = [(evaluate_cards(*five), five) for five in combinations(cards, 5)]
+    best = min(score for score, _ in scored)
+    for score, five in scored:
+        if score == best:
+            ranks = Counter(card[0] for card in five)
+            if any(card in five and ranks[card[0]] >= 2 for card in hole):
+                return True
+    return False
+
+
 def category(hole, board):
     """``strong``, ``pair`` or ``nothing`` for ``hole`` on a five-card ``board``."""
     if not weak_hand(hole, board):
         return "strong"
     if evaluate_cards(*board) == evaluate_cards(*hole, *board):
         return "nothing"                    # the board plays
-    own = hand_kind(list(hole) + list(board)) != _board_kind(board)
-    return "pair" if own else "nothing"
+    return "pair" if own_pair_plays(hole, board) else "nothing"
 
 
 def _cards(text):

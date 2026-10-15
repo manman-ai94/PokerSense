@@ -310,6 +310,17 @@ graded = gradeView({...preflopGrade, action: {kind: "all_in", amount: "200"}, ch
 assert.deepEqual([graded.word, graded.note, graded.compare[0].label],
   ["可以", "方向和建议一样，下注多少没评分", "你做了 · 方向和建议一样"]);
 assert.ok(graded.detail.endsWith("方向和建议一样，下注多少没评分"));
+// All in where the best was a call: the way was not the advice's, so the grade
+// still says what it lost and never claims "方向和建议一样".
+graded = gradeView({...preflopGrade, action: {kind: "all_in", amount: "200"}, chosen: "raise",
+  lost_big_blinds: 1.2, grade: "slip", size_graded: false,
+  options: [{action: "call", big_blinds: 1.6, chips_in: "4"},
+    {action: "raise", big_blinds: 0.4, chips_in: "14", to: "14"}, {action: "fold", big_blinds: 0}]});
+assert.deepEqual([graded.word, graded.size, graded.note],
+  ["小失误", "−1.2", "这一步比最好的打法少赢 1.2 个大盲，下注多少没评分"]);
+assert.deepEqual(graded.compare.map(item => item.label), ["你做了", "最好的打法"]);
+assert.ok(!graded.detail.includes("方向和建议一样"));
+assert.ok(graded.detail.endsWith("下注多少没评分"));
 // A value that rounds to zero has no sign.
 graded = gradeView({...preflopGrade, options: [{action: "raise", big_blinds: 3.11, chips_in: "14", to: "14"},
   {action: "call", big_blinds: -0.04, chips_in: "4"}, {action: "fold", big_blinds: 0}], lost_big_blinds: 3.15});
