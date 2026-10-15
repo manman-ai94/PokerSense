@@ -19,8 +19,16 @@
 4. Each fold is scored with the parameters and numbers fitted on the other
    fold (out of sample), for three versions: the numbers only (every
    parameter 0, as ``aa_real`` on the new numbers), with the price (the
-   slope only), and everything; and, to compare, ``aa_real`` as the
-   scoreboard has it (its own numbers, no departures).
+   slope only), everything, and everything with how the price, the depth
+   and an all-in call move the share that goes on (``depth``); and, to
+   compare, ``aa_real`` as the scoreboard has it (its own numbers, no
+   departures).
+5. With ``--phh <phh_depth_stats_v1.json>`` (``tools/phh_depth_stats.py``),
+   those six depth parameters are taken from the 2009 PHH hands instead: a
+   logistic regression of going on facing a bet, one intercept per
+   situation. Each fold is scored with them as they are (nothing about them
+   is fitted on AA hands), and with one strength (``phh``: the six times a
+   factor) fitted on the other fold.
 
 Writes ``<out>/fit.json`` (parameters and losses, aggregates only) and
 ``<out>/aa_cal_stats.json`` (the numbers of all logs, for the package).
@@ -46,7 +54,9 @@ from poker_engine.scoreboard.aa_real import (  # noqa: E402
 from poker_engine.scoreboard.bots import (  # noqa: E402
     MAX_EQUITY_OPPONENTS, POSTFLOP_TRIALS, opponents_in_hand)
 from poker_engine.scoreboard.calibrated import (  # noqa: E402
-    FITTED, STREETS, checked_probs, facing_probs, preflop_probs)
+    DEPTH_BB_RANGE, FITTED, PREFLOP_REFERENCE_PRICE, PRICE_RANGE, REFERENCE_DEPTH_BB,
+    REFERENCE_PRICE, REFERENCE_SPR, SPR_RANGE, STREETS, adjusted_keep, checked_probs,
+    facing_probs, preflop_adjusted, preflop_probs, situation)
 from poker_engine.scoreboard.bots import _rng  # noqa: E402
 from poker_engine.scoreboard.fidelity import FLOOR, SALT, options  # noqa: E402
 from poker_engine.scoreboard.population import actions, postflop_situation  # noqa: E402
@@ -67,12 +77,20 @@ GRIDS = {"mix": (0.0, 0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
          "price_slope": (0.5, 0.0, -0.5, -1.0, -1.5, -2.0, -3.0),
          "slow": (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9),
          "bluff": (0.0, 0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.4),
-         "sticky": (0.0, 0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5)}
+         "sticky": (0.0, 0.03, 0.06, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5),
+         "depth_slope": (-1.0, -0.5, -0.25, 0.0, 0.25, 0.5, 1.0),
+         "allin_shift": (-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0)}
+for _name in ("price_slope", "depth_slope", "allin_shift"):
+    GRIDS["preflop_" + _name] = GRIDS[_name]
+GRIDS["strength"] = (0.0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+DEPTH = ("price_slope", "depth_slope", "allin_shift", "preflop_price_slope",
+         "preflop_depth_slope", "preflop_allin_shift")
+PHH = {}                   # the six DEPTH parameters from --phh; "strength" scales them
 ROUNDS = 3
 
 
 def zero_params():
-    return {"mix": 0.0, "price_slope": 0.0,
+    return {"mix": 0.0, **dict.fromkeys(DEPTH, 0.0),
             **{street: {"slow": 0.0, "bluff": 0.0, "sticky": 0.0}
                for street in STREETS}}
 
@@ -98,14 +116,14 @@ def prepare(job):
         item = {"seat": seat, "street": decision.street,
                 "scored": (seat, decision.street) not in skip,
                 "actual": KIND_INDEX[decision.kind], "can_fold": can_fold,
-                "can_raise": can_raise, "blocked": blocked(seen["board"])}
+                "can_raise": can_raise, "blocked": blocked(seen["board"]),
+                "features": situation(seen)}
         if decision.street == "preflop":
             spot = preflop_spot(actions(seen, "preflop"), seat)
             item["bands"] = {name: (*preflop_band(seen, aa=stats),
                                     *preflop_shares(seen, spot, aa=stats))
                              for name, stats in versions.items()}
         else:
-            to_call = float(seen["to_call"] or 0)
             opponents = min(opponents_in_hand(seen), MAX_EQUITY_OPPONENTS)
             win = np.full(len(COMBOS), np.nan)
             for index, cards in enumerate(CARDS):
@@ -115,9 +133,7 @@ def prepare(job):
                 hole = with_hole(seen, cards)
                 win[index] = equity(hole["own_hole"], seen["board"], opponents,
                                     POSTFLOP_TRIALS, _rng(SALT, hole))
-            item.update(spot=postflop_situation(seen), win=win,
-                        price=(to_call / (float(seen["pot"]) + to_call)
-                               if to_call else 0.0))
+            item.update(spot=postflop_situation(seen), win=win)
         prepared.append(item)
     board = observation["board"]
     return {"where": where, "decisions": prepared,
@@ -132,6 +148,8 @@ def prepare(job):
 def decision_probs(item, params, version, stats):
     if item["street"] == "preflop":
         low, high, raise_share, call_share = item["bands"][version]
+        raise_share, call_share = preflop_adjusted(raise_share, call_share,
+                                                   item["features"], params)
         width = high - low
         place = (PERCENTILE - low) / width if width > 0 else np.ones(len(COMBOS))
         base = np.where(place <= raise_share, 2,
@@ -141,12 +159,13 @@ def decision_probs(item, params, version, stats):
     street = params[item["street"]]
     row = postflop_shares(item["spot"], aa=stats)
     win = np.nan_to_num(item["win"], nan=0.0)
-    if not item["price"]:
+    if not item["features"][0]:
         return checked_probs(win, item["spot"], row.get("bet") or 0.35, street["slow"],
                              street["bluff"], item["can_raise"])
-    return facing_probs(win, item["spot"], row.get("raise") or 0.1,
-                        row.get("call") or 0.4, item["price"], street["slow"],
-                        street["sticky"], params["price_slope"], item["can_raise"])
+    raise_share, call_share = row.get("raise") or 0.1, row.get("call") or 0.4
+    priced = adjusted_keep(raise_share + call_share, item["features"], params)
+    return facing_probs(win, item["spot"], raise_share, call_share, priced,
+                        street["slow"], street["sticky"], item["can_raise"])
 
 
 def score(hands, params, version, stats):
@@ -214,6 +233,8 @@ def fit(hands, version, stats, names, start=None, workers=1):
                 trials = []
                 for value in GRIDS[key]:
                     trial = deepcopy(params)
+                    if key == "strength":
+                        trial.update({name: value * PHH[name] for name in DEPTH})
                     (trial[street] if street else trial)[key] = value
                     trials.append(trial)
                 for trial, loss in zip(trials, executor.map(_total, trials)):
@@ -228,7 +249,79 @@ VARIANTS = {"numbers": (),
             "price": ("price_slope",),
             "all": ("mix", "price_slope",
                     *(f"{street}.{key}" for street in STREETS
-                      for key in ("slow", "bluff", "sticky")))}
+                      for key in ("slow", "bluff", "sticky"))),
+            # "all" and how the price, the depth and an all-in call move the
+            # share that goes on facing a bet, before and after the flop;
+            # searched from where "all" ended.
+            "depth": ("mix", *DEPTH,
+                      *(f"{street}.{key}" for street in STREETS
+                        for key in ("slow", "bluff", "sticky")))}
+STARTS = {"depth": "all", "phh": "all"}
+VARIANTS["phh"] = ("strength",)
+
+
+# ------------------------------------------------------------------ PHH shapes
+
+# A value inside each bucket of tools/phh_depth_stats.py.
+PRICE_MID = {"p00": 0.07, "p10": 0.125, "p15": 0.175, "p20": 0.225, "p25": 0.275,
+             "p30": 0.325, "p35": 0.375, "p40": 0.425, "p45": 0.48}
+DEPTH_MID = {"bb00": 10.0, "bb15": 20.0, "bb25": 32.0, "bb40": 50.0, "bb60": 80.0,
+             "bb100": 125.0, "bb150": 200.0,
+             "spr0": 0.3, "spr0.5": 0.7, "spr1": 1.4, "spr2": 2.8, "spr4": 5.6,
+             "spr8": 11.0, "spr16": 20.0}
+
+
+def _logit(share):
+    return math.log(share / (1 - share))
+
+
+def phh_slopes(report):
+    """The six DEPTH parameters from PHH counts: a logistic regression of
+    going on (calling or raising) facing a bet on the price, the log depth and
+    an all-in call, with one intercept per situation; before and after the
+    flop apart. The features are those of ``calibrated.adjusted_keep``."""
+    cells = {True: {}, False: {}}
+    for key, count in report["counts"].items():
+        *spot, price, depth, all_in, choice = key.split("|")
+        if price == "-":
+            continue
+        preflop = len(spot) == 1
+        cell = cells[preflop].setdefault(("|".join(spot), price, depth, all_in), [0, 0])
+        cell[0] += count * (choice != "fold")
+        cell[1] += count
+    found = {}
+    for preflop, groups in cells.items():
+        price_ref = PREFLOP_REFERENCE_PRICE if preflop else REFERENCE_PRICE
+        depth_ref, (low, high) = ((REFERENCE_DEPTH_BB, DEPTH_BB_RANGE) if preflop
+                                  else (REFERENCE_SPR, SPR_RANGE))
+        spots = sorted({spot for spot, *_ in groups})
+        rows, kept, totals = [], [], []
+        for (spot, price, depth, all_in), (keep, total) in groups.items():
+            row = np.zeros(len(spots) + 3)
+            row[spots.index(spot)] = 1.0
+            price = min(max(PRICE_MID[price], PRICE_RANGE[0]), PRICE_RANGE[1])
+            depth = min(max(DEPTH_MID[depth], low), high)
+            row[-3] = _logit(price) - _logit(price_ref)
+            row[-2] = math.log(depth) - math.log(depth_ref)
+            row[-1] = float(all_in == "1")
+            rows.append(row)
+            kept.append(keep)
+            totals.append(total)
+        x, kept, totals = np.array(rows), np.array(kept, float), np.array(totals, float)
+        beta = np.zeros(x.shape[1])
+        for _ in range(100):                  # Newton steps on the binomial likelihood
+            share = 1 / (1 + np.exp(-(x @ beta)))
+            gradient = x.T @ (kept - totals * share)
+            hessian = x.T @ (x * (totals * share * (1 - share))[:, None])
+            step = np.linalg.solve(hessian + 1e-6 * np.eye(len(beta)), gradient)
+            beta += step
+            if np.abs(step).max() < 1e-9:
+                break
+        head = "preflop_" if preflop else ""
+        names = ("price_slope", "depth_slope", "allin_shift")
+        for name, value in zip(names, beta[-3:]):
+            found[head + name] = round(float(value), 3)
+    return found
 
 
 def losses(hands, params, version, stats):
@@ -250,6 +343,11 @@ def main(argv=None):
                         help="NAME=log,log (two folds)")
     parser.add_argument("--minutes", nargs="*", default=[])
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--variants", default="numbers,price,all,depth",
+                        help="which of " + ", ".join(VARIANTS) + " to fit, in order")
+    parser.add_argument("--phh", type=Path,
+                        help="phh_depth_stats_v1.json: score the six depth "
+                             "parameters from the PHH hands (variant phh)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     folds = {name: logs.split(",") for name, _, logs in
@@ -287,20 +385,40 @@ def main(argv=None):
                                       versions["aa_real"])
     print(f"aa_real: {result['aa_real']}", file=sys.stderr)
     names = list(folds)
-    for variant, keys in VARIANTS.items():
+    variants = args.variants.split(",")
+    if args.phh:
+        PHH.update(phh_slopes(json.loads(args.phh.read_text(encoding="utf-8"))))
+        result["phh_slopes"] = dict(PHH)
+        print(f"phh slopes: {PHH}", file=sys.stderr)
+        variants = [name for name in variants if name != "phh"] + ["phh"]
+    for variant in variants:
+        keys, start = VARIANTS[variant], result["variants"].get(STARTS.get(variant))
         found = {}
         for train, test in ((names[0], names[1]), (names[1], names[0])):
             params, _ = fit(by_fold[train], train, versions[train], keys,
-                            workers=args.workers)
+                            start=start and start[test]["params"], workers=args.workers)
             found[test] = {"fitted_on": train, "params": params,
                            **losses(by_fold[test], params, train, versions[train])}
             print(f"{variant}: fit {train} -> {test}: {found[test]}", file=sys.stderr)
-        params, _ = fit(hands, "all", versions["all"], keys, workers=args.workers)
+        params, _ = fit(hands, "all", versions["all"], keys,
+                        start=start and start["all"]["params"], workers=args.workers)
         found["all"] = {"params": params,
                         **losses(hands, params, "all", versions["all"])}
         print(f"{variant}: all: {found['all']}", file=sys.stderr)
         result["variants"][variant] = found
-    result["fitted"] = result["variants"]["all"]["all"]["params"]
+    if args.phh:
+        # The PHH parameters as they are, on top of "all" fitted on the other fold.
+        found = {}
+        for train, test in ((names[0], names[1]), (names[1], names[0])):
+            params = {**result["variants"]["all"][test]["params"], **PHH}
+            found[test] = {"fitted_on": train, "params": params,
+                           **losses(by_fold[test], params, train, versions[train])}
+        params = {**result["variants"]["all"]["all"]["params"], **PHH}
+        found["all"] = {"params": params,
+                        **losses(hands, params, "all", versions["all"])}
+        print(f"phh as is: {found}", file=sys.stderr)
+        result["variants"]["phh_as_is"] = found
+    result["fitted"] = result["variants"][variants[-1]]["all"]["params"]
     result["defaults_before"] = FITTED
     (args.out / "fit.json").write_text(json.dumps(result, indent=1) + "\n",
                                        encoding="utf-8")

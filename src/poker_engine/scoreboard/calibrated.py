@@ -54,6 +54,15 @@ from .strength import combo_percentile, equity
 STATS_FILE = "aa_cal_stats_v1.json"
 STREETS = ("flop", "turn", "river")
 REFERENCE_PRICE = 0.26      # typical price of the bets AA players faced
+# Medians over AA players' decisions facing a bet (15 recordings): the price
+# of the raises faced before the flop, and the depth, before the flop the
+# effective stack in big blinds, after it over the pot. A depth outside the
+# range counts as its nearer end (a stack the recording did not read is
+# taken as very deep).
+PREFLOP_REFERENCE_PRICE = 0.16
+REFERENCE_DEPTH_BB, DEPTH_BB_RANGE = 243.0, (10.0, 500.0)
+REFERENCE_SPR, SPR_RANGE = 3.4, (0.2, 20.0)
+PRICE_RANGE = (0.05, 0.5)
 BET_HU, BET_MULTI, RAISE = 0.5, 0.6, 1.1
 # Fitted 2026-10-15 on 475 replayed hands of 15 recordings (``tools/fit_aa_cal.py``;
 # out of sample each half of them fits the other better than ``aa_real``). A
@@ -83,10 +92,70 @@ def _logit(share):
 def priced_keep(keep, price, slope):
     """The share that goes on facing a bet at ``price``, when ``keep`` goes
     on at ``REFERENCE_PRICE``."""
-    if not slope or price <= 0 or not 0 < keep < 1:
+    return adjusted_keep(keep, (price, 0.0, False), {"price_slope": slope})
+
+
+def effective_stack(observation):
+    """The most the seat to act can still lose: its chips behind, or what the
+    deepest other player still in can put in beyond its own bet."""
+    me = observation["observing_seat"]
+    stacks, bets = observation["stacks"], observation["bets"]
+    folded = set(observation["folded"])
+    others = [float(stacks[str(seat)]) + float(bets[str(seat)]) - float(bets[str(me)])
+              for seat in observation["occupied_seats"]
+              if seat != me and seat not in folded]
+    return max(0.0, min(float(stacks[str(me)]), max(others, default=0.0)))
+
+
+def situation(observation):
+    """(price, depth, all in) of a decision: the call as a share of the pot
+    after calling (0 with nothing to call); the effective stack before the
+    flop in big blinds, after it over the pot; whether calling is all in."""
+    to_call = float(observation["to_call"] or 0)
+    pot = float(observation["pot"])
+    depth = effective_stack(observation)
+    if observation["street"] == "preflop":
+        depth /= float(observation["big_blind"])
+    else:
+        depth = depth / pot if pot else 99.0
+    mine = float(observation["stacks"][str(observation["observing_seat"])])
+    return (to_call / (pot + to_call) if to_call else 0.0, depth,
+            bool(to_call) and to_call >= mine)
+
+
+def adjusted_keep(keep, features, params, preflop=False):
+    """The share that goes on facing a bet, when ``keep`` goes on at the
+    reference price and depth: moved on the log-odds scale by the price
+    (``price_slope``), the depth (``depth_slope``, on its log) and a call
+    that is all in (``allin_shift``); ``preflop_`` before each name before
+    the flop."""
+    price, depth, all_in = features
+    head = "preflop_" if preflop else ""
+    shift = 0.0
+    slope = params.get(head + "price_slope", 0.0)
+    if slope and price > 0:
+        reference = PREFLOP_REFERENCE_PRICE if preflop else REFERENCE_PRICE
+        low, high = PRICE_RANGE
+        shift += slope * (_logit(min(max(price, low), high)) - _logit(reference))
+    slope = params.get(head + "depth_slope", 0.0)
+    if slope:
+        reference, (low, high) = ((REFERENCE_DEPTH_BB, DEPTH_BB_RANGE) if preflop
+                                  else (REFERENCE_SPR, SPR_RANGE))
+        shift += slope * (math.log(min(max(depth, low), high)) - math.log(reference))
+    if all_in:
+        shift += params.get(head + "allin_shift", 0.0)
+    if not shift or not 0 < keep < 1:
         return keep
-    z = _logit(keep) + slope * (_logit(price) - _logit(REFERENCE_PRICE))
-    return 1 / (1 + math.exp(-z))
+    return 1 / (1 + math.exp(-(_logit(keep) + shift)))
+
+
+def preflop_adjusted(raise_share, call_share, features, params):
+    """The spot's (raise, call) shares at this price and depth."""
+    keep = raise_share + call_share
+    if not features[0] or not keep:
+        return raise_share, call_share
+    moved = adjusted_keep(keep, features, params, preflop=True)
+    return raise_share * moved / keep, call_share * moved / keep
 
 
 def preflop_probs(base, raise_share, call_share, mix, can_fold=True, can_raise=True):
@@ -122,12 +191,12 @@ def checked_probs(win, spot, bet, slow, bluff, can_raise=True):
     return _legal(probs, False, can_raise)
 
 
-def facing_probs(win, spot, raise_share, call_share, price, slow, sticky, slope,
+def facing_probs(win, spot, raise_share, call_share, priced, slow, sticky,
                  can_raise=True):
-    """[fold, call, raise] probabilities facing a bet at ``price``."""
+    """[fold, call, raise] probabilities facing a bet, when ``priced`` of the
+    players go on at this price and depth (``adjusted_keep``)."""
     win = np.asarray(win, dtype=float)
     keep = raise_share + call_share
-    priced = priced_keep(keep, price, slope)
     raising = raise_share * priced / keep if keep else 0.0
     value_keep = _clip((priced - sticky) / max(1 - sticky, 1e-6))
     value_raise = min(_clip(raising / max(1 - slow, 1e-6)), value_keep)
@@ -181,7 +250,9 @@ class CalibratedBot(AARealBot):
     def preflop_plan(self, observation):
         me = observation["observing_seat"]
         spot = preflop_spot(actions(observation, "preflop"), me)
-        raise_share, call_share = preflop_shares(observation, spot, aa=self.stats)
+        raise_share, call_share = preflop_adjusted(
+            *preflop_shares(observation, spot, aa=self.stats), situation(observation),
+            self.params)
         low, high = preflop_band(observation, aa=self.stats)
         share = combo_percentile(observation["own_hole"])
         place = (share - low) / (high - low) if high > low else 1.0
@@ -209,13 +280,14 @@ class CalibratedBot(AARealBot):
                                   street["bluff"], raise_id is not None)
         else:
             raise_id = raise_by_pot(observation, RAISE)
-            price = to_call / (float(observation["pot"]) + to_call)
-            probs = facing_probs(win, spot, row.get("raise") or 0.1,
-                                 row.get("call") or 0.4, price, street["slow"],
-                                 street["sticky"], self.params["price_slope"],
-                                 raise_id is not None)
+            raise_share, call_share = row.get("raise") or 0.1, row.get("call") or 0.4
+            priced = adjusted_keep(raise_share + call_share, situation(observation),
+                                   self.params)
+            probs = facing_probs(win, spot, raise_share, call_share, priced,
+                                 street["slow"], street["sticky"], raise_id is not None)
         return probs, raise_id
 
 
-__all__ = ["FITTED", "REFERENCE_PRICE", "CalibratedBot", "cal_stats", "checked_probs",
-           "facing_probs", "preflop_probs", "priced_keep"]
+__all__ = ["FITTED", "REFERENCE_PRICE", "CalibratedBot", "adjusted_keep", "cal_stats",
+           "checked_probs", "effective_stack", "facing_probs", "preflop_adjusted",
+           "preflop_probs", "priced_keep", "situation"]

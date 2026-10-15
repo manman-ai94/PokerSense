@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from poker_engine.scoreboard.aa_real import aa_stats
-from poker_engine.scoreboard.calibrated import CalibratedBot
+from poker_engine.scoreboard.calibrated import CalibratedBot, adjusted_keep
 from poker_engine.scoreboard.fidelity import score_hand
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
@@ -15,7 +15,9 @@ from tools import fit_aa_cal
 from tools.sim_fidelity import log_name
 
 RULES = Path(__file__).resolve().parents[2] / "configs/game/aa-scoreboard-rules-v2.json"
-PARAMS = {"mix": 0.1, "price_slope": -1.0,
+PARAMS = {"mix": 0.1, "price_slope": -1.0, "depth_slope": 0.5, "allin_shift": -1.0,
+          "preflop_price_slope": -1.0, "preflop_depth_slope": 0.25,
+          "preflop_allin_shift": -0.5,
           "flop": {"slow": 0.3, "bluff": 0.1, "sticky": 0.1},
           "turn": {"slow": 0.4, "bluff": 0.05, "sticky": 0.2},
           "river": {"slow": 0.2, "bluff": 0.15, "sticky": 0.05}}
@@ -64,3 +66,30 @@ def test_log_names():
     assert log_name("x/20261009-053249-live/frames.jsonl") == "20261009-053249-live"
     assert log_name("x/frames.jsonl.gz") == "x"
     assert log_name("slim/20261009-053249-live.jsonl.gz") == "20261009-053249-live"
+
+
+def test_phh_slopes_come_back_from_counts_made_with_them():
+    truth = {"price_slope": -1.0, "depth_slope": 0.4, "allin_shift": -0.8,
+             "preflop_price_slope": -0.5, "preflop_depth_slope": 0.3,
+             "preflop_allin_shift": -1.2}
+    counts = {"rfi|-|bb100|0|check": 50, "flop|hu|pfa|checked_to|-|spr2|0|bet:s40": 7}
+    spots = (("vs_open", 0.3, True), ("vs_3bet_cold", 0.15, True),
+             ("flop|hu|other|facing_bet", 0.55, False),
+             ("river|multi|pfa|facing_raise", 0.35, False))
+    for spot, keep, preflop in spots:
+        depths = [name for name in fit_aa_cal.DEPTH_MID
+                  if name.startswith("bb" if preflop else "spr")]
+        for price, at in fit_aa_cal.PRICE_MID.items():
+            for depth in depths:
+                for all_in in (0, 1):
+                    features = (at, fit_aa_cal.DEPTH_MID[depth], bool(all_in))
+                    share = adjusted_keep(keep, features, truth, preflop=preflop)
+                    goes_on = round(20000 * share)
+                    key = f"{spot}|{price}|{depth}|{all_in}|"
+                    counts[key + "call"] = goes_on - goes_on // 4
+                    counts[key + "raise"] = goes_on // 4
+                    counts[key + "fold"] = 20000 - goes_on
+    found = fit_aa_cal.phh_slopes({"counts": counts})
+    assert found.keys() == truth.keys()
+    for name, value in truth.items():
+        assert found[name] == pytest.approx(value, abs=0.02), name
