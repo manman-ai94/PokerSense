@@ -10,6 +10,12 @@
 
 ## 记录
 
+**2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（把 #52 之前录的大录像压小再传）**
+- 做了什么：新工具 `tools/shrink_recording.py`：把旧的 MSMF 大录像逐段用现在的编码器（FFmpeg）重写，帧数不变，`segments.csv`、`frames.jsonl` 照样对得上；原件移到 `PokerSense_private/upload/originals/`（不会被上传），`recording.json` 记 `reencoded`。
+- 起因：杜 18 分钟 7.95 GB 那场按 1 MB/s 传了 3 小时 21 分超时没传完。
+- 怎么验证的：单元测试（逐帧重写、帧数不符时什么都不改、已是 FFMPEG 的跳过）；flake8。
+- 还剩：杜那边跑完后 push，主人在 Mac 上 pull 后跑 P30 验收。
+
 **2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（杜的录像太大、录完不自动上传）**
 - 做了什么：Windows 录像只走 OpenCV 的 FFmpeg（有 OpenH264 用 H.264，否则 mp4v），不再落到 Windows 自带的 MSMF H.264（固定 1 bit/像素，约 60 Mbit/s，杜 18 分钟 7.95 GB）；一停录就开传录像，体检单写完再补传并写 upload.json；窗口找不到 rclone 时也去 C:\rclone、winget、注册表里的 PATH 找，setup 记下 rclone 完整路径，没配好时 5 分钟再看一次。
 - 怎么验证的：Linux 上 FFmpeg mp4v 静态牌桌画面约 0.55 GB/小时；Windows CI 新测试真录 2 秒，要求走 FFMPEG、小于 2 MB；上传、找 rclone、setup 的单元测试（rclone 全是假的，不碰网络）；flake8。
