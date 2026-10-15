@@ -186,7 +186,7 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（第二台电脑从源码装见 
 - 固定流程：从最新 `main` 开短分支 → 提交 → 推送 → 开 PR → CI 通过 →
   用 merge commit 合并 → 删除分支。
 - 分支命名：`feat/`、`fix/`、`docs/`、`chore/`、`research/` 加简短英文描述。
-- 一个 PR 只做一件事；main 必须随时能跑。PR 描述用中文写清：做了什么、怎么验证的、还剩什么。
+- 一个 PR 只做一件事；main 必须随时能跑。PR 描述用中文写清：做了什么、怎么验证的、还剩什么。策略和裁判（模拟对手和牌桌、统计数字、拟合、检查和验收线，清单在 `configs/evaluator-protection.json`）不能在同一个 PR 里改，review-hygiene 会拦；改裁判只为更像真人。
 - 修改 `.github/workflows/` 需要 `gh` 带 `workflow` 权限。
 - 2026-10-06 前的旧分支存为 `archive/<原分支名>` 标签（只在 Mac 和备份包里）；分支保护由主人决定；仓库已允许自动合并（2026-10-15 主人勾选），每个 PR 都打开（merge commit 方式）。
 

@@ -9,14 +9,24 @@ Markdown files the tests read (``TEST_READ``). Anything else, a change that
 cannot be worked out (no base commit, a base not fetched) or an explicit run
 needs the tests: when in doubt they run.
 
+On a pull request it also guards the evaluator: a change may touch the
+strategy files or the evaluator files listed in
+``configs/evaluator-protection.json`` (the simulated opponents and table,
+their numbers and fits, the gates, this check), not both, so strategy work
+cannot move its own goalposts. Touching both fails the step.
+
 Usage: python tools/ci_changes.py [BASE HEAD]
 Prints ``code=true`` or ``code=false`` and adds it to ``$GITHUB_OUTPUT``.
 """
 
+from fnmatch import fnmatchcase
+import json
 import os
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
+
+GUARD = Path(__file__).resolve().parents[1] / "configs" / "evaluator-protection.json"
 
 
 # tests/strategy/test_mock_fixture_dataset.py reads these.
@@ -53,6 +63,20 @@ def changed_files(base, head):
     return listing.stdout.splitlines()
 
 
+def touched(files, patterns):
+    return sorted(name for name in files
+                  if any(fnmatchcase(name.replace("\\", "/"), pattern)
+                         for pattern in patterns))
+
+
+def evaluator_conflict(files, guard=None):
+    """(strategy files, evaluator files) when ``files`` touch both, else None."""
+    guard = guard or json.loads(GUARD.read_text(encoding="utf-8"))
+    strategy, evaluator = (touched(files, guard[side])
+                           for side in ("strategy", "evaluator"))
+    return (strategy, evaluator) if strategy and evaluator else None
+
+
 def main(argv):
     files = changed_files(*argv) if len(argv) == 2 else None
     line = f"code={'true' if files is None or needs_tests(files) else 'false'}"
@@ -61,6 +85,15 @@ def main(argv):
     if output:
         with open(output, "a", encoding="utf-8") as handle:
             handle.write(line + "\n")
+    conflict = (evaluator_conflict(files) if files is not None
+                and os.environ.get("GITHUB_EVENT_NAME") == "pull_request" else None)
+    if conflict:
+        strategy, evaluator = conflict
+        print("::error::This pull request changes both the strategy and the evaluator "
+              "(configs/evaluator-protection.json). Split it into two pull requests.")
+        print("strategy: " + ", ".join(strategy))
+        print("evaluator: " + ", ".join(evaluator))
+        return 1
     return 0
 
 
