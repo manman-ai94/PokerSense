@@ -470,8 +470,13 @@ class CriticalPerceptionBoundary:
         return _reconstruct(row)
 
 
-def checked_view(row):
+def checked_view(row, derived=None):
     """Re-derive the entire view; cached statuses and windows own no authority.
+
+    ``derived`` is ``_reconstruct(row)`` when the caller has just worked it
+    out on this very row (the live reader, right after
+    ``CriticalPerceptionBoundary.observe``); it is compared with the stored
+    view the same way.
 
     Raw witness authenticity still belongs to external source verification.
     This check does not create a real-hand confirmation or a signed receipt.
@@ -480,15 +485,16 @@ def checked_view(row):
         view = row.get("critical_perception_v1")
         if not isinstance(view, dict):
             return None
-        derived = _reconstruct(row)
+        if derived is None:
+            derived = _reconstruct(row)
         return derived if _canonical(view) == _canonical(derived) else None
     except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
         return None
 
 
-def target_s_candidate_screen(row):
+def target_s_candidate_screen(row, derived=None):
     """Screen shape only. Never substitutes for human factual confirmation."""
-    view = checked_view(row)
+    view = checked_view(row, derived)
     reasons = []
     if view is None:
         reasons.append("critical_candidate_view_missing_or_invalid")

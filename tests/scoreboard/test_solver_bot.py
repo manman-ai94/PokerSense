@@ -13,7 +13,7 @@ from poker_engine.scoreboard.replay import Decision
 from poker_engine.scoreboard.runner import run_scoreboard
 from poker_engine.scoreboard.solver_bot import (Fallback, SolverBot, by_class,
                                                 keep_own, kept, sample, weighted)
-from poker_engine.solver.texassolver import range_text
+from poker_engine.solver.texassolver import SolverTimeout, range_text
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.solver.texassolver import solver_binary
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
@@ -224,3 +224,19 @@ def test_wrapped_in_the_range_rule_it_still_gets_the_game_and_the_aa_model():
 def test_human_mode_comes_with_the_name():
     assert make_policy("solver_turn@human+aa_preflop").human
     assert not make_policy("solver_turn+aa_preflop").human
+
+
+def test_a_solve_past_its_timeout_is_played_by_the_base_policy(monkeypatch):
+    # A scoreboard run used to die on the first solve past the solver's 300 s
+    # (SolverTimeout came in with #48; only Fallback was caught).
+    class SlowSolver:
+        def solve(self, *args, **kwargs):
+            raise SolverTimeout("TexasSolver took over 300 s; stopped")
+
+    monkeypatch.setattr(solver_bot, "_SOLVERS", {1: SlowSolver()})
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    report = run_scoreboard(rules, ["rfi_table", "solver_river"], deals=12,
+                            pool=("population",), reference="rfi_table")
+    counts = report["decision_counts"]["solver_river"]
+    assert counts.get("solver_timeout", 0) > 0 and "solved" not in counts
+    assert report["strategies"]["solver_river"] == report["strategies"]["rfi_table"]

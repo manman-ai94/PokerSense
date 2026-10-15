@@ -306,3 +306,87 @@ def test_the_window_reads_the_pot_at_a_looser_label_match(monkeypatch):
     assert live.unique_pot_patch(None, [7, 7]) is not None  # the labels agree
     assert seen == [(aa_reader.POT_LABEL_MATCH, True)] * 2 == [(.80, True)] * 2
     assert live.unique_pot_patch(None, [7, 8]) is None      # they disagree: no pot
+
+
+class CountingModes(Modes):
+    """The special-mode reader, counting the pictures it really reads."""
+
+    def __init__(self):
+        self.calls = []
+
+    def recognize(self, image):
+        self.calls.append(id(image))
+        return {**super().recognize(image),
+                "scores": {"banner": float(len(self.calls))}}
+
+
+class AskingTwice(Candidate):
+    """A frame's read asking the special modes and the scene several times,
+    as the steps of the real reader do (and changing what it got)."""
+
+    def __init__(self, spec):
+        super().__init__(spec)
+        self.modes = CountingModes()
+        self.context = SimpleNamespace(modes=self.modes)
+
+    def read(self, image, frame, sample):
+        row = super().read(image, frame, sample)
+        first = self.modes.recognize(image)
+        first["scores"]["banner"] = -1.0            # a step changing its copy
+        row["modes_asked"] = [first, self.reader.modes.recognize(image),
+                              self.context.modes.recognize(image)]
+        row["scene_asked"] = [self.reader.scene.recognize(image) for _ in range(3)]
+        return row
+
+
+def test_a_picture_only_reader_reads_each_frame_once(profile, image):
+    reader = AA8Reader(profile, factory=AskingTwice)
+    state = reader._state
+    modes = state.modes.base
+    # Every way to the special-mode reader goes through the per-frame one.
+    assert state.reader.modes is state.modes is state.context.modes
+    row = reader.read(image, 0, {"pts_seconds": 0, "source_id": "s"})
+    assert len(modes.calls) == 1
+    first, second, third = row["modes_asked"]
+    assert first["scores"] == {"banner": -1.0}          # its own copy
+    assert second == third and second["scores"] == {"banner": 1.0}
+    assert second is not third
+    assert row["scene_asked"] == [{"scene": "AA_TABLE_CANDIDATE"}] * 3
+    reader.read(image.copy(), 1, {"pts_seconds": .1, "source_id": "s"})
+    assert len(modes.calls) == 2
+    # Outside a frame's read the reader is asked as before.
+    state.modes.recognize(image)
+    state.modes.recognize(image)
+    assert len(modes.calls) == 4
+
+
+def test_once_per_frame_survives_the_reset_copy(profile, image):
+    reader = AA8Reader(profile, factory=AskingTwice)
+    reader.read(image, 0, {"pts_seconds": 0, "source_id": "s"})
+    row = reader.read(image, 1, {"pts_seconds": 5, "source_id": "s"})   # a gap
+    assert row["reader_gap_reset"] is True
+    state = reader._state
+    assert state.modes is not reader._initial.modes
+    assert state.reader.modes is state.modes is state.context.modes
+    assert len(state.modes.base.calls) == 1
+    assert state.modes.image is None and state.modes.answer is None
+
+
+def test_the_critical_view_is_derived_once_per_frame(profile, image, monkeypatch):
+    from poker_engine.desktop import aa_critical_perception as critical
+    calls = []
+    original = critical._reconstruct
+
+    def counting(row):
+        calls.append(row["frame"])
+        return original(row)
+
+    monkeypatch.setattr(critical, "_reconstruct", counting)
+    reader = AA8Reader(profile, factory=Candidate)
+    row = reader.read(image, 0, {"pts_seconds": 0, "source_id": "test"})
+    assert calls == [0]
+    # The same answers as re-deriving the view for each check.
+    assert row["target_s_candidate_screen"] == critical.target_s_candidate_screen(row)
+    from tools.aa8_critical_fields_v3 import normalize_fields
+    assert row["evaluation_fields"] == normalize_fields(row)
+    assert calls == [0, 0, 0]

@@ -343,13 +343,23 @@ def test_a_failed_first_copy_waits_for_the_next_pass(tmp_path):
     assert "no such host" in up.last_error and "secret" not in up.last_error
 
 
+def test_a_configured_rclone_that_is_gone_is_passed_over(tmp_path):
+    """Homebrew or winget upgraded rclone into a new folder: the saved path is
+    gone, and uploads must not stay off for good."""
+    gone = str(tmp_path / "Cellar" / "1.75.2" / "rclone")
+    assert aa_upload.find_rclone(gone, which=lambda n: "/bin/rclone") == "/bin/rclone"
+    assert aa_upload.find_rclone(gone, which=lambda n: None, places=[]) == ""
+    assert aa_upload.find_rclone("rclone", which=lambda n: None) == "rclone"
+
+
 def test_rclone_off_the_window_path_is_found(tmp_path):
     """A window started before rclone was put on the PATH (杜's PC, 2026-10-15)."""
     name = "rclone.exe" if os.name == "nt" else "rclone"
     nowhere = tmp_path / "empty"
     nowhere.mkdir()
     (tmp_path / name).write_bytes(b"")
-    assert aa_upload.find_rclone("C:/x/rclone.exe") == "C:/x/rclone.exe"
+    there = str(tmp_path / name)
+    assert aa_upload.find_rclone(there, which=lambda n: "/bin/rclone") == there
     assert aa_upload.find_rclone(which=lambda n: "/bin/rclone") == "/bin/rclone"
     assert aa_upload.find_rclone(which=lambda n: None,
                                  places=[nowhere, tmp_path]) == str(tmp_path / name)

@@ -295,6 +295,9 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     args.head_strategy = args.head_strategy or args.strategy
+    # Each version's tools run inside their own checkout: a relative --out
+    # would land in the base's temporary worktree and go with it.
+    args.out = args.out.resolve()
     args.out.mkdir(parents=True, exist_ok=True)
     head = git("rev-parse", "HEAD")
     dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
