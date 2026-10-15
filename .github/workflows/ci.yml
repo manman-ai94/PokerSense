@@ -69,6 +69,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install
         run: python -m pip install -e ".[dev,perceptual,desktop]"
       - name: Install pinned offline reference
@@ -88,16 +90,25 @@ jobs:
           'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
           'runner_os': os.environ['RUNNER_OS'], 'python': sys.version, 'pytest': pytest.__version__,
           'node': subprocess.check_output(['node', '--version'], text=True).strip(),
-          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra']},
+          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'loadfile', '-m', 'not timing']},
+          'timing_scope': {'arguments': ['-v', '-ra', '-m', 'timing']},
           'reference_scope': 'tests/tools/test_strategy_eval_independent_oracle_v1.py'};
           payload = json.dumps(data, ensure_ascii=True, indent=2);
           (directory / 'identity.json').write_text(payload + '\n', encoding='utf-8');
           print(payload)"
       - name: pytest
         id: full_pytest
+        # 测试大半时间在等（计时、子进程、本机服务），不在算：按 CPU 核数分几个进程同时跑，
+        # 一个不少。loadfile：同一个测试文件留在同一个进程里（模块级的共用准备不被拆开）。
+        # 带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
         run: >-
-          python -m pytest -v -ra
+          python -m pytest -v -ra -n auto --dist loadfile -m "not timing"
           --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/full.xml"
+      - name: pytest (timing, one process)
+        id: timing_pytest
+        run: >-
+          python -m pytest -v -ra -m timing
+          --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/timing.xml"
       - name: AA realtime UI deadline regression
         run: node tests/ui/test_aa_turn_runtime_ui.js
       - name: Independent strategy evaluation reference
@@ -112,12 +123,14 @@ jobs:
         env:
           CI_EVIDENCE_DIR: ${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}
           CI_FULL_OUTCOME: ${{ steps.full_pytest.outcome }}
+          CI_TIMING_OUTCOME: ${{ steps.timing_pytest.outcome }}
           CI_REFERENCE_OUTCOME: ${{ steps.reference_pytest.outcome }}
         run: >-
           python -c "import json, os; from pathlib import Path;
           directory = Path(os.environ['CI_EVIDENCE_DIR']);
           directory.mkdir(parents=True, exist_ok=True);
           data = {'full': os.environ.get('CI_FULL_OUTCOME') or 'unknown',
+          'timing': os.environ.get('CI_TIMING_OUTCOME') or 'unknown',
           'reference': os.environ.get('CI_REFERENCE_OUTCOME') or 'unknown'};
           payload = json.dumps(data, indent=2);
           (directory / 'outcomes.json').write_text(payload + '\n', encoding='utf-8');
@@ -174,6 +187,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
       - name: Install
         run: python -m pip install -e ".[dev,perceptual,desktop]"
       - name: Install pinned offline reference
@@ -193,16 +208,25 @@ jobs:
           'run_id': os.environ['GITHUB_RUN_ID'], 'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
           'runner_os': os.environ['RUNNER_OS'], 'python': sys.version, 'pytest': pytest.__version__,
           'node': subprocess.check_output(['node', '--version'], text=True).strip(),
-          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra']},
+          'full_scope': {'testpaths': config['testpaths'], 'addopts': config['addopts'], 'arguments': ['-v', '-ra', '-n', 'auto', '--dist', 'loadfile', '-m', 'not timing']},
+          'timing_scope': {'arguments': ['-v', '-ra', '-m', 'timing']},
           'reference_scope': 'tests/tools/test_strategy_eval_independent_oracle_v1.py'};
           payload = json.dumps(data, ensure_ascii=True, indent=2);
           (directory / 'identity.json').write_text(payload + '\n', encoding='utf-8');
           print(payload)"
       - name: pytest
         id: full_pytest
+        # 测试大半时间在等（计时、子进程、本机服务），不在算：按 CPU 核数分几个进程同时跑，
+        # 一个不少。loadfile：同一个测试文件留在同一个进程里（模块级的共用准备不被拆开）。
+        # 带 timing 标记的量真实耗时，下一步单独一个进程跑，不和别的测试抢 CPU。
         run: >-
-          python -m pytest -v -ra
+          python -m pytest -v -ra -n auto --dist loadfile -m "not timing"
           --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/full.xml"
+      - name: pytest (timing, one process)
+        id: timing_pytest
+        run: >-
+          python -m pytest -v -ra -m timing
+          --junitxml="${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}/timing.xml"
       - name: AA realtime UI deadline regression
         run: node tests/ui/test_aa_turn_runtime_ui.js
       - name: Independent strategy evaluation reference
@@ -217,12 +241,14 @@ jobs:
         env:
           CI_EVIDENCE_DIR: ${{ runner.temp }}/${{ env.CI_EVIDENCE_NAME }}
           CI_FULL_OUTCOME: ${{ steps.full_pytest.outcome }}
+          CI_TIMING_OUTCOME: ${{ steps.timing_pytest.outcome }}
           CI_REFERENCE_OUTCOME: ${{ steps.reference_pytest.outcome }}
         run: >-
           python -c "import json, os; from pathlib import Path;
           directory = Path(os.environ['CI_EVIDENCE_DIR']);
           directory.mkdir(parents=True, exist_ok=True);
           data = {'full': os.environ.get('CI_FULL_OUTCOME') or 'unknown',
+          'timing': os.environ.get('CI_TIMING_OUTCOME') or 'unknown',
           'reference': os.environ.get('CI_REFERENCE_OUTCOME') or 'unknown'};
           payload = json.dumps(data, indent=2);
           (directory / 'outcomes.json').write_text(payload + '\n', encoding='utf-8');

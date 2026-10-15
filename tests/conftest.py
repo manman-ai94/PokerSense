@@ -1,12 +1,14 @@
 """Shared pytest setup for the PokerSense test suite.
 
-Installs a ``cv2.imread`` shim so fixture loading survives non-ASCII paths.
+Installs a ``cv2.imread`` shim so fixture loading survives non-ASCII paths,
+and gives every test its own capture-card lock file.
 """
 
 import os
 
 import cv2
 import numpy as np
+import pytest
 
 
 _ORIGINAL_IMREAD = cv2.imread
@@ -43,3 +45,19 @@ def _imread_unicode(filename, flags=cv2.IMREAD_COLOR):
 
 
 cv2.imread = _imread_unicode
+
+
+@pytest.fixture(autouse=True)
+def _own_capture_lock(tmp_path_factory, monkeypatch):
+    """Each test gets its own capture-card lock instead of the computer-wide one.
+
+    The real lock (``aa_device_lock.DEFAULT_LOCK_PATH``, in the system temp
+    folder) lets only one AA program hold the capture card. Tests that open a
+    capture source without naming a lock would otherwise share it: CI runs the
+    suite on several processes at once (``pytest -n auto``), and one test's
+    source then finds the card "in use" by another's. A running AA window on a
+    developer's machine would block them the same way.
+    """
+    from poker_engine.desktop import aa_device_lock
+    path = tmp_path_factory.mktemp("capture-lock") / "pokersense-aa-capture.lock"
+    monkeypatch.setattr(aa_device_lock, "DEFAULT_LOCK_PATH", path)
