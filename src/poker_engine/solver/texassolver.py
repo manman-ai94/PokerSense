@@ -28,6 +28,11 @@ Solver conventions used here:
 - Player 1 is out of position and acts first, player 0 is in position.
 - Actions read back are "CHECK", "CALL", "FOLD", "BET <chips>" and
   "RAISE <chips>", chips being what that action adds.
+- A running solver keeps every bet size it was told until told otherwise, so
+  each spot sends every size list of every street it covers, empty ones too
+  ("set_bet_sizes ip,river,raise" clears that list). All-in can be turned on
+  but never off again, so a tree without it gets a fresh process once an
+  earlier spot turned it on.
 """
 
 from __future__ import annotations
@@ -126,9 +131,10 @@ class Tree:
                 if player == "oop" and street != "flop":
                     kinds.append(("donk", self.donks))
                 for kind, sizes in kinds:
-                    if sizes:            # an empty list means none of that kind
-                        lines.append(f"set_bet_sizes {player},{street},{kind},"
-                                     + ",".join(f"{s:g}" for s in sizes))
+                    # Empty too, or the last spot's sizes stay; no trailing
+                    # comma, which the solver would read as a size and crash.
+                    lines.append(",".join([f"set_bet_sizes {player}", street, kind,
+                                           *(f"{s:g}" for s in sizes)]))
                 if self.allin:
                     lines.append(f"set_bet_sizes {player},{street},allin")
         lines.append(f"set_allin_threshold {self.allin_threshold:g}")
@@ -206,6 +212,7 @@ class TexasSolver:
         self._lock = threading.Lock()
         self._count = 0
         self._load = 0.0
+        self._allin = False      # whether this process was told all-in
         self.restarts = 0
         self.timeouts = 0
 
@@ -214,6 +221,7 @@ class TexasSolver:
         return [str(self.binary), "-r", str(self.binary.parent / "resources")]
 
     def _start(self):
+        self._allin = False
         self._process = subprocess.Popen(
             self.command(), cwd=self._workdir.name,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -222,8 +230,11 @@ class TexasSolver:
         """The street's strategy tree; accuracy, iterations and the timeout
         (seconds, None for the solver's own) default to the solver's settings."""
         with self._lock:
+            if self._allin and not spot.tree.allin:
+                self._stop()             # the solver cannot turn all-in off
             if self._process is None or self._process.poll() is not None:
                 self._start()
+            self._allin = self._allin or spot.tree.allin
             self._count += 1
             output = Path(self._workdir.name) / f"spot-{self._count}.json"
             lines = spot.commands(output.name, self.threads,
