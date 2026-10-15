@@ -79,7 +79,7 @@ PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 1000 --strategie
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_real_stats.py <aa_population_stats_v1.json>
 # 模拟对手像不像 AA 真人：录像里每个真人决定和亮出的牌交给各桌对手模型打分（对数损失，越低越像），按街、单挑/多人、下注大小拆开；只写汇总
 PYTHONPATH=src:. .venv/bin/python tools/sim_fidelity.py --frames <录像>/frames.jsonl [...] --pools aa_real,noisy,aa_cal --out <目录>
-# AA 校准桌（--pool aa_cal）的拟合：在录像上按最大似然拟合慢打、诈唬、硬跟和对下注大小、筹码深浅、全下的反应（--phh 换用 phh_depth_stats.py 从 PHH 牌谱数出的形状），两半录像交叉检验；新录像多了就重跑，数字进 aa_cal_stats_v1.json、参数进 calibrated.FITTED。校准桌筹码浅时按录像的比例直接全下
+# AA 校准桌（--pool aa_cal）的拟合：在录像上按最大似然拟合慢打、诈唬、硬跟和对下注大小、筹码深浅、全下的反应（--phh 换用 phh_depth_stats.py 从 PHH 牌谱数出的形状），两半录像交叉检验；数字、参数（FITTED）和用过的录像都在 aa_cal_stats_v1.json。每周日 `tools/refit_aa_cal.py --frames <日志...> --out <目录> [--apply]` 在没用过的新录像上比新旧两版，两半都更准才换。校准桌筹码浅时按录像的比例直接全下
 PYTHONPATH=src:. .venv/bin/python tools/fit_aa_cal.py --frames <录像>/frames.jsonl [...] --fold A=<日志,...> --fold B=<日志,...> --out <目录>
 # 翻前策略 aa_preflop 的参数调优：网格里每组参数打同一批牌，按和参照策略的差排序；换 --seed 复核
 PYTHONPATH=src:. .venv/bin/python tools/tune_aa_preflop.py --pool aa --deals 2000 --grid realize_ip=0.9,1.0,1.1 --grid realize_oop=0.7,0.8,0.9

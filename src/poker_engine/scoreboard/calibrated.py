@@ -76,20 +76,24 @@ BET_HU, BET_MULTI, RAISE = 0.5, 0.6, 1.1
 # 7/7 below 1, 6/10 below 2, 2/15 below 4, 0/30 above.
 SHOVE_BET = ((0.5, 1.0), (1.0, 0.6), (2.0, 0.15), (None, 0.0))
 SHOVE_RAISE = ((1.0, 1.0), (2.0, 0.6), (4.0, 0.13), (None, 0.0))
-# Fitted 2026-10-15 on 475 replayed hands of 15 recordings (``tools/fit_aa_cal.py``;
-# out of sample each half of them fits the other better than ``aa_real``). A
-# price slope did not hold from one half to the other, so it is 0 for now.
-FITTED = {"mix": 0.6, "price_slope": 0.0,
-          "flop": {"slow": 0.4, "bluff": 0.06, "sticky": 0.2},
-          "turn": {"slow": 0.5, "bluff": 0.1, "sticky": 0.15},
-          "river": {"slow": 0.7, "bluff": 0.0, "sticky": 0.03}}
 KINDS = ("f", "c", "r")
 
 
 @lru_cache(maxsize=1)
 def cal_stats():
+    """The AA numbers of the recordings (``logs``) and the parameters fitted
+    on them (``fitted``)."""
     data = resources.files("poker_engine.scoreboard").joinpath(STATS_FILE)
     return json.loads(data.read_text(encoding="utf-8"))
+
+
+# First fitted 2026-10-15 on 475 replayed hands of 15 recordings
+# (``tools/fit_aa_cal.py``; out of sample each half of them fits the other
+# better than ``aa_real``; a price slope did not hold from one half to the
+# other, so it is 0). Refitted weekly by ``tools/refit_aa_cal.py``, which
+# replaces numbers and parameters together, and only when recordings neither
+# has seen are predicted better.
+FITTED = cal_stats()["fitted"]
 
 
 def _clip(value, low=0.0, high=1.0):
