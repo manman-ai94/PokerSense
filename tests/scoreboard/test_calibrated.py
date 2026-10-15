@@ -8,9 +8,10 @@ import pytest
 
 from poker_engine.scoreboard.aa_real import aa_stats
 from poker_engine.scoreboard.bots import _rng, make_policy
-from poker_engine.scoreboard.calibrated import (FITTED, REFERENCE_PRICE, CalibratedBot,
-                                                cal_stats, checked_probs, facing_probs,
-                                                preflop_probs, priced_keep)
+from poker_engine.scoreboard.calibrated import (
+    FITTED, REFERENCE_DEPTH_BB, REFERENCE_PRICE, REFERENCE_SPR, CalibratedBot,
+    adjusted_keep, all_in_or, cal_stats, checked_probs, effective_stack, facing_probs,
+    preflop_adjusted, preflop_probs, priced_keep, situation)
 from poker_engine.scoreboard.fidelity import chances
 from poker_engine.scoreboard.replay import kind_of
 from poker_engine.scoreboard.runner import POOLS
@@ -47,6 +48,46 @@ def test_the_price_moves_the_share_that_goes_on():
     assert small > 0.5 > large
 
 
+# Seat 2 faces 10 more into 40 on the flop. Seat 1 has 30 behind and 20 in,
+# seat 3 80 behind, seat 4 folded: seat 2 can lose at most 70 of its 500.
+SEEN = {"observing_seat": 2, "occupied_seats": [1, 2, 3, 4], "folded": [4],
+        "stacks": {"1": "30", "2": "500", "3": "80", "4": "900"},
+        "bets": {"1": "20", "2": "10", "3": "0", "4": "0"},
+        "to_call": "10", "pot": "40", "street": "flop", "big_blind": "4"}
+
+
+def test_price_depth_and_all_in_of_a_decision():
+    assert effective_stack(SEEN) == 70
+    assert situation(SEEN) == pytest.approx((0.2, 70 / 40, False))
+    assert situation({**SEEN, "street": "preflop"})[1] == pytest.approx(70 / 4)
+    short = {**SEEN, "stacks": {**SEEN["stacks"], "2": "8"}, "to_call": "8"}
+    assert effective_stack(short) == 8
+    assert situation(short) == pytest.approx((8 / 48, 8 / 40, True))
+    assert situation({**SEEN, "to_call": "0"})[0] == 0.0
+
+
+def test_depth_and_all_in_move_the_share_that_goes_on():
+    at_reference = (REFERENCE_PRICE, REFERENCE_SPR, False)
+    assert adjusted_keep(0.5, at_reference, {"depth_slope": 0.5}) == pytest.approx(0.5)
+    assert adjusted_keep(0.37, (0.4, 0.5, True), {"mix": 0.6}) == 0.37
+    deep, shallow = ((REFERENCE_PRICE, spr, False) for spr in (12.0, 1.0))
+    assert (adjusted_keep(0.5, deep, {"depth_slope": 0.5}) > 0.5
+            > adjusted_keep(0.5, shallow, {"depth_slope": 0.5}))
+    # A stack the recording did not read counts as the deepest in the range.
+    assert adjusted_keep(0.5, (0.2, 1e6, False), {"depth_slope": 0.5}) == \
+        adjusted_keep(0.5, (0.2, 20.0, False), {"depth_slope": 0.5})
+    all_in = (REFERENCE_PRICE, REFERENCE_SPR, True)
+    assert adjusted_keep(0.5, all_in, {"allin_shift": -1.0}) < 0.5
+    # Before the flop only the preflop_ names count, and the shares keep their ratio.
+    short = (0.3, REFERENCE_DEPTH_BB / 10, True)
+    params = {"depth_slope": 9.0, "preflop_allin_shift": -1.0}
+    assert adjusted_keep(0.5, short, params, preflop=True) == \
+        pytest.approx(adjusted_keep(0.5, short, {"allin_shift": -1.0}))
+    raising, calling = preflop_adjusted(0.1, 0.3, short, params)
+    assert raising + calling < 0.4 and raising / calling == pytest.approx(1 / 3)
+    assert preflop_adjusted(0.1, 0.3, (0.0, 20.0, False), params) == (0.1, 0.3)
+
+
 def test_probabilities_are_whole_and_legal():
     probs = preflop_probs(np.array([0, 1, 2]), 0.1, 0.3, 0.2)
     assert probs.sum(axis=-1) == pytest.approx([1, 1, 1])
@@ -58,8 +99,8 @@ def test_probabilities_are_whole_and_legal():
     assert checked.sum(axis=-1) == pytest.approx(np.ones(101))
     assert checked[0][2] == pytest.approx(0.1)          # the weakest bluff
     assert checked[-1][2] == pytest.approx(0.8)         # the strongest slow-play
-    facing = facing_probs(win, "flop|hu|other|facing_bet", 0.1, 0.4, 0.4, 0.2, 0.1,
-                          -1.5)
+    facing = facing_probs(win, "flop|hu|other|facing_bet", 0.1, 0.4,
+                          priced_keep(0.5, 0.4, -1.5), 0.2, 0.1)
     assert facing.sum(axis=-1) == pytest.approx(np.ones(101))
     assert facing[0][1] == pytest.approx(0.1)           # sticky calls
     assert facing[-1][2] == pytest.approx(0.8)
@@ -106,3 +147,21 @@ def test_plays_whole_hands_repeatably_with_its_fitted_numbers(arena):
             arena.step(action)
             played += 1
     assert played > 100
+
+
+def test_goes_all_in_as_often_as_aa_players_at_this_depth():
+    betting = {"can_raise": True, "min_raise_to": "8", "max_raise_to": "70"}
+    # Nothing to call, 40 in the pot, 70 at most at risk: SPR 1.75.
+    unfaced = {**SEEN, "to_call": "0", "bets": dict.fromkeys(SEEN["bets"], "0"),
+               "stacks": {**SEEN["stacks"], "1": "50", "3": "70"}, "betting": betting}
+    assert effective_stack(unfaced) == 70
+    assert all_in_or(unfaced, "raise_to:20", 0.1) == "raise_to:70"
+    assert all_in_or(unfaced, "raise_to:20", 0.2) == "raise_to:20"
+    deep = {**unfaced, "pot": "10"}                       # SPR 7: never
+    assert all_in_or(deep, "raise_to:5", 0.0) == "raise_to:5"
+    # Facing a bet at SPR 70 / 40: raises go all in 60% of the time.
+    facing = {**SEEN, "betting": betting}
+    assert all_in_or(facing, "raise_to:45", 0.59) == "raise_to:70"
+    assert all_in_or(facing, "raise_to:45", 0.61) == "raise_to:45"
+    preflop = {**facing, "street": "preflop"}
+    assert all_in_or(preflop, "raise_to:45", 0.0) == "raise_to:45"
