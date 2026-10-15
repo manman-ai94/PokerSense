@@ -340,10 +340,15 @@
 
   // One graded step: the grade word, how far off it was, and you vs the best.
   // A bet or raise of a size the advice never weighed is "可以" at most and
-  // says so: only the way was graded, not the chips.
+  // says so: only the way was graded, not the chips. When the way was not the
+  // advice's either, the grade stands as it is, with the same caveat.
   function gradeView(item) {
     const graded = gradeWay(item);
     if (item.size_graded !== false) return graded;
+    if (!graded.compare[0].best) {
+      const unsized = "下注多少没评分";
+      return {...graded, note: `${graded.note}，${unsized}`, detail: `${graded.detail} · ${unsized}`};
+    }
     const way = "方向和建议一样，下注多少没评分";
     const compare = graded.compare.map((row, i) => i ? row : {...row, label: "你做了 · 方向和建议一样", best: false});
     return {...graded, size: "", note: way, detail: `你${didText(item)} · ${way}`, compare};
