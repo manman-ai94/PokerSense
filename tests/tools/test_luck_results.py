@@ -171,7 +171,8 @@ def test_the_plain_lines_say_the_result_the_luck_and_the_hands_needed():
     assert text[0].startswith("40 手：打出来 +0 bb/100；扣掉运气 +50 bb/100（95% 区间 ")
     assert text[0].endswith("结论：说不准）")
     assert text[1] == "运气：起手牌运气 -50 bb/100（40/40 手算得出）"
-    assert text[2].startswith("按现在的波动，要把区间缩到 ±20 bb/100 共约需 ")
+    assert text[2].startswith("按现在的波动，区间缩到 ±100 bb/100 共约需 ")
+    assert "、±20 bb/100 共约需 " in text[2]
     assert text[3] == ("照建议打的 20 手扣运气后 +200，没照的 20 手 -100"
                        "（是他自己选的，只作参考）")
     assert results.plain_lines(results.summarize([])) == ["没有算得出成绩的手"]

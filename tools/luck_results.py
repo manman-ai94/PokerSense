@@ -35,7 +35,7 @@ The summary gives big blinds per 100 hands as played and with the luck
 out, with the always-valid 95% interval (``luck.always_valid``: it stays
 right however often it is looked at, so the daily look cannot call a
 result too early), the verdict it gives (赢 / 输 / 说不准), how many hands an
-interval of ±20 bb/100 needs at this spread, and the same split into normal
+interval of ±100 and ±20 bb/100 needs at this spread, and the same split into normal
 hands and bomb pots, by whether you followed the advice (decided by you, not
 chance: only a hint) and by code version.
 
@@ -68,7 +68,7 @@ from tools.aa_session_report import HERO, followed, session_report  # noqa: E402
 from tools.aa_strategy_review import decisions as review_decisions  # noqa: E402
 
 SEAT = int(HERO)
-HALF_WIDTH = 0.20           # big blinds per hand: ±20 bb/100
+WIDTHS = (100, 20)          # bb/100 an interval of ± this many needs how many hands
 SETTLE_MATCH = 0.05         # share of the pot the replayed result may be off
 
 
@@ -249,7 +249,8 @@ def part(lines):
         item["spread_per_hand_bb"] = {"as_played": round(before, 2),
                                       "luck_out": round(after, 2)}
         item["fewer_hands"] = round((before / after) ** 2, 2) if after else None
-        item["hands_for_20"] = luck.hands_for(after, HALF_WIDTH)
+        item["hands_needed"] = {str(width): luck.hands_for(after, width / 100)
+                                for width in WIDTHS}
     return item
 
 
@@ -326,9 +327,10 @@ def plain_lines(summary, who="他"):
                           f"（全下 {allin['hands']} 手，算得出 {allin['taken_out']} 手）")
     if luck_parts:
         lines.append("运气：" + "；".join(luck_parts))
-    if summary.get("hands_for_20"):
-        lines.append(f"按现在的波动，要把区间缩到 ±20 bb/100 共约需 "
-                     f"{summary['hands_for_20']:,} 手")
+    if summary.get("hands_needed"):
+        lines.append("按现在的波动，区间缩到 " + "、".join(
+            f"±{width} bb/100 共约需 {count:,} 手"
+            for width, count in summary["hands_needed"].items()))
     follow = summary["by_followed"]
     if follow["yes"]["hands"] and follow["no"]["hands"]:
         yes, no = follow["yes"], follow["no"]
