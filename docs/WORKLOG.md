@@ -10,6 +10,11 @@
 
 ## 记录
 
+**2026-10-15 · `docs/roadmap-20261015`（审计本地和 GitHub、清理旧分支、路线图补到 10/15）**
+- 做了什么：工作从 Claude 项目对话回到 Mac 上的 Claude Code。本机 main 快进到 GitHub（落后 12 个提交）；删掉本地 62 个和 GitHub 上 83 个已合并的旧分支、5 个旧工作区；ROADMAP 补上 10/09–10/15（飞轮第一期、策略第二期、第三期第二台机器）。
+- 怎么做的：先把所有分支、标签和工作区里没提交的改动存进数据目录 `git-backup/cleanup-20261015/`（`all-refs.bundle` 等）；没进 main 的 2 个本地分支改成 `archive/` 标签；GitHub 上只删完整进了 main、10/13 以后没动过、没挂 PR 的分支。
+- 怎么验证的：本机 Python 3.12、依赖、求解器、Node、rclone、ffmpeg 都在；最新改动的测试 15 个通过，flake8 干净；GitHub main 最近三次检查全绿。还剩：PR #51 和 main 有冲突，PR #43 等主人决定。
+
 **2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（把 #52 之前录的大录像压小再传）**
 - 做了什么：新工具 `tools/shrink_recording.py`：把旧的 MSMF 大录像逐段用现在的编码器（FFmpeg）重写，帧数不变，`segments.csv`、`frames.jsonl` 照样对得上；原件移到 `PokerSense_private/upload/originals/`（不会被上传），`recording.json` 记 `reencoded`。
 - 起因：杜 18 分钟 7.95 GB 那场按 1 MB/s 传了 3 小时 21 分超时没传完。
