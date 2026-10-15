@@ -562,11 +562,11 @@ def test_a_moment_into_your_turn_without_advice_the_rough_rule_answers():
     rough = results[52]
     assert (rough["status"], rough["kind"], rough["rough_for"]) == (
         "ready", "rough", "hand_incomplete")
-    # Seat 2's bet of 10 into 35: the call needs 10 of 45.
-    assert (rough["to_call"], rough["pot"], rough["required"]) == ("10", "35", 0.222)
+    # Seat 2's bet of 10 into 35: the call needs 10 of 45, less 2 of rake.
+    assert (rough["to_call"], rough["pot"], rough["required"]) == ("10", "35", 0.233)
     edge = rough["range_equity"]
     assert edge["opponents"] == 1 and 0 < edge["value"] < 1
-    assert rough["advice"] == [{"action": "call" if edge["value"] >= 0.222 else "fold",
+    assert rough["advice"] == [{"action": "call" if edge["value"] >= 0.233 else "fold",
                                 "frequency": 1.0}]
     assert "rough rule" in rough["basis"] and rough["advice_emitted"] is True
     logged = frame_summary({"solver_advice_v1": rough})["solver_advice"]
@@ -796,7 +796,7 @@ def test_the_rough_rule_takes_the_price_from_the_history_when_it_is_not_read():
                                 "call_amount": None},
               "stacks": {"4": "300"}}
     rough = aa_solver_advice.rough_advice(fields, ["Qs", "Qh"], "turn")
-    assert (rough["to_call"], rough["required"]) == ("65", 0.285)
+    assert (rough["to_call"], rough["required"]) == ("65", round(65 / (228 - 10), 3))
     # Seat 2 bet: it holds the top 20% of hands, not 40%.
     assert rough["range_equity"]["value"] < aa_solver_advice.rough_advice(
         {**fields, "hero_controls": {**fields["hero_controls"], "call_amount": "65"},
@@ -813,10 +813,11 @@ def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():
     free = rough(button="check", price=None)
     assert (free["advice"][0]["action"], free["to_call"], free["required"]) == (
         "check", "0", 0.0)
-    # 72 offsuit against a raise to 40 before the flop: 40 of 87 is too much.
+    # 72 offsuit against a raise to 40 before the flop: 40 of 87 (83 after
+    # the rake) is too much.
     junk = rough("preflop", hero=("7c", "2d"), price="40", pot="47",
                  wagers={"2": "40", "4": "0"})
-    assert junk["advice"][0]["action"] == "fold" and junk["required"] == 0.46
+    assert junk["advice"][0]["action"] == "fold" and junk["required"] == 0.482
     aces = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
                  wagers={"2": "40", "4": "0"})
     assert aces["advice"][0]["action"] == "call"
@@ -826,6 +827,9 @@ def test_the_rough_rule_checks_when_free_and_calls_or_folds_by_the_price():
     short = rough("preflop", hero=("Ac", "Ad"), price="40", pot="47",
                   wagers={"2": "40", "4": "0"}, stack="30")
     assert (short["to_call"], short["range_equity"]["realize"]) == ("30", 1.0)
+    # All in for 30 of the 40: the other 10 go back to the raiser. You can
+    # win 47 + 30 - 10 = 67, 64 after the rake (before: 30 of 77).
+    assert short["required"] == round(30 / 64, 3)
     assert short["range_equity"]["value"] > aces["range_equity"]["value"]
     assert rough()["range_equity"]["realize"] == 1.0
 

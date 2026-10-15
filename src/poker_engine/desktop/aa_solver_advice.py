@@ -146,7 +146,7 @@ from poker_engine.scoreboard.multiway_bot import GUARD_SIZE
 from poker_engine.scoreboard.multiway_bot import big_pot, guard_action, guarded
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_hand
-from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
+from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy, rake
 from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.side_pots import pots as side_pots
@@ -463,7 +463,8 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes):
         return None
     realize = PREFLOP_REALIZE if street == "preflop" and not all_in else 1.0
     value *= realize
-    required = to_call / (pot + to_call) if to_call > 0 else Decimal(0)
+    required = (to_call / rough_winnable(wagers, mine, pot, to_call, stakes)
+                if to_call > 0 else Decimal(0))
     action = "check" if to_call == 0 else "call" if value >= required else "fold"
     row = {"action": action, "frequency": 1.0}
     guard = None
@@ -476,6 +477,19 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes):
                              "hands": None, "hands_each": counts, "realize": realize},
             "required": round(float(required), 3), "pot": str(pot),
             "pot_read": read is not None, "to_call": str(to_call), "basis": ROUGH_BASIS}
+
+
+def rough_winnable(wagers, mine, pot, to_call, stakes=None):
+    """The chips a call can win, after rake (``side_pots``): the pot and your
+    call, less the chips in front of others above what you will have in (all
+    in for less, the rest of a bet is not yours) and less the table's rake
+    (5%, at most 5 big blinds)."""
+    level = mine + to_call
+    over = sum((max(Decimal(0), chips - level) for seat, chips in wagers.items()
+                if seat != str(HERO)), Decimal(0))
+    matched = pot + to_call - over
+    rules = {**_rule_set(), "big_blind": str(big_blind(stakes))}
+    return matched - Decimal(str(rake({"rules": rules}, float(matched))))
 
 
 def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
