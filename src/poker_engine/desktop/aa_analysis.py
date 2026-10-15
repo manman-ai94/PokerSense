@@ -194,6 +194,12 @@ class AAConditionalAnalysis:
         return self.status()
 
     def _watch(self, job_id, process, receiver, deadline):
+        try:
+            self._collect(job_id, process, receiver, deadline)
+        finally:
+            self._terminate(process)
+
+    def _collect(self, job_id, process, receiver, deadline):
         message = None
         failure = "analysis_worker_exited_without_result"
         try:
@@ -219,14 +225,18 @@ class AAConditionalAnalysis:
             failure = f"analysis_worker_protocol_error:{type(exc).__name__}"
         finally:
             receiver.close()
-            self._terminate(process)
         with self._lock:
             if (self._report["job_id"] != job_id
                     or self._report["status"] != "RUNNING"):
                 return
             if self._timer is not None:
                 self._timer.cancel()
-            if time.monotonic() >= deadline:
+            timed_out = time.monotonic() >= deadline
+            # Stop the worker and publish the end state under one lock, so a
+            # caller never sees a dead worker whose job still reads RUNNING,
+            # nor a finished job whose worker still blocks the next start.
+            self._terminate(process)
+            if timed_out:
                 self._set_terminal("TIMED_OUT", "analysis_deadline_exceeded")
             elif message is None:
                 self._set_terminal("ERROR", failure)
