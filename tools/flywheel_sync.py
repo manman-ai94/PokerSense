@@ -159,12 +159,12 @@ def choose_source(text, settings, *, which=shutil.which, run=aa_upload.run_proce
         local = Path(text).expanduser()
         if local.is_dir() or ":" not in text or re.match(r"^[A-Za-z]:[\\/]", text):
             return LocalSource(local)
-        rclone = settings["rclone"] or which("rclone")
+        rclone = aa_upload.find_rclone(settings["rclone"], which=which, places=[])
         return RcloneSource(text, rclone, run) if rclone else None
     found = drive_folder(settings["folder"], cloud)
     if found is not None:
         return LocalSource(found)
-    rclone = settings["rclone"] or which("rclone")
+    rclone = aa_upload.find_rclone(settings["rclone"], which=which, places=[])
     if rclone:
         return RcloneSource(f"{settings['remote']}:{settings['folder']}", rclone, run)
     return None
@@ -290,10 +290,12 @@ def main(argv=None):
                                else value)
         if not stored.get("rclone"):
             # The full path: a window started before rclone was on the
-            # PATH finds it anyway.
+            # PATH finds it anyway. Not the link's target: Homebrew and
+            # winget link to a folder named for the version, gone after an
+            # upgrade.
             found = aa_upload.find_rclone(which=shutil.which)
             if found:
-                stored["rclone"] = str(Path(found).resolve())
+                stored["rclone"] = os.path.abspath(found)
         aa_upload.write_json(uploader.settings_path, stored)
     if args.command == "push":
         settings = uploader.settings()

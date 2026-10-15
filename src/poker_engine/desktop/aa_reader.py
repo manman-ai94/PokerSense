@@ -133,6 +133,66 @@ class _GlyphReader:
             self.supplement is not None) else base
 
 
+class _OncePerFrame:
+    """A reader whose answer depends on the picture alone, asked again by
+    several steps of one frame's read: worked out once per frame.
+
+    The special-mode reader (insurance, buy-in and lucky-bomb overlays) was
+    asked three times per frame and the table-scene check five times, the
+    same pixels each time; on 10/15 that was about a fifth of a frame's
+    recognition. Between ``begin(image)`` and ``end()`` (``AA8Reader.read``)
+    that very image object gets the first answer again, copied, so no step
+    can change what another sees; any other picture, or a call outside a
+    frame, is worked out as before."""
+
+    def __init__(self, base):
+        self.base = base
+        self.image = self.answer = None
+
+    def __getattr__(self, name):
+        try:
+            base = self.__dict__["base"]
+        except KeyError:            # a copy being made, before its fields
+            raise AttributeError(name) from None
+        return getattr(base, name)
+
+    def begin(self, image):
+        self.image, self.answer = image, None
+
+    def end(self):
+        self.image = self.answer = None
+
+    def recognize(self, image):
+        if image is None or image is not self.image:
+            return self.base.recognize(image)
+        if self.answer is None:
+            self.answer = self.base.recognize(image)
+        return deepcopy(self.answer)
+
+
+def _once_per_frame(state, base):
+    """Every reference to ``base`` among the readers of ``state`` (objects'
+    attributes, a few levels down) goes through one ``_OncePerFrame``."""
+    wrapper, seen = _OncePerFrame(base), set()
+
+    def visit(item, depth):
+        if depth > 4 or id(item) in seen:
+            return
+        seen.add(id(item))
+        attributes = getattr(item, "__dict__", None)
+        if not isinstance(attributes, dict) or isinstance(item, (ModuleType, type)):
+            return
+        for name, value in list(attributes.items()):
+            if value is base:
+                attributes[name] = wrapper
+            elif not isinstance(value, (ModuleType, type, np.ndarray, str, bytes,
+                                        int, float, dict, list, tuple)):
+                visit(value, depth + 1)
+
+    visit(state, 0)
+    return wrapper
+
+
 class _Tracker:
     def __init__(self, reader):
         from tools.aa8_glyph_transitions_v2 import GlyphTransitionsV2
@@ -264,6 +324,8 @@ class AA8Reader:
             supplement = GlyphSupplementV3(state.profile, images)
         state.reader = _GlyphReader(state.reader, state.modes, supplement)
         state.tracker = _Tracker(state.reader)
+        state.once_per_frame = [_once_per_frame(state, base) for base in (
+            state.modes, getattr(state.reader, "scene", None)) if base is not None]
         self._initial = _copy_candidate(state)
         self._state = state
         self._source = "aa8-session-" + uuid.uuid4().hex
@@ -322,8 +384,15 @@ class AA8Reader:
             seats = getattr(self._state, "seats", None)
             if isinstance(seats, SeatCueRecorder):
                 seats.last = None
-            row = self._state.read(image, frame, {
-                "pts_seconds": pts, "sha256": current_hash})
+            once = getattr(self._state, "once_per_frame", ())
+            for reader in once:
+                reader.begin(image)
+            try:
+                row = self._state.read(image, frame, {
+                    "pts_seconds": pts, "sha256": current_hash})
+            finally:
+                for reader in once:
+                    reader.end()
             row["seat_cues_v1"] = (seats.last if isinstance(seats, SeatCueRecorder)
                                    else None)
             row["seat_states_v1"] = self._seat_states.observe(row, pts)
@@ -355,11 +424,16 @@ class AA8Reader:
                 image, frame, (row["action_history_v1"] or {}).get("hand_id"),
                 readable=row.get("scene_supported") is True, known=known)
             row.update(self._semantics.observe(row))
-            row["critical_perception_v1"] = self._critical.observe(row)
+            view = row["critical_perception_v1"] = self._critical.observe(row)
+            # ``observe`` has just re-derived the view from this row's raw
+            # evidence; the two checks below take it instead of re-deriving
+            # it twice more (deep copies and sorted dumps of the growing
+            # action and credit lists, every frame).
             from .aa_critical_perception import target_s_candidate_screen
-            row["target_s_candidate_screen"] = target_s_candidate_screen(row)
+            row["target_s_candidate_screen"] = target_s_candidate_screen(
+                row, derived=deepcopy(view))
             from tools.aa8_critical_fields_v3 import normalize_fields
-            row["evaluation_fields"] = normalize_fields(row)
+            row["evaluation_fields"] = normalize_fields(row, derived=deepcopy(view))
             if self._analysis_enabled:
                 from .aa_river_strategy import current_river_study
                 row["river_strategy_v1"] = current_river_study(row)
