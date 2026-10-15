@@ -225,7 +225,7 @@ def test_the_video_goes_up_while_the_sheet_is_still_being_written(tmp_path):
         def wait(self, timeout):
             order.append("sheet")
             (folder / "flywheel").mkdir()
-            (folder / "flywheel" / "体检单.txt").write_text("体检单\n", encoding="utf-8")
+            (folder / "flywheel" / "体检单.txt").write_bytes("体检单\n".encode())
 
     class Rclone(FakeRclone):
         def __call__(self, args, timeout):
