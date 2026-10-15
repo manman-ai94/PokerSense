@@ -181,7 +181,7 @@ Set-Content -Encoding ascii ([Environment]::GetFolderPath("Desktop") + "\PokerSe
 - 打完点“停止”，等窗口上出现“已存好 · N 分钟”再关窗口。录像满 2 小时会自动停并存好。
 
 录像存在 `C:\PokerSense_data\PokerSense_private\aa-mac-recordings\<日期-时间>-live\`，每次一个文件夹。
-设好“录像回传”（见下面）以后，停录、体检单写完后它会在后台自己传给主人；没设好之前，把整个文件夹压缩后用微信或网盘发给主人。
+设好“录像回传”（见下面）以后，一停录它就在后台自己传给主人（先传录像，体检单写完再补）；没设好之前，把整个文件夹压缩后用微信或网盘发给主人。
 
 检查用（不开窗口）：
 
@@ -191,11 +191,12 @@ C:\PokerSense\launch\aa\START-AA.cmd --self-check
 
 输出里 `"capture_enabled": true`、`"recognition_bundle": "INSTALLED"`、`"solver_ready": true`、
 `"recorder_ready": true` 都有就对了。它会真算一个很小的河牌局面、写几帧录像再读回来（在临时文件夹里，
-算完就删），所以要等十来秒。`"recorder"` 里的 `"fourcc"` 是录像用的编码：`avc1`（H.264）最好；
-这台电脑没有 H.264 编码器时自动用 `mp4v`，文件大几倍，主人那边照样能读。
+算完就删），所以要等十来秒。`"recorder"` 里的 `"fourcc"` 是录像用的编码，`"backend"` 应该是 `FFMPEG`：
+Windows 上通常是 `mp4v`（一小时约 0.5–1 GB），主人那边照样能读。
 
 输出里有 `openh264-2.5.0-win64.dll` 找不到之类的告警、但 `recorder_ready` 是 true，不用管，也不要去网上找这个 dll：
-OpenCV 先试 OpenH264 这个库，没有就用 Windows 自带的 H.264 编码器；自检是真写了几帧录像再读回来，true 说明真能录。
+OpenCV 先试 OpenH264 这个库，没有就用 `mp4v`。**不用** Windows 自带的 H.264 编码器（`MSMF`）：它固定每秒约 60 Mbit，
+一小时 26 GB（2026-10-15 杜的 18 分钟录了 7.95 GB）。
 第一段录像录完，双击录像文件夹里的 `segment_0000.mp4` 看一眼能不能放，能放就照常录。
 
 ## 7. 更新（只在主人说要更新时）
@@ -226,8 +227,8 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 
 **这一步不挡第一段录像**：没设好之前照常录，录完把录像文件夹压缩后用微信或网盘私下发给主人就行。
 
-停录、体检单写完后，窗口在后台用 rclone 把整个录像文件夹传到主人 Google Drive 的
-`PokerSense 同事数据/du/<录像文件夹名>/`：低优先级、限速 1 MB/s，传不上就留着下次再传，不影响录像和建议。
+一停录，窗口就在后台用 rclone 把整个录像文件夹传到主人 Google Drive 的
+`PokerSense 同事数据/du/<录像文件夹名>/`（先传录像，体检单写完再补传它的几个小文件）：低优先级、限速 1 MB/s，传不上就留着下次再传，不影响录像和建议。
 登录信息只在这台电脑的 rclone 配置里，不在仓库、不在软件里。不要改这台电脑的任何网络设置（Wi-Fi、防火墙、代理、DNS）。
 
 1. 装 rclone，然后**关掉 PowerShell 再开一个新的**（让新命令生效）：
@@ -280,6 +281,7 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
    ```
 
    输出里 `"configured": true`、`"enabled": true`、`"machine": "du"` 都有就对了。
+   `setup` 会把它找到的 `rclone.exe` 的完整位置记下来，所以先开着的窗口也能找到 rclone，不用重开。
    窗口里“设置和数据” → “设置与分析”有“录像自动上传”一栏，平时什么都不用管；没设好时那里写“未配置上传”。
 
 4. 想马上传已经录好的（例如第一段验收录像），窗口不用开：

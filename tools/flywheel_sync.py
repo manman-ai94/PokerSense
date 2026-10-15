@@ -288,6 +288,12 @@ def main(argv=None):
             if value is not None:
                 stored[key] = (aa_upload.machine_name(value) if key == "machine"
                                else value)
+        if not stored.get("rclone"):
+            # The full path: a window started before rclone was on the
+            # PATH finds it anyway.
+            found = aa_upload.find_rclone(which=shutil.which)
+            if found:
+                stored["rclone"] = str(Path(found).resolve())
         aa_upload.write_json(uploader.settings_path, stored)
     if args.command == "push":
         settings = uploader.settings()

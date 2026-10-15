@@ -10,6 +10,11 @@
 
 ## 记录
 
+**2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（杜的录像太大、录完不自动上传）**
+- 做了什么：Windows 录像只走 OpenCV 的 FFmpeg（有 OpenH264 用 H.264，否则 mp4v），不再落到 Windows 自带的 MSMF H.264（固定 1 bit/像素，约 60 Mbit/s，杜 18 分钟 7.95 GB）；一停录就开传录像，体检单写完再补传并写 upload.json；窗口找不到 rclone 时也去 C:\rclone、winget、注册表里的 PATH 找，setup 记下 rclone 完整路径，没配好时 5 分钟再看一次。
+- 怎么验证的：Linux 上 FFmpeg mp4v 静态牌桌画面约 0.55 GB/小时；Windows CI 新测试真录 2 秒，要求走 FFMPEG、小于 2 MB；上传、找 rclone、setup 的单元测试（rclone 全是假的，不碰网络）；flake8。
+- 还剩：杜的电脑等主人说更新再 git pull；已录的 8 GB 照常传完；P30 验收在新录像上跑。
+
 **2026-10-14 · `claude/fix-windows-capture-lock-2481t7`（杜的 Windows 采集卡点开始出不来画面）**
 - 做了什么：Windows 默认接口 MSMF → DirectShow（这张 UGREEN 卡 MSMF 首帧要等约 70 秒）；没画面的报错不再写死“两秒”，写实际等的秒数（第一帧 30 秒，之后 2 秒）。
 - 怎么做的：卡每次打开要约 5 秒锁信号、期间全黑：Windows 找手机时黑屏看 15 秒再判“没手机”；读画面时刚打开 15 秒内的全黑帧先跳过，见过画面后再全黑才报“收不到手机画面”。没照抄 WorkBuddy 的补丁（它整个关掉了掉信号检测）。Mac 判黑仍 5 秒、真丢信号仍立刻提示。

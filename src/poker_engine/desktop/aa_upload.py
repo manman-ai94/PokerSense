@@ -2,8 +2,9 @@
 
 A recording folder (segments, ``frames.jsonl``, ``recording.json``,
 ``flywheel/``) goes with ``rclone`` to ``<remote>:<folder>/<machine>/<name>/``
-once its check-up sheet is written (``aa_after_session``). The owner's Mac
-takes it back with ``tools/flywheel_sync.py pull``.
+as soon as the recording stops: the video while its check-up sheet is being
+written (``aa_after_session``), the sheet's files once it is done. The
+owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
 
 * What and where come from a local file (``PokerSense_private/upload/
   settings.json``): ``enabled`` (the window's switch, on by default),
@@ -24,9 +25,14 @@ takes it back with ``tools/flywheel_sync.py pull``.
 * After the files, a small ``upload.json`` (the file list with sizes) is
   written last: a recording without it, or whose files do not match it, is
   still on its way and the pull leaves it alone.
+* rclone is the one in the settings (``rclone``, a full path: ``flywheel_sync.py
+  setup`` keeps the one it finds), else the one on the window's PATH, else
+  one in the usual places (on Windows ``C:\\rclone``, winget's links and the
+  PATH as it is now in the registry: a window started before rclone was put
+  on the PATH does not see it there).
 * Without rclone or without the remote the window says "未配置上传" and
-  nothing else happens. Folders pulled from another machine (with
-  ``pulled.json``) are never uploaded again.
+  looks again every few minutes; nothing else happens. Folders pulled from
+  another machine (with ``pulled.json``) are never uploaded again.
 """
 
 from __future__ import annotations
@@ -54,7 +60,8 @@ START_DELAY = 30.0               # seconds after start before the first look
 RETRY_WAITS = (60, 300, 900, 1800)
 REPORT_WAIT = 1800               # longest wait for the check-up sheet
 COPY_TIMEOUT = 3 * 3600
-IDLE_WAIT = 3600                 # a look now and then (rclone set up meanwhile)
+IDLE_WAIT = 3600                 # a look now and then
+UNSET_WAIT = 300                 # how often a window without rclone looks again
 CHECK_EVERY = 60.0               # seconds a "configured" answer is kept
 LOG_LIMIT = 1_000_000
 
@@ -123,6 +130,49 @@ def finished(folder):
             and not (folder / PULLED).exists())
 
 
+def rclone_places():
+    """Folders rclone is usually in when it is not on this process's PATH."""
+    if os.name != "nt":
+        return ["/opt/homebrew/bin", "/usr/local/bin"]
+    places = []
+    try:
+        import winreg
+        for root, key in ((winreg.HKEY_CURRENT_USER, "Environment"),
+                          (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet"
+                           r"\Control\Session Manager\Environment")):
+            try:
+                with winreg.OpenKey(root, key) as handle:
+                    value = winreg.QueryValueEx(handle, "Path")[0]
+            except OSError:
+                continue
+            places += [os.path.expandvars(part) for part in str(value).split(";")
+                       if part.strip()]
+    except ImportError:
+        pass
+    local = os.environ.get("LOCALAPPDATA", "")
+    programs = os.environ.get("ProgramFiles", r"C:\Program Files")
+    places += [r"C:\rclone", os.path.join(programs, "rclone")]
+    if local:
+        places.append(os.path.join(local, "Microsoft", "WinGet", "Links"))
+    return places
+
+
+def find_rclone(configured="", *, which=shutil.which, places=None):
+    """The rclone to run: the configured one, the one on PATH, or one in the
+    usual places; "" when there is none."""
+    if configured:
+        return configured
+    found = which("rclone")
+    if found:
+        return found
+    name = "rclone.exe" if os.name == "nt" else "rclone"
+    for folder in rclone_places() if places is None else places:
+        path = Path(folder) / name
+        if path.is_file():
+            return str(path)
+    return ""
+
+
 def run_process(args, timeout):
     """(return code, output) of ``args`` at low priority, without a window."""
     extra = {}
@@ -153,14 +203,15 @@ class Uploader:
     """Uploads the finished recordings under ``root``, one at a time."""
 
     def __init__(self, root, *, base=None, run=run_process, which=shutil.which,
-                 delay=START_DELAY, retry_waits=RETRY_WAITS, report_wait=REPORT_WAIT,
-                 clock=time.monotonic):
+                 places=None, delay=START_DELAY, retry_waits=RETRY_WAITS,
+                 report_wait=REPORT_WAIT, clock=time.monotonic):
         self.root = Path(root)
         base = Path(base) if base else private_root() / "upload"
         self.settings_path = base / "settings.json"
         self.state_path = base / "state.json"
         self.log_path = base / "upload.log"
         self.run, self.which, self.clock = run, which, clock
+        self.places = places
         self.delay, self.retry_waits, self.report_wait = delay, retry_waits, report_wait
         self.lock = threading.Lock()
         self.wake = threading.Event()
@@ -259,7 +310,7 @@ class Uploader:
             ok = self.upload_all()
             if ok:
                 self.failures = 0
-                wait = IDLE_WAIT
+                wait = IDLE_WAIT if self.configured else UNSET_WAIT
             else:
                 wait = self.retry_waits[min(self.failures, len(self.retry_waits) - 1)]
                 self.failures += 1
@@ -276,6 +327,8 @@ class Uploader:
         for folder in todo:
             if self.stopped.is_set():
                 return True
+            if self._sheet_running(folder) and not self.send(folder, settings):
+                return False                    # the video now, the sheet after
             self._wait_for_report(folder)
             if not self.upload(folder, settings):
                 return False
@@ -297,6 +350,32 @@ class Uploader:
                 todo.append(folder)
         return todo
 
+    def _copy(self, folder, settings):
+        """(return code, output) of an rclone copy of the folder as it is now."""
+        return self.run(
+            [self._rclone(settings), "copy", str(folder),
+             self.destination(settings, folder.name), "--checksum",
+             "--transfers", "1", "--checkers", "2", "--retries", "3",
+             "--low-level-retries", "10", "--contimeout", "30s",
+             "--timeout", "5m", "--bwlimit", settings["bwlimit"] or "0",
+             "--stats", "0", "--log-level", "NOTICE"], COPY_TIMEOUT)
+
+    def send(self, folder, settings):
+        """The files there are so far (the video), without ``upload.json``:
+        the pull still waits for the recording. True when they went through."""
+        folder = Path(folder)
+        self.uploading = folder.name
+        try:
+            code, output = self._copy(folder, settings)
+        finally:
+            self.uploading = None
+        if code != 0:
+            self.last_error = scrub(output, 1) or f"rclone 退出码 {code}"
+            self._log(f"{folder.name} 没传完（{code}）\n{scrub(output)}")
+            return False
+        self._log(f"{folder.name} 录像已传，等体检单写完再补传")
+        return True
+
     def upload(self, folder, settings):
         """rclone copy of the folder, then its ``upload.json``; True when both
         went through."""
@@ -306,12 +385,7 @@ class Uploader:
         files = manifest(folder)
         self.uploading = folder.name
         try:
-            code, output = self.run(
-                [rclone, "copy", str(folder), target, "--checksum",
-                 "--transfers", "1", "--checkers", "2", "--retries", "3",
-                 "--low-level-retries", "10", "--contimeout", "30s",
-                 "--timeout", "5m", "--bwlimit", settings["bwlimit"] or "0",
-                 "--stats", "0", "--log-level", "NOTICE"], COPY_TIMEOUT)
+            code, output = self._copy(folder, settings)
             if code == 0:
                 marker = {"machine": settings["machine"], "folder": folder.name,
                           "files": files["files"], "bytes": files["bytes"],
@@ -350,7 +424,7 @@ class Uploader:
             f"{settings['remote']}:{path}")
 
     def _rclone(self, settings):
-        return settings["rclone"] or self.which("rclone") or ""
+        return find_rclone(settings["rclone"], which=self.which, places=self.places)
 
     def _check(self, settings):
         """Is rclone here with the remote? Kept for ``CHECK_EVERY`` seconds."""
@@ -361,6 +435,15 @@ class Uploader:
             ok = code == 0 and f"{settings['remote']}:" in output.split()
         self.configured, self.checked = ok, self.clock()
         return ok
+
+    def _sheet_running(self, folder):
+        """Is the check-up sheet of ``folder`` still being written?"""
+        with self.lock:
+            process = self.reports.get(str(folder))
+        try:
+            return process is not None and process.poll() is None
+        except Exception:               # noqa: BLE001 - not a process: done
+            return False
 
     def _wait_for_report(self, folder):
         with self.lock:
@@ -392,5 +475,5 @@ class Uploader:
 
 
 __all__ = ["BWLIMIT", "FOLDER", "MARKER", "PULLED", "REMOTE", "Uploader", "current",
-           "default_settings", "finished", "load_settings", "machine_name",
-           "manifest", "run_process", "write_json"]
+           "default_settings", "find_rclone", "finished", "load_settings",
+           "machine_name", "manifest", "rclone_places", "run_process", "write_json"]

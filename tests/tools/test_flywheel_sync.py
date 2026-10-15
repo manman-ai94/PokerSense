@@ -152,3 +152,20 @@ def test_rank_counts_pulled_recordings_by_their_own_date(tmp_path):
     sessions, _, machines = fly.collect(tmp_path, since="20261012")
     assert sessions == ["20261012-1-live", "du-20261014-1-live"]
     assert dict(machines) == {"本机": 1, "du": 1}
+
+
+def test_setup_keeps_the_full_path_of_rclone(tmp_path, monkeypatch):
+    """So a window started before rclone was on the PATH still finds it."""
+    found = tmp_path / "rclone-dir" / "rclone"
+    found.parent.mkdir()
+    found.write_bytes(b"")
+    monkeypatch.setattr(sync, "private_root", lambda: tmp_path / "private")
+    monkeypatch.setattr(sync.shutil, "which", lambda name: str(found))
+    sync.main(["setup", "--machine", "du", "--root", str(tmp_path / "rec")])
+    settings = json.loads((tmp_path / "private" / "upload" / "settings.json")
+                          .read_text(encoding="utf-8"))
+    assert settings == {"machine": "du", "rclone": str(found.resolve())}
+    monkeypatch.setattr(sync.shutil, "which", lambda name: "/elsewhere/rclone")
+    sync.main(["setup", "--root", str(tmp_path / "rec")])      # kept as it was
+    assert json.loads((tmp_path / "private" / "upload" / "settings.json")
+                      .read_text(encoding="utf-8"))["rclone"] == str(found.resolve())
