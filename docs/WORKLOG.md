@@ -12,8 +12,8 @@
 ## 记录
 
 ### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
-- 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头。
-- 起因：Windows 测试一步 20 分钟（6416 个测试一个进程跑，大半时间在等计时和子进程）；#55 因工作日志和 main 冲突，GitHub 一个多小时没跑检查。
+- 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头；“Build Legacy macOS”只在打包文件改动时跑，新的 main 推送取消还在排队的旧打包。
+- 起因：Windows 测试一步 20 分钟（6416 个测试一个进程跑，大半时间在等计时和子进程）；#55 因工作日志和 main 冲突，GitHub 一个多小时没跑检查；每次合并都多占一台 macOS 打包，10/15 14:38–14:43 UTC 连合 3 个 PR 后，账号那几台 macOS 被占满，PR 的 macOS 检查排 16–22 分钟没等到机器就被 GitHub 取消（打包自己也有 2 次这样被取消）。
 - 怎么做的：pytest-xdist 3.8.0 进 dev；`--dist loadfile` 让同一文件留在一个进程（Windows 第二台电脑测试在仓库建、删 `.venv`）；conftest 给每个测试自己的采集卡锁文件；两个网页流程测试脚本等面板自己的“开始计算”请求结束再轮询（机器忙时旧的状态回复晚到，新结果被当成“被替换”，约 1/4 次挂，不并行也会）。
 - 怎么验证的：6428 个测试一个不少（和 Windows CI 总数一样）；CI 第一轮 Windows 测试 job 21.5 → 10.6 分钟、整轮 22 → 12.5 分钟；流程测试在 CPU 占满时 25/25 过（改前约 3/10 挂）；union 用 bare 仓库 merge-tree 试过两边新记录都保留，GitHub 上等下次两个 PR 同时加记录时确认。
 
