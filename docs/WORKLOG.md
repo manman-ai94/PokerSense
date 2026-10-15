@@ -1,7 +1,8 @@
 # 工作记录
 
-每个合并的改动都在“记录”最上面加一条，以 `### 日期 · 分支（标题）` 开头，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
-这个文件按 union 合并（`.gitattributes`）：本地 git 合 main 时两边的新记录都保留，不用手解冲突；GitHub 网页不认 union，照样显示冲突，把 main 合进分支再推即可。
+新记录不直接写进这个文件：每个合并的改动在 [`docs/worklog/`](worklog/README.md) 里加一个自己的文件
+（`<日期>-<分支名>.md`，以 `### 日期 · 分支（标题）` 开头，最多 5 行：做了什么、怎么做的、怎么验证的、还剩什么），
+两个 PR 不再碰同一个文件。每晚 `tools/worklog_rollup.py` 把那里的记录按新到旧并进下面“记录”的最上面；还没并进来的几条在那个文件夹里。
 文件太长时，把旧记录移到 `docs/archive/`。
 
 ## 推送情况
@@ -11,11 +12,11 @@
 
 ## 记录
 
-### 2026-10-15 · `claude/release-check-lhgy4q`（装新版前的复查：一条命令）
-- 做了什么：新 `tools/release_check.py <装着的版本> <新版>`：两版各检出到临时工作区，跑测试和 flake8、录像日志重放（建议覆盖、建议变了几处、按哪条规则、事后对着亮牌估值）、按原速重放（字段覆盖率、卡顿、丢帧、延迟、实时建议；同一版量过的有缓存）、杜的 P30 验收，出一页 `复查单.md` 和 `release_check.json`；`--plan` 先说要跑多久，信号灯窗口开着不跑。
-- 怎么做的：都调现有工具（`aa_session_report`、`aa_compare_advice`、`measure_aa_realtime --advice`、`p30_acceptance`、`flywheel_gates`）。旧工具三处缺口：`aa_compare_advice` 只能比同一份代码里的两种读法；日志重放把单挑求解器当作立刻算完；日志重放的“卡顿”是日志里原有的，两版必然一样。所以求解器和卡顿放到按原速重放里量。9/9 保留录像 300–820 秒强制跳过。
-- 怎么验证的：新测试 12 个、`flywheel_gates` 测试，flake8；云端 4 段 Mac 测量日志真跑：main 比 #55 建议变了 0 处（83 手、171 个决策，4 分钟），#42 前后变了 1 处（转牌范围规则 加注→过牌，胜率 41%→29%）。
-- 还剩：按原速重放和 P30 验收要在 Mac 上第一次真跑（要识别包和录像）。
+**2026-10-15 · `claude/nightly-automation-60jgce`（#56 的同名文件夹合并从来没跑成）**
+- 做了什么：上传后的 `rclone dedupe` 从 `--dedupe-mode merge` 改成 `skip`：rclone 没有 merge 这个模式，每次都报 `unknown mode for dedupe` 只记进日志，同名文件夹一个也没并。合并深度改成按设置算到录像的 `flywheel/`（默认 4 层）。
+- 怎么做的：rclone 除 `list` 外每种模式都先合并同名文件夹；`skip` 对文件只删“同名且内容一样”的多余副本，内容不同的不动。
+- 怎么验证的：测试里的假 rclone 改成照真 rclone（v1.75.2 源码）只认 9 种模式，旧代码在它上面失败；新增“合并失败照样传完、写 upload.json、记成已传、不重传”；上传和拉取测试 23 个、flake8 通过。夜间代码体检发现。
+- 还剩：同时上传的两个进程没有跨进程的锁，合并扫的是整个云盘根目录，留给上传线程看。
 
 ### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
 - 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头；“Build Legacy macOS”只在打包文件改动时跑，新的 main 推送取消还在排队的旧打包。
