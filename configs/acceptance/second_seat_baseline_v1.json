@@ -39,7 +39,7 @@
    "postflop_board": 4141,
    "postflop_advice": 62
   },
-  "postflop_label": "翻后两项（postflop_board、postflop_advice）：三星 10/08 15:31 上桌录像 20261008-153114-live，Mac 上按原速重放并算建议（tools/measure_aa_realtime.py --advice，代码 fix/p30-pot-detached-rows，2026-10-15 测）"
+  "postflop_label": "翻后两项（postflop_board、postflop_advice）：三星 10/08 15:31 上桌录像 20261008-153114-live，Mac 上按原速重放并算建议（tools/measure_aa_realtime.py --advice，代码 claude/project-thread-to0clq，2026-10-15 测）"
  },
  "seat_states": {
   "label": "10/06 Mac 采集卡两场观战录像（20261006-112110-spectate-table1、20261006-120822-spectate-session3b），tools/check_aa_seat_states.py 每 3 帧，两场平均；数字抄自 docs/reports/M2-SEAT-STATES-20261006.zh-CN.md",
