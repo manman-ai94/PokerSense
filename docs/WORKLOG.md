@@ -1,6 +1,7 @@
 # 工作记录
 
-每个合并的改动都在“记录”最上面加一条，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
+每个合并的改动都在“记录”最上面加一条，以 `### 日期 · 分支（标题）` 开头，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
+这个文件按 union 合并（`.gitattributes`）：两个 PR 同时在最上面加记录时两条都保留，不再冲突。
 文件太长时，把旧记录移到 `docs/archive/`。
 
 ## 推送情况
@@ -10,6 +11,11 @@
 
 ## 记录
 
+### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
+- 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist worksteal -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头。
+- 起因：Windows 测试一步 20 分钟（6416 个测试一个进程跑，大半时间在等计时和子进程）；#55 因工作日志和 main 冲突，GitHub 一个多小时没跑检查。
+- 怎么做的：pytest-xdist 3.8.0 进 dev；并行时多个进程抢系统临时目录里同一个采集卡锁，conftest 给每个测试自己的锁文件（生产代码不动）。
+- 怎么验证的：本地 4 核 6404 过 + 17 跳过 + 计时 7 过 = 6428，和 Windows CI 总数一样，5 分钟（单进程约 50 分钟）；union 用 bare 仓库 merge-tree 试过两边新记录都保留。
 **2026-10-15 · `claude/du-recording-size-autoupload-du7lg5`（云盘里出了 11 个同名“PokerSense 同事数据”）**
 - 做了什么：每次传完一场、写 `upload.json` 之前，跑 `rclone dedupe --dedupe-mode merge --max-depth 3 <remote>:`，把同名文件夹并成一个（只并文件夹，不动文件；`drive.file` 只看得见这台电脑自己传的）；并失败只记日志，不挡上传。
 - 起因：Google Drive 允许同名文件夹，限流时 rclone 重试建文件夹、或两次传输同时建，就会多出一个。
