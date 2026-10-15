@@ -7,6 +7,7 @@ from tools import ci_changes
 
 @pytest.mark.parametrize("files", [
     ["docs/WORKLOG.md"],
+    ["docs/worklog/2026-10-15-claude-ci-speedup-5yxfv0.md"],
     ["AGENTS.md", "docs/ROADMAP.md", "docs/archive/old.md",
      "docs/design/signal-window.md"],
 ])
