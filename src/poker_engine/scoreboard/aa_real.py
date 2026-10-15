@@ -75,9 +75,10 @@ def aa_name(observation, seat=None):
     return found.name
 
 
-def preflop_shares(observation, spot, seat=None):
-    """(raise, call) shares of an AA player at ``seat`` facing ``spot``."""
-    stats, aa = population_stats(), aa_stats()["preflop"]
+def preflop_shares(observation, spot, seat=None, aa=None):
+    """(raise, call) shares of an AA player at ``seat`` facing ``spot``.
+    ``aa``: the AA numbers to use (default ``aa_stats()``)."""
+    stats, aa = population_stats(), (aa or aa_stats())["preflop"]
     seat = observation["observing_seat"] if seat is None else seat
     name = stats_position({**observation, "observing_seat": seat})
     every = stats.get(f"ALL|{spot}") or {}
@@ -91,7 +92,7 @@ def preflop_shares(observation, spot, seat=None):
     return raise_share, min(final["call"], MAX_CONTINUE - raise_share)
 
 
-def preflop_band(observation):
+def preflop_band(observation, aa=None):
     """The band of hand percentiles the seat's earlier actions leave it with."""
     me = observation["observing_seat"]
     history = actions(observation, "preflop")
@@ -99,8 +100,8 @@ def preflop_band(observation):
     for index, (player, kind) in enumerate(history):
         if player != me:
             continue
-        raise_share, call_share = preflop_shares(observation,
-                                                 preflop_spot(history[:index], me))
+        raise_share, call_share = preflop_shares(
+            observation, preflop_spot(history[:index], me), aa=aa)
         width = high - low
         if kind == "r":
             high = low + raise_share * width
@@ -110,10 +111,10 @@ def preflop_band(observation):
     return low, high
 
 
-def postflop_shares(spot):
+def postflop_shares(spot, aa=None):
     """{bet, raise, call: share} of AA players at a postflop situation."""
     prior = population_stats().get(spot) or {}
-    return pulled(aa_stats()["postflop"].get(spot), prior, POSTFLOP_ACTIONS)
+    return pulled((aa or aa_stats())["postflop"].get(spot), prior, POSTFLOP_ACTIONS)
 
 
 def raise_by_pot(observation, share):
