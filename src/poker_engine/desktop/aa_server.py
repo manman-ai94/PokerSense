@@ -12,7 +12,7 @@ import webbrowser
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from . import aa_recorder
@@ -78,6 +78,20 @@ class IdleStop:
     def watch(self, stopped, every=2.0):
         while not stopped.wait(every):
             self.check()
+
+
+def plain_json(content):
+    """``content`` answered as JSON straight away, without FastAPI's
+    value-by-value encoding pass: the window asks for its status four times a
+    second, and on a long session's status (the action and credit lists the
+    reader keeps, hundreds of KB) that pass holds Python's lock for tens of
+    milliseconds each time, away from recognition. The bytes are what FastAPI
+    would send; content plain JSON cannot hold goes through FastAPI as
+    before."""
+    try:
+        return JSONResponse(content)
+    except (TypeError, ValueError):
+        return content
 
 
 def ui_root():
@@ -468,7 +482,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         # advice supplied in a reader payload or a custom session snapshot.
         result["realtime"] = observation_runtime_status(result, now=time.monotonic())
         result["realtime"]["rules_revision"] = table_rules["revision"]
-        return result
+        return plain_json(result)
 
     @app.post("/api/review/issues/{issue_id}/river-input")
     async def saved_river_input(issue_id: str, request: Request):

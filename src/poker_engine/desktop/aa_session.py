@@ -70,7 +70,9 @@ class AARecognitionSession:
         self._generation = 0
         self._instance_id = uuid.uuid4().hex
         self._status = "STOPPED"
-        self._payload = self._preview = self._sequence = None
+        # The latest result as JSON text: every snapshot parses its own copy
+        # (several times faster than copying the parsed result).
+        self._payload_json = self._preview = self._sequence = None
         self._source_frame = self._processing_ms = self._last_result = None
         self._source_kind = self._pts_seconds = None
         self._source_options = {}
@@ -81,7 +83,7 @@ class AARecognitionSession:
         self._table_seen = None          # when a frame last showed the AA table
 
     def _clear(self):
-        self._payload = self._preview = self._sequence = None
+        self._payload_json = self._preview = self._sequence = None
         self._source_frame = self._processing_ms = self._last_result = None
         self._pts_seconds = None
         self._timing = None
@@ -103,7 +105,9 @@ class AARecognitionSession:
                 "status": self._status, "instance_id": self._instance_id,
                 "generation": self._generation,
                 "sequence": self._sequence, "source_frame": self._source_frame,
-                "payload": copy.deepcopy(self._payload), "error": self._error,
+                "payload": (None if self._payload_json is None
+                            else json.loads(self._payload_json)),
+                "error": self._error,
                 "processing_ms": self._processing_ms,
                 "source_kind": self._source_kind, "pts_seconds": self._pts_seconds,
                 "source_options": self._options(),
@@ -288,7 +292,8 @@ class AARecognitionSession:
                         payload["grade_v1"] = None
                 advice_finished = time.monotonic()
                 # Detach mutable reader results and reject NaN/non-JSON values.
-                payload = json.loads(json.dumps(payload, allow_nan=False))
+                encoded_payload = json.dumps(payload, allow_nan=False)
+                payload = json.loads(encoded_payload)
                 ok, encoded = cv2.imencode(".jpg", image)
                 if not ok:
                     raise ValueError("could not encode frame preview")
@@ -297,7 +302,7 @@ class AARecognitionSession:
                         break
                     self._status = "RUNNING"
                     self._error = None
-                    self._payload = payload
+                    self._payload_json = encoded_payload
                     if payload.get("scene_supported") is True:
                         self._table_seen = time.monotonic()
                     self._preview = encoded.tobytes()

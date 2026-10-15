@@ -391,3 +391,33 @@ def test_recording_does_not_start_with_little_room_left(tmp_path, monkeypatch):
         monkeypatch.setattr(aa_recorder, "free_bytes", lambda path: 30 * aa_recorder.GB)
         assert client.post("/api/recording", json={"on": True},
                            headers=HEADERS).status_code == 200
+
+
+def test_the_status_is_answered_as_plain_json_with_fastapis_bytes(tmp_path):
+    import json
+    from decimal import Decimal
+    from pathlib import PurePosixPath
+
+    from fastapi.encoders import jsonable_encoder
+
+    content = {"payload": {"actions": [{"seat": 3, "amount": 12.5, "ok": True}],
+                           "glyphs": {"0": None}, "word": "底池"},
+               "timing": {"recognition_ms": 41.25}, "sequence": 7}
+    answer = aa_server.plain_json(content)
+    assert answer.media_type == "application/json"
+    assert answer.body == json.dumps(
+        jsonable_encoder(content), ensure_ascii=False, allow_nan=False,
+        separators=(",", ":")).encode("utf-8")
+    # What plain JSON cannot hold still goes through FastAPI's encoder.
+    odd = {"amount": Decimal("1.5"), "path": PurePosixPath("/x")}
+    assert aa_server.plain_json(odd) is odd
+
+    class Running(Session):
+        def snapshot(self):
+            return {"status": "RUNNING", "generation": 0, "sequence": 3,
+                    "payload": content["payload"], "timing": None}
+
+    app = aa_server.create_app(tmp_path / "missing.json", session=Running())
+    with TestClient(app) as client:
+        status = client.get("/api/status").json()
+    assert status["payload"] == content["payload"] and status["sequence"] == 3
