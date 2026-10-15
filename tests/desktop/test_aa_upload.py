@@ -1,6 +1,7 @@
 """Recordings uploaded with rclone, with a stand-in for rclone and the cloud."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 import threading
@@ -208,6 +209,73 @@ def test_the_upload_waits_for_the_check_up_sheet(tmp_path):
     assert isinstance(got, Sheet)
     up.upload_all()
     assert order == [("sheet", aa_upload.REPORT_WAIT), ("copy", str(folder))]
+
+
+def test_the_video_goes_up_while_the_sheet_is_still_being_written(tmp_path):
+    """Upload starts the moment the recording stops: the video first, then
+    the sheet's files, and ``upload.json`` only once everything is there."""
+    folder = recording(tmp_path / "recordings", "20261015-102047-live", sheet=False)
+    order = []
+    cloud = tmp_path / "cloud" / aa_upload.FOLDER / "du" / folder.name
+
+    class Sheet:
+        def poll(self):
+            return None                         # still writing
+
+        def wait(self, timeout):
+            order.append("sheet")
+            (folder / "flywheel").mkdir()
+            (folder / "flywheel" / "体检单.txt").write_bytes("体检单\n".encode())
+
+    class Rclone(FakeRclone):
+        def __call__(self, args, timeout):
+            if args[1] in ("copy", "copyto"):
+                order.append(args[1])
+            return super().__call__(args, timeout)
+
+    up = uploader(tmp_path, Rclone(tmp_path / "cloud"))
+    up.submit(folder, wait_for=Sheet())
+    assert up.upload_all() is True
+    assert order == ["copy", "sheet", "copy", "copyto"]
+    assert (cloud / "segment_0000.mp4").exists()
+    assert (cloud / "flywheel" / "体检单.txt").exists()
+    marker = json.loads((cloud / aa_upload.MARKER).read_text(encoding="utf-8"))
+    assert ["flywheel/体检单.txt", len("体检单\n".encode())] in marker["files"]
+
+
+def test_a_failed_first_copy_waits_for_the_next_pass(tmp_path):
+    folder = recording(tmp_path / "recordings", "20261015-102047-live", sheet=False)
+    rclone = FakeRclone(tmp_path / "cloud")
+    rclone.failing = True
+
+    class Sheet:
+        def poll(self):
+            return None
+
+        def wait(self, timeout):
+            raise AssertionError("not waited for before the video is up")
+
+    up = uploader(tmp_path, rclone)
+    up.submit(folder, wait_for=Sheet())
+    assert up.upload_all() is False
+    assert "no such host" in up.last_error and "secret" not in up.last_error
+
+
+def test_rclone_off_the_window_path_is_found(tmp_path):
+    """A window started before rclone was put on the PATH (杜's PC, 2026-10-15)."""
+    name = "rclone.exe" if os.name == "nt" else "rclone"
+    nowhere = tmp_path / "empty"
+    nowhere.mkdir()
+    (tmp_path / name).write_bytes(b"")
+    assert aa_upload.find_rclone("C:/x/rclone.exe") == "C:/x/rclone.exe"
+    assert aa_upload.find_rclone(which=lambda n: "/bin/rclone") == "/bin/rclone"
+    assert aa_upload.find_rclone(which=lambda n: None,
+                                 places=[nowhere, tmp_path]) == str(tmp_path / name)
+    assert aa_upload.find_rclone(which=lambda n: None, places=[nowhere]) == ""
+    up = aa_upload.Uploader(tmp_path / "recordings", base=tmp_path / "upload",
+                            run=FakeRclone(tmp_path / "cloud"),
+                            which=lambda n: None, places=[tmp_path])
+    assert up.status()["configured"] is True
 
 
 def test_after_recording_hands_the_folder_over_even_when_the_sheet_fails(tmp_path):

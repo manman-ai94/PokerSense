@@ -1,6 +1,7 @@
 """Recording the capture card from the live service, without a real encoder."""
 
 import json
+from pathlib import Path
 import threading
 import time
 from types import SimpleNamespace
@@ -9,7 +10,8 @@ import numpy as np
 import pytest
 
 from poker_engine.desktop.aa_recorder import (
-    FOURCCS, GB, AARecorder, SegmentWriter, check_writer, free_bytes, strip_box)
+    FOURCCS, GB, AARecorder, SegmentWriter, check_writer, free_bytes, strip_box,
+    WRITER_API)
 from poker_engine.desktop.aa_sources import AACaptureSource
 from poker_engine.desktop.aa_video_source import AAVideoSource
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
@@ -24,8 +26,9 @@ class Writer:
 
     made = []
 
-    def __init__(self, path, fps, size, opened=True):
+    def __init__(self, path, fps, size, opened=True, backend="FFMPEG"):
         self.path, self.fps, self.size, self.opened = path, fps, size, opened
+        self.backend = backend
         self.frames, self.released = [], False
         Writer.made.append(self)
 
@@ -34,6 +37,9 @@ class Writer:
 
     def write(self, frame):
         self.frames.append(frame.copy())
+
+    def getBackendName(self):
+        return self.backend
 
     def release(self):
         self.released = True
@@ -68,10 +74,10 @@ def test_a_writer_that_does_not_open_is_an_error(tmp_path):
         segments.offer(np.zeros((1080, 1920, 3), np.uint8), 0.0)
 
 
-def named(code, opened=True):
+def named(code, opened=True, backend="FFMPEG"):
     """A writer factory named like ``aa_recorder.fourcc_writer``'s."""
     def make(*args):
-        return Writer(*args, opened=opened)
+        return Writer(*args, opened=opened, backend=backend)
     make.fourcc = code
     return make
 
@@ -94,6 +100,28 @@ def test_without_h264_segments_fall_back_to_mpeg4_and_keep_it(tmp_path):
     assert Writer.made[0].released             # the refused writer is let go
 
 
+def test_windows_media_foundation_is_never_the_encoder(tmp_path):
+    """Its H.264 writes 1 bit per pixel (26 GB an hour, 2026-10-15): a writer
+    it opened counts as not opened, and its empty file is not left behind."""
+    def msmf(path, *args):
+        Path(path).write_bytes(b"\0")
+        return Writer(path, *args, backend="MSMF")
+    msmf.fourcc = "avc1"
+    segments = SegmentWriter(tmp_path, fps=10, size=(4, 2), segment_seconds=1,
+                             writer_factory=(msmf, named("mp4v")))
+    segments.offer(np.zeros((2, 4, 3), np.uint8), 0.0)
+    segments.close()
+    assert (segments.fourcc, segments.backend) == ("mp4v", "FFMPEG")
+    assert Writer.made[0].released and not Writer.made[0].frames
+    assert not (tmp_path / "segment_0000.mp4").exists()   # the fake writes none
+
+
+def test_windows_writes_through_ffmpeg_only():
+    import cv2
+    import os
+    assert WRITER_API == (cv2.CAP_FFMPEG if os.name == "nt" else cv2.CAP_ANY)
+
+
 def test_no_encoder_at_all_names_what_was_tried(tmp_path):
     segments = SegmentWriter(tmp_path, writer_factory=(named("avc1", False),
                                                        named("mp4v", False)))
@@ -107,6 +135,7 @@ def test_this_machine_can_write_a_recording_and_read_it_back():
     report = check_writer()
     assert report["ready"] is True, report
     assert report["fourcc"] in FOURCCS
+    assert report["backend"] and report["backend"] != "MSMF"
 
 
 def test_the_writer_check_reports_a_missing_encoder():
@@ -173,6 +202,7 @@ def test_a_recording_writes_full_frames_and_its_summary(tmp_path):
     assert summary["device_index"] == 0 and summary["strip"] == [711, 0, 1209, 1080]
     assert summary["stopped_reason"] == "stopped" and summary["error"] is None
     assert summary["fourcc"] == "avc1"         # the encoder that wrote it
+    assert summary["backend"] == "FFMPEG"
     assert (out / "segments.csv").exists()
     recorder.offer(strip)                         # after the stop: ignored
     assert recorder.offered == 2

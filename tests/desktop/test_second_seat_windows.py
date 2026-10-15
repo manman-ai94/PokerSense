@@ -240,22 +240,27 @@ def test_start_aa_opens_the_window_with_the_capture_card(tmp_path, checkout_venv
 
 @WINDOWS
 def test_the_record_button_can_write_video_on_windows(tmp_path):
-    """The window records with OpenCV's H.264 (avc1) writer."""
+    """The window's writers record on Windows through FFmpeg, at a size close
+    to the Mac's: Media Foundation's H.264 wrote 26 GB an hour (2026-10-15),
+    about 15 MB for these 2 seconds."""
     import cv2
     import numpy as np
     from poker_engine.desktop import aa_recorder
 
-    path = tmp_path / "segment.mp4"
-    writer = aa_recorder.avc1_writer(path, aa_recorder.FPS, aa_recorder.SIZE)
-    assert writer.isOpened()
+    segments = aa_recorder.SegmentWriter(tmp_path, segment_seconds=60)
     frame = np.zeros((aa_recorder.SIZE[1], aa_recorder.SIZE[0], 3), np.uint8)
-    frame[:, 711:1209] = 200
-    for _ in range(30):
-        writer.write(frame)
-    writer.release()
+    frame[:, 711:1209] = (40, 90, 30)
+    for tick in range(60):
+        frame[500:560, 800:1000] = (tick * 4) % 256     # something that moves
+        segments.offer(frame, tick / aa_recorder.FPS)
+    segments.close()
+    assert segments.backend == "FFMPEG", segments.backend
+    path = tmp_path / "segment_0000.mp4"
+    print(segments.fourcc, path.stat().st_size)
+    assert path.stat().st_size < 2_000_000      # under 3.6 GB an hour
     capture = cv2.VideoCapture(str(path))
     count = 0
     while capture.read()[0]:
         count += 1
     capture.release()
-    assert count == 30
+    assert count == 60

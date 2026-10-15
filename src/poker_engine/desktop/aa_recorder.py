@@ -19,13 +19,20 @@ A recording needs room: the service does not start one with less than
 ``MIN_FREE_GB`` free on the disk, and one stops (``low_disk_space``, what was
 recorded is kept) once a new segment finds less than ``STOP_FREE_GB``. The
 size written so far is in the status (``megabytes``): about 0.1-1.5 GB an
-hour on the recordings made so far.
+hour on the recordings made so far (H.264 on the Mac about 0.15 GB).
 
-The encoder is OpenCV's H.264 (``avc1``). Where it does not open (a Windows
-without the media encoders, such as an "N" edition) segments are MPEG-4
-(``mp4v``) instead: larger files, read back by the same tools. The encoder
-used is in ``recording.json`` (``fourcc``). ``check_writer`` tries both on a
-few frames for the program's self-check.
+The encoder is OpenCV's H.264 (``avc1``). Where it does not open, segments
+are MPEG-4 (``mp4v``) instead: larger files, read back by the same tools. The
+encoder used is in ``recording.json`` (``fourcc``, and ``backend``: OpenCV's
+name for the library that wrote it). ``check_writer`` tries both on a few
+frames for the program's self-check.
+
+On Windows both go through OpenCV's FFmpeg only. Its H.264 needs Cisco's
+OpenH264 library, which is usually missing; OpenCV then quietly hands
+``avc1`` to Windows Media Foundation (``MSMF``), whose writer encodes at a
+fixed 1 bit per pixel: about 60 Mbit/s, 26 GB an hour of a mostly black
+picture (a tester's 18 minutes on 2026-10-15 came to 7.95 GB). FFmpeg's MPEG-4
+there writes about 0.5-1 GB an hour.
 
 A recording is only worth it when it shows the phone. The capture card puts
 the phone's portrait screen between black bars (``picture``): measured on
@@ -37,6 +44,7 @@ camera instead of the card).
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import queue
 import shutil
@@ -83,18 +91,32 @@ def free_bytes(path):
 
 
 FOURCCS = ("avc1", "mp4v")          # H.264 first; MPEG-4 where H.264 is missing
+# The library OpenCV picks for a writer: on Windows only FFmpeg (see above).
+WRITER_API = cv2.CAP_FFMPEG if os.name == "nt" else cv2.CAP_ANY
+REFUSED_BACKENDS = ("MSMF",)        # 1 bit per pixel: 26 GB an hour
 
 
-def fourcc_writer(code):
+def fourcc_writer(code, api=None):
     """A writer factory for one OpenCV fourcc; it names its code (``fourcc``)."""
+    api = WRITER_API if api is None else api
+
     def make(path, fps, size):
-        return cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*code), fps, size)
+        return cv2.VideoWriter(str(path), api, cv2.VideoWriter_fourcc(*code),
+                               fps, size)
     make.fourcc = code
     return make
 
 
 avc1_writer = fourcc_writer("avc1")
 WRITERS = tuple(fourcc_writer(code) for code in FOURCCS)
+
+
+def backend_of(writer):
+    """OpenCV's name for the library behind an open writer, or None."""
+    try:
+        return str(writer.getBackendName())
+    except Exception:                   # noqa: BLE001 - a writer without one
+        return None
 
 
 def check_writer(writers=WRITERS, size=SIZE, frames=5):
@@ -110,14 +132,15 @@ def check_writer(writers=WRITERS, size=SIZE, frames=5):
             segments.offer(frame, (frames - 1) / segments.fps)
             segments.close()
         except Exception as error:      # noqa: BLE001 - reported, never raised
-            return {"ready": False, "fourcc": None, "reason": str(error)}
+            return {"ready": False, "fourcc": None, "backend": None,
+                    "reason": str(error)}
         capture = cv2.VideoCapture(str(Path(folder) / "segment_0000.mp4"))
         count = 0
         while count < frames and capture.read()[0]:
             count += 1
         capture.release()
     ready = count > 0
-    return {"ready": ready, "fourcc": segments.fourcc,
+    return {"ready": ready, "fourcc": segments.fourcc, "backend": segments.backend,
             "reason": None if ready else "written video does not read back"}
 
 
@@ -126,7 +149,9 @@ class SegmentWriter:
     to ``seconds`` with ``frame``, the newest frame at that time.
 
     ``writer_factory`` is one factory or several tried in order: the first
-    whose writer opens is used for every segment (``fourcc`` names it)."""
+    whose writer opens is used for every segment (``fourcc`` names it,
+    ``backend`` the library). A writer from a refused library
+    (``REFUSED_BACKENDS``) counts as one that did not open."""
 
     def __init__(self, out, *, fps=FPS, size=SIZE, segment_seconds=SEGMENT_SECONDS,
                  writer_factory=WRITERS):
@@ -134,7 +159,7 @@ class SegmentWriter:
         self.fps, self.size, self.segment_seconds = fps, size, segment_seconds
         several = isinstance(writer_factory, (tuple, list))
         self.factories = tuple(writer_factory) if several else (writer_factory,)
-        self.fourcc = None
+        self.fourcc = self.backend = None
         self.written = self.seg_written = 0
         self.segment = self.writer = None
         self.seg_start = 0.0
@@ -161,13 +186,17 @@ class SegmentWriter:
         path = self.out / f"segment_{self.segment:04d}.mp4"
         for factory in self.factories:
             writer = factory(path, self.fps, self.size)
-            if writer.isOpened():
+            backend = backend_of(writer) if writer.isOpened() else None
+            if writer.isOpened() and backend not in REFUSED_BACKENDS:
                 # Later segments keep the encoder that worked.
                 self.factories = (factory,)
                 self.fourcc = getattr(factory, "fourcc", None)
+                self.backend = backend
                 self.writer = writer
                 return
             writer.release()
+            if path.exists() and backend in REFUSED_BACKENDS:
+                path.unlink()
         raise RuntimeError("no video encoder opened (tried "
                            + ", ".join(str(getattr(f, "fourcc", "?"))
                                        for f in self.factories) + ")")
@@ -282,6 +311,7 @@ class AARecorder:
                 self.error = self.error or exc
             self._measure()
             self.meta.update(fourcc=self.segments.fourcc,
+                             backend=self.segments.backend,
                              recorded_seconds=round(self.segments.seconds, 3),
                              megabytes=self.megabytes,
                              offered_frames=self.offered, skipped_frames=self.skipped,
@@ -306,6 +336,6 @@ class AARecorder:
                 "error": None if self.error is None else str(self.error)}
 
 
-__all__ = ["AARecorder", "check_writer", "FOURCCS", "fourcc_writer", "free_bytes", "GB",
-           "MIN_FREE_GB", "picture", "SegmentWriter", "STOP_FREE_GB", "strip_box",
-           "WRITERS"]
+__all__ = ["AARecorder", "backend_of", "check_writer", "FOURCCS", "fourcc_writer",
+           "free_bytes", "GB", "MIN_FREE_GB", "picture", "REFUSED_BACKENDS",
+           "SegmentWriter", "STOP_FREE_GB", "strip_box", "WRITER_API", "WRITERS"]
