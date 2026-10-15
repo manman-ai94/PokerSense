@@ -24,14 +24,20 @@ the values in ``FITTED``):
 * facing a bet, the share that goes on depends on the price (the call as a
   share of the pot after calling): the measured share holds at
   ``REFERENCE_PRICE`` and moves with ``price_slope`` on the log-odds scale
-  of both (a negative slope folds more to bigger bets);
+  of both (a negative slope folds more to bigger bets); likewise with the
+  depth (``depth_slope``, on the log of the effective stack, over the pot
+  after the flop) and a call that is all in (``allin_shift``), and before
+  the flop with the ``preflop_`` ones (``adjusted_keep``; all 0 until the
+  recordings show they hold, see ``tools/fit_aa_cal.py --phh``);
 * bets and raises take the sizes measured: half the pot heads-up, 60% in
   pots of three or more, raises 1.1 pots (first raises before the flop as
-  ``aa_real``).
+  ``aa_real``); after the flop, with little behind for the pot, all in as
+  often as AA players go all in at that depth (``SHOVE_BET``,
+  ``SHOVE_RAISE``).
 
 The probabilities of each action are worked out (``distribution``) and the
 action drawn from them, so the scoreboard and the fidelity measure use the
-same numbers. With ``mix``, ``slow``, ``bluff``, ``sticky`` and the slope
+same numbers. With ``mix``, ``slow``, ``bluff``, ``sticky`` and the slopes
 all 0 it plays as ``aa_real`` on its numbers, except the bet sizes.
 """
 
@@ -64,6 +70,12 @@ REFERENCE_DEPTH_BB, DEPTH_BB_RANGE = 243.0, (10.0, 500.0)
 REFERENCE_SPR, SPR_RANGE = 3.4, (0.2, 20.0)
 PRICE_RANGE = (0.05, 0.5)
 BET_HU, BET_MULTI, RAISE = 0.5, 0.6, 1.1
+# How often AA players' bets and raises after the flop go all in, by the
+# effective stack over the pot (SPR): (SPR below, share). 15 recordings:
+# bets 5/5 below 0.5, 28/48 below 1, 5/34 below 2, about 0 above; raises
+# 7/7 below 1, 6/10 below 2, 2/15 below 4, 0/30 above.
+SHOVE_BET = ((0.5, 1.0), (1.0, 0.6), (2.0, 0.15), (None, 0.0))
+SHOVE_RAISE = ((1.0, 1.0), (2.0, 0.6), (4.0, 0.13), (None, 0.0))
 # Fitted 2026-10-15 on 475 replayed hands of 15 recordings (``tools/fit_aa_cal.py``;
 # out of sample each half of them fits the other better than ``aa_real``). A
 # price slope did not hold from one half to the other, so it is 0 for now.
@@ -215,6 +227,19 @@ def street_params(params, street):
     return params.get(street) or {"slow": 0.0, "bluff": 0.0, "sticky": 0.0}
 
 
+def all_in_or(observation, raise_id, draw):
+    """``raise_id``, or all in after the flop as often as AA players go all
+    in at this depth (``SHOVE_BET``, ``SHOVE_RAISE``); ``draw`` in [0, 1)."""
+    betting = observation.get("betting") or {}
+    pot = float(observation["pot"])
+    if observation["street"] == "preflop" or not betting.get("max_raise_to") or not pot:
+        return raise_id
+    spr = effective_stack(observation) / pot
+    table = SHOVE_RAISE if float(observation["to_call"] or 0) else SHOVE_BET
+    share = next(share for top, share in table if top is None or spr < top)
+    return f"raise_to:{float(betting['max_raise_to']):g}" if draw < share else raise_id
+
+
 class CalibratedBot(AARealBot):
     name = "aa_cal"
 
@@ -232,7 +257,7 @@ class CalibratedBot(AARealBot):
         probs, raise_id = self.plan(observation, rng)
         roll = rng.random()
         if roll < probs[2] and raise_id is not None:
-            return raise_id
+            return all_in_or(observation, raise_id, roll / probs[2])
         if roll < probs[2] + probs[1] or float(observation["to_call"] or 0) == 0:
             return "check_call"
         return "fold"
@@ -288,6 +313,6 @@ class CalibratedBot(AARealBot):
         return probs, raise_id
 
 
-__all__ = ["FITTED", "REFERENCE_PRICE", "CalibratedBot", "adjusted_keep", "cal_stats",
-           "checked_probs", "effective_stack", "facing_probs", "preflop_adjusted",
-           "preflop_probs", "priced_keep", "situation"]
+__all__ = ["FITTED", "REFERENCE_PRICE", "CalibratedBot", "adjusted_keep", "all_in_or",
+           "cal_stats", "checked_probs", "effective_stack", "facing_probs",
+           "preflop_adjusted", "preflop_probs", "priced_keep", "situation"]

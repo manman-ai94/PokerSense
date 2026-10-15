@@ -10,7 +10,7 @@ from poker_engine.scoreboard.aa_real import aa_stats
 from poker_engine.scoreboard.bots import _rng, make_policy
 from poker_engine.scoreboard.calibrated import (
     FITTED, REFERENCE_DEPTH_BB, REFERENCE_PRICE, REFERENCE_SPR, CalibratedBot,
-    adjusted_keep, cal_stats, checked_probs, effective_stack, facing_probs,
+    adjusted_keep, all_in_or, cal_stats, checked_probs, effective_stack, facing_probs,
     preflop_adjusted, preflop_probs, priced_keep, situation)
 from poker_engine.scoreboard.fidelity import chances
 from poker_engine.scoreboard.replay import kind_of
@@ -147,3 +147,21 @@ def test_plays_whole_hands_repeatably_with_its_fitted_numbers(arena):
             arena.step(action)
             played += 1
     assert played > 100
+
+
+def test_goes_all_in_as_often_as_aa_players_at_this_depth():
+    betting = {"can_raise": True, "min_raise_to": "8", "max_raise_to": "70"}
+    # Nothing to call, 40 in the pot, 70 at most at risk: SPR 1.75.
+    unfaced = {**SEEN, "to_call": "0", "bets": dict.fromkeys(SEEN["bets"], "0"),
+               "stacks": {**SEEN["stacks"], "1": "50", "3": "70"}, "betting": betting}
+    assert effective_stack(unfaced) == 70
+    assert all_in_or(unfaced, "raise_to:20", 0.1) == "raise_to:70"
+    assert all_in_or(unfaced, "raise_to:20", 0.2) == "raise_to:20"
+    deep = {**unfaced, "pot": "10"}                       # SPR 7: never
+    assert all_in_or(deep, "raise_to:5", 0.0) == "raise_to:5"
+    # Facing a bet at SPR 70 / 40: raises go all in 60% of the time.
+    facing = {**SEEN, "betting": betting}
+    assert all_in_or(facing, "raise_to:45", 0.59) == "raise_to:70"
+    assert all_in_or(facing, "raise_to:45", 0.61) == "raise_to:45"
+    preflop = {**facing, "street": "preflop"}
+    assert all_in_or(preflop, "raise_to:45", 0.0) == "raise_to:45"
