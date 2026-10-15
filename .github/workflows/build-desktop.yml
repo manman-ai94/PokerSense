@@ -4,8 +4,11 @@ name: Build Legacy macOS
 # AA real-capture acceptance is implied. The Windows installer, its tests and
 # releases are in windows-release.yml (releases are never GitHub Releases).
 #
-# Runs on every push to main (so build breakage is caught immediately) and
-# can be triggered manually.
+# Runs on pushes to main that touch the packaging inputs, and can be triggered
+# manually. It used to run on every merge: each one then queued a second macOS
+# job next to CI's macOS tests, the account's few macOS runners filled up, and
+# PR macOS checks sat 16-22 minutes without a machine until GitHub cancelled
+# them (2026-10-15). A newer main push cancels an older build still waiting.
 #
 # macOS code signing + notarization (optional): only runs if the
 # MACOS_CERTIFICATE secret is set. To enable it, add these repo secrets
@@ -23,7 +26,15 @@ name: Build Legacy macOS
 on:
   push:
     branches: [main]
+    paths:
+      - "packaging/**"
+      - "pyproject.toml"
+      - ".github/workflows/build-desktop.yml"
   workflow_dispatch:
+
+concurrency:
+  group: build-legacy-macos-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

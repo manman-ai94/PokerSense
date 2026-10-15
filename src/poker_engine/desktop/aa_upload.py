@@ -26,9 +26,12 @@ owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
   when a folder is created by two transfers at once or a create is retried
   after a timeout (2026-10-15: 11 "PokerSense 同事数据" folders in one
   morning). So after the files and before ``upload.json``, ``rclone dedupe
-  --dedupe-mode merge`` folds same-named folders into one, down to the
-  recording folder; it never touches files. Seeing only this computer's own
-  uploads (scope ``drive.file``), it cannot reach anything else.
+  --dedupe-mode skip`` folds same-named folders into one, down to the
+  recordings' ``flywheel/`` folders (rclone merges folders in every mode but
+  ``list``; there is no "merge" mode, and rclone refuses one). Of the files
+  it only removes extra copies of a file that are the same name and the same
+  bytes, and leaves files that differ alone. Seeing only what this upload
+  client created (scope ``drive.file``), it cannot reach anything else.
 * After the files, a small ``upload.json`` (the file list with sizes) is
   written last: a recording without it, or whose files do not match it, is
   still on its way and the pull leaves it alone.
@@ -68,7 +71,6 @@ RETRY_WAITS = (60, 300, 900, 1800)
 REPORT_WAIT = 1800               # longest wait for the check-up sheet
 COPY_TIMEOUT = 3 * 3600
 IDLE_WAIT = 3600                 # a look now and then
-MERGE_DEPTH = 3                  # <folder>/<machine>/<recording>
 UNSET_WAIT = 300                 # how often a window without rclone looks again
 CHECK_EVERY = 60.0               # seconds a "configured" answer is kept
 LOG_LIMIT = 1_000_000
@@ -109,6 +111,12 @@ def load_settings(path):
     settings["remote"] = settings["remote"].rstrip(":") or REMOTE
     settings["folder"] = settings["folder"].strip("/") or FOLDER
     return settings
+
+
+def merge_depth(settings):
+    """How deep the folder merge looks: <folder>/<machine>/<recording>/flywheel,
+    with ``folder`` itself maybe more than one level."""
+    return len(settings["folder"].split("/")) + 3
 
 
 def write_json(path, value):
@@ -431,8 +439,8 @@ class Uploader:
         recording folders; a failure is only logged (the pull waits for a
         recording whose files are not all next to its ``upload.json``)."""
         code, output = self.run(
-            [self._rclone(settings), "dedupe", "--dedupe-mode", "merge",
-             "--max-depth", str(MERGE_DEPTH), f"{settings['remote']}:",
+            [self._rclone(settings), "dedupe", "--dedupe-mode", "skip",
+             "--max-depth", str(merge_depth(settings)), f"{settings['remote']}:",
              "--retries", "3", "--contimeout", "30s", "--timeout", "5m",
              "--stats", "0", "--log-level", "NOTICE"], 600)
         if code != 0:

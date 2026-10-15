@@ -156,7 +156,18 @@ async function settle(expectJob, limits = 200) {
   }
   return state.analysis;
 }
+// The compute button only clicks the panel's start button; its handler then
+// cancels the old job and posts the new one. A status poll sent before that post
+// lands can come back after it, naming the previous job, and the panel then
+// drops the new one as replaced (seen on a loaded CI machine). So wait until the
+// panel's own start request has finished, as a person would, before polling.
+async function startSettled() {
+  for (let index = 0; index < 400 && run("analysisBusy"); index += 1) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
 async function pollRender(expectJob) {
+  await startSettled();
   let last = null;
   for (let index = 0; index < 200; index += 1) {
     await refresh();
