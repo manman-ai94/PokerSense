@@ -149,6 +149,10 @@ class SolverBot(_Policy):
             if decision.seat == villain:
                 other = weighted(other, node, label) or other
             node = node_at(node, [label])
+        if not (node.get("strategy") or {}).get("strategy"):
+            # The solver leaves a node it never reached without a strategy
+            # (seen on the scoreboard with mixed stacks, 2026-10-15).
+            raise Fallback("no_strategy_at_node")
         try:
             return strategy_of(node, observation["own_hole"]), other
         except KeyError:
@@ -322,7 +326,7 @@ def weighted(weights, node, label):
     """Weights times each hand's probability of taking ``label`` at ``node``."""
     strategy = node["strategy"]
     column = strategy["actions"].index(label)
-    table = strategy["strategy"]
+    table = strategy["strategy"] or {}     # None where the solver never got
     result = {}
     for key, weight in weights.items():
         row = table.get(key)

@@ -182,6 +182,21 @@ def test_the_opponents_range_at_a_decision_follows_his_actions_on_the_street(
     assert bot.solved_strategy(observation, "salt") == strategy
 
 
+def test_a_node_the_solver_left_without_a_strategy_is_a_fallback(monkeypatch):
+    bet = decision("raise", raise_to="29", seat=3, bets={"3": "0", "4": "0"})
+    tree = {**NODE, "childrens": {"BET 29.000000": {
+        "actions": ["CALL", "FOLD"], "strategy": {"actions": ["CALL", "FOLD"],
+                                                  "strategy": None}}}}
+    monkeypatch.setattr(solver_bot, "public_replay", lambda observation: [bet])
+    bot = SolverBot("solver_river")
+    monkeypatch.setattr(bot, "street_solution", lambda *args: (tree, 3))
+    observation = {"observing_seat": 4, "street": "river", "occupied_seats": [3, 4],
+                   "folded": [], "board": ["2h", "5s", "8d", "Jc", "9h"],
+                   "own_hole": ["2c", "3d"]}
+    with pytest.raises(Fallback, match="no_strategy_at_node"):
+        bot.solved_spot(observation, "salt")
+
+
 def test_wrapped_in_the_range_rule_it_still_gets_the_game_and_the_aa_model():
     # Until 2026-10-10 "range_multiway+solver_turn+aa_preflop" never solved:
     # the range rule called the solver's decide without the game's salt, and
