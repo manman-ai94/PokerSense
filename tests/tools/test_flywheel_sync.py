@@ -1,8 +1,11 @@
 """Pulling recordings other computers uploaded, and the ledger by machine."""
 
 import json
+import os
 from pathlib import Path
 import shutil
+
+import pytest
 
 from poker_engine.desktop import aa_upload
 from tools import flywheel_session as fly
@@ -164,8 +167,33 @@ def test_setup_keeps_the_full_path_of_rclone(tmp_path, monkeypatch):
     sync.main(["setup", "--machine", "du", "--root", str(tmp_path / "rec")])
     settings = json.loads((tmp_path / "private" / "upload" / "settings.json")
                           .read_text(encoding="utf-8"))
-    assert settings == {"machine": "du", "rclone": str(found.resolve())}
+    assert settings == {"machine": "du", "rclone": str(found)}
     monkeypatch.setattr(sync.shutil, "which", lambda name: "/elsewhere/rclone")
     sync.main(["setup", "--root", str(tmp_path / "rec")])      # kept as it was
     assert json.loads((tmp_path / "private" / "upload" / "settings.json")
-                      .read_text(encoding="utf-8"))["rclone"] == str(found.resolve())
+                      .read_text(encoding="utf-8"))["rclone"] == str(found)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="links need extra rights on Windows")
+def test_setup_keeps_the_link_not_the_versioned_folder(tmp_path, monkeypatch):
+    """Homebrew and winget put a link on the PATH to a folder named for the
+    version; an upgrade removes that folder and keeps the link."""
+    real = tmp_path / "Cellar" / "1.75.2" / "rclone"
+    real.parent.mkdir(parents=True)
+    real.write_bytes(b"")
+    link = tmp_path / "bin" / "rclone"
+    link.parent.mkdir()
+    link.symlink_to(real)
+    monkeypatch.setattr(sync, "private_root", lambda: tmp_path / "private")
+    monkeypatch.setattr(sync.shutil, "which", lambda name: str(link))
+    sync.main(["setup", "--root", str(tmp_path / "rec")])
+    assert json.loads((tmp_path / "private" / "upload" / "settings.json")
+                      .read_text(encoding="utf-8"))["rclone"] == str(link)
+
+
+def test_the_pull_passes_over_a_saved_rclone_that_is_gone(tmp_path):
+    settings = {**aa_upload.load_settings(tmp_path / "none.json"),
+                "rclone": str(tmp_path / "Cellar" / "1.75.2" / "rclone")}
+    source = sync.choose_source(None, settings, which=lambda n: "/bin/rclone",
+                                cloud=tmp_path / "CloudStorage")
+    assert source.rclone == "/bin/rclone"
