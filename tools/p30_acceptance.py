@@ -8,7 +8,9 @@ compared with the Samsung S25 Ultra + UGREEN baseline in one command:
    calibrated on, and how often the window's picture check sees a phone.
 2. Real-time fields: the recording is played at recorded pace through the
    live session (``tools/measure_aa_realtime.py``) and each field's coverage
-   is set beside the baseline's.
+   is set beside the baseline's, with the solver's advice worked out as in
+   the window; after the flop, whether the board shows every card of the
+   street and how many of your decisions got advice.
 3. Seat states: every third frame read offline (``tools/check_aa_seat_states.py``);
    when the strip is elsewhere, read a second time on the strip found.
 
@@ -64,6 +66,14 @@ TURN_FIELDS = (
     ("hero_button", "轮到你：按钮读出", "你在行动且有手牌的帧"),
     ("call_amount", "轮到你：跟注额读出", "按钮可见的帧"),
 )
+# what the window shows after the flop (peng 2026-10-15: on 杜's first
+# recording it showed neither the board nor advice from the flop on)
+POSTFLOP_FIELDS = (
+    ("postflop_board", "翻后：公共牌读全", "翻牌后的牌桌帧"),
+    ("postflop_advice", "翻后轮到你：给出建议", "翻牌后你的每个决策"),
+)
+POSTFLOP = {"flop": 3, "turn": 4, "river": 5}
+MIN_POSTFLOP_DECISIONS = 10
 SEAT_FIELDS = (
     ("all_known_supported", "离线：8 座全确定（牌桌帧）"),
     ("all_known_while_acting", "离线：8 座全确定（有人在行动）"),
@@ -114,8 +124,30 @@ def field_coverage(rows):
                                   is not None for f in acting), len(acting)),
         "call_amount": _share(sum(f["hero_controls"].get("call_amount") is not None
                                   for f in turn), len(turn)),
+        **postflop_coverage(fields),
         "spectating": not with_cards,
     }
+
+
+def postflop_coverage(fields):
+    """After the flop: frames whose board shows every card of the street (the
+    window draws as many cards as the street has), and your decisions that
+    got advice before your turn ended."""
+    postflop = [f for f in fields if f.get("scene_supported") is True
+                and f.get("street") in POSTFLOP]
+    full = sum(len([c for c in f.get("board") or () if c]) >= POSTFLOP[f["street"]]
+               for f in postflop)
+    decisions = {}
+    for f in fields:
+        advice = f.get("solver_advice") or {}
+        hand = (f.get("actions_v1") or {}).get("hand_id")
+        if (advice.get("street") not in POSTFLOP or advice.get("decision") is None
+                or hand is None or not (f.get("hero_controls") or {}).get("visible")):
+            continue
+        key = (hand, advice["decision"], advice["street"])
+        decisions[key] = decisions.get(key, False) or advice.get("status") == "ready"
+    return {"postflop_board": _share(full, len(postflop)),
+            "postflop_advice": _share(sum(decisions.values()), len(decisions))}
 
 
 def find_strip(frame):
@@ -213,6 +245,17 @@ def compare(measured, baseline, seat_states=None, strip=None):
                      "baseline": base.get(key), "line": line,
                      "verdict": (_verdict(got, line) if line is not None
                                  else "没有基准"), "note": note})
+    for key, label, over in POSTFLOP_FIELDS:
+        got, n = measured[key]["value"], measured[key]["n"]
+        note = None
+        line = None if base.get(key) is None else round(RELATIVE_LINE * base[key], 4)
+        if key == "postflop_advice" and n < MIN_POSTFLOP_DECISIONS:
+            got, note = None, (f"只有 {n} 个翻后决策" if n else
+                               "录像里没有翻后轮到你的时候（或测量时没算建议）")
+        rows.append({"key": key, "label": label, "over": over, "value": got, "n": n,
+                     "baseline": base.get(key), "line": line,
+                     "verdict": (_verdict(got, line) if line is not None
+                                 else "没有基准"), "note": note})
     seat_base = (baseline.get("seat_states") or {}).get("metrics") or {}
     for key, label in SEAT_FIELDS if seat_states else ():
         got, ref = seat_states.get(key), seat_base.get(key)
@@ -257,7 +300,8 @@ def markdown(result, baseline):
 def build_baseline(frame_logs, seat_outputs=(), label=""):
     rows = [row for path in frame_logs for row in read_frames(path)]
     coverage = field_coverage(rows)
-    metrics = {key: coverage[key]["value"] for key, _, _ in FIELDS + TURN_FIELDS}
+    metrics = {key: coverage[key]["value"]
+               for key, _, _ in FIELDS + TURN_FIELDS + POSTFLOP_FIELDS}
     baseline = {"schema": "second-seat-baseline-v1",
                 "realtime": {"label": label, "frames": len(rows),
                              "sources": [Path(p).name for p in frame_logs],
@@ -290,7 +334,8 @@ def run(args):
     if frame_log is None:
         frame_log = args.out / "frames.jsonl"
         report["measure_run"] = measure_aa_realtime.run(
-            args.profile, args.video, frame_log, exclude=args.exclude)
+            args.profile, args.video, frame_log, exclude=args.exclude,
+            advice=True)          # the window always works out advice
     report["frames"] = str(frame_log)
     measured = field_coverage(read_frames(frame_log))
     report["realtime"] = measured

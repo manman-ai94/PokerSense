@@ -293,8 +293,8 @@ def test_the_window_reads_the_pot_at_a_looser_label_match(monkeypatch):
     from poker_engine.desktop import aa_reader
     seen = []
 
-    def pot_patch(image, prefix, threshold=.90):
-        seen.append(threshold)
+    def pot_patch(image, prefix, threshold=.90, label_rows_only=False):
+        seen.append((threshold, label_rows_only))
         return np.full((4, 4), prefix, np.uint8)
 
     monkeypatch.setattr(money, "pot_patch", pot_patch)
@@ -304,5 +304,5 @@ def test_the_window_reads_the_pot_at_a_looser_label_match(monkeypatch):
     assert isinstance(live, ModuleType) and live.region == "kept"
     assert frozen.unique_pot_patch == "frozen"              # offline tools keep .90
     assert live.unique_pot_patch(None, [7, 7]) is not None  # the labels agree
-    assert seen == [aa_reader.POT_LABEL_MATCH] * 2 == [.80] * 2
+    assert seen == [(aa_reader.POT_LABEL_MATCH, True)] * 2 == [(.80, True)] * 2
     assert live.unique_pot_patch(None, [7, 8]) is None      # they disagree: no pot
