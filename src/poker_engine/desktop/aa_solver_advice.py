@@ -237,10 +237,16 @@ def decision_key(fields, history):
     as AA (audit 10/14, P-01)."""
     controls = fields.get("hero_controls") or {}
     waiting = sum(action[4] is None for action in history["actions"])
-    return (len(history["actions"]), fields.get("street"),
+    street = fields.get("street")
+    board = [card for card in fields.get("board") or () if card]
+    # Only a board whole for the street counts: the next street's cards
+    # coming in (10/08: the flop dealt while your buttons still showed before
+    # it) are not a decision on this one.
+    need = BOARD_CARDS.get(street, 0)
+    return (len(history["actions"]), street,
             f"{controls.get('button')}:{controls.get('call_amount')}", waiting,
             tuple(sorted(card for card in fields.get("hero") or () if card)),
-            tuple(card for card in fields.get("board") or () if card))
+            tuple(board[:need]) if len(board) >= need else ())
 
 
 def advice_rows(strategy, observation):
