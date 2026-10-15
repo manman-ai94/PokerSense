@@ -49,6 +49,12 @@ own). The report's ``guard`` says what it changed and the advice before it,
 for the window and the log; the ranges are read narrower than people play,
 so a pair came out at 0.9-1.0 against them and was bet big.
 
+Style rules (``scoreboard.style_rules``, the style card) can change the
+solver's river answer before the guard: no bluff with nothing, no
+bluff-catch with one pair against a big bet from an opponent not read as
+aggressive. Only the rules in ``style_rules.LIVE`` apply, none for now; the
+report's ``style`` says which rule changed the advice and its top row before.
+
 An action the history missed but the table shows (``aa_solver_input``) is
 filled in; the report's ``inferred_actions`` counts them. A decision is the
 actions read so far, the street, what your button shows and how many of the
@@ -152,6 +158,8 @@ from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
 from poker_engine.scoreboard.side_pots import pots as side_pots
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
+from poker_engine.scoreboard.style_rules import LIVE as STYLE_RULES
+from poker_engine.scoreboard.style_rules import adjust as style_adjust
 from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
 from .aa_reads import AAReads
@@ -873,13 +881,18 @@ class AASolverAdvice:
             edge = range_report(observation, villain)
         except (KeyError, ValueError):     # never lose the advice over it
             edge = None
-        rows = advice_rows(strategy, observation)
         offset = _decimal(observation.get("pot_offset")) or Decimal(0)
         on_screen = {**observation,
                      "pot": str(Decimal(observation["pot"]) + max(offset, Decimal(0)))}
+        was = advice_rows(strategy, observation)
+        strategy, rule = style_adjust(strategy, self._with_reads(on_screen),
+                                      STYLE_RULES)
+        rows = advice_rows(strategy, observation)
+        style = {"rule": rule, "was": was[0] if was else None} if rule else None
         rows, guard = solver_guard(rows, on_screen, edge and edge["value"])
         return {"status": "ready", "advice": rows,
                 **({"guard": guard} if guard else {}),
+                **({"style": style} if style else {}),
                 "pot": observation["pot"], "to_call": observation["to_call"],
                 "pot_offset": observation.get("pot_offset"),
                 "range_equity": edge,
@@ -990,7 +1003,7 @@ class AASolverAdvice:
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
                                 "bomb_pot", "seconds", "basis", "provisional",
-                                "solver_gave_up", "guard")
+                                "solver_gave_up", "guard", "style")
                                 if name in job})
 
     def _report(self, status, reason, **extra):
