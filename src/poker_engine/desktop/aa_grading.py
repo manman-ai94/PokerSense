@@ -49,6 +49,8 @@ PREFLOP = ((0.05, "best"), (0.5, "fine"), (2.0, "slip"))       # big blinds lost
 SOLVER = ((0.5, "best"), (0.2, "fine"), (0.02, "slip"))        # solver frequency
 MULTIWAY = ((0.05, "fine"), (0.15, "slip"))     # share off your action's span
 GRADES = ("best", "fine", "slip", "mistake")
+SIZE_BAND = (Decimal("0.67"), Decimal("1.5"))   # your chips against the advice's
+ALL_IN_SHARE = Decimal("0.9")   # this much of your stack in is all in
 IN_PLAY = frozenset({"active", "all_in"})
 BIG_BLIND = Decimal(json.loads(RULES_PATH.read_text(encoding="utf-8"))["big_blind"])
 
@@ -148,6 +150,43 @@ def multiway_grade(kind, outcome, to_call, stack):
     best = kind == solver_group(rows[0]["action"])
     return {"chosen": kind, "share": share, "gap": round(gap, 3),
             "grade": "best" if best else _band(gap, MULTIWAY, above=False)}
+
+
+def advised_raises(outcome, stack):
+    """The chips each bet or raise the advice weighed puts in (the solver's
+    all in: your stack)."""
+    rows = outcome.get("options") or outcome.get("advice") or []
+    chips = []
+    for row in rows:
+        if row.get("action") not in AGGRESSIVE:
+            continue
+        value = (stack if row["action"] == "allin"
+                 else _decimal(row.get("chips_in", row.get("chips"))))
+        if value is not None and value > 0:
+            chips.append(value)
+    return chips
+
+
+def size_matches(chosen, kind, amount, outcome, stack):
+    """Whether a bet or raise of yours is one the advice weighed: within
+    ``SIZE_BAND`` of one of its sizes, or all in when one of them was. True
+    for anything else, and when the chips are not known."""
+    if chosen != "raise":
+        return True
+    sizes = advised_raises(outcome, stack)
+    put = _decimal(amount)
+    if kind == "all_in" and stack is not None:
+        put = stack
+    if not sizes or put is None or put <= 0:
+        return True
+    low, high = SIZE_BAND
+    for size in sizes:
+        if stack is not None and size >= stack * ALL_IN_SHARE:
+            if put >= stack * ALL_IN_SHARE:
+                return True
+        elif low <= put / size <= high:
+            return True
+    return False
 
 
 def _facing(actions, street):
@@ -342,6 +381,12 @@ class AAGrades:
             shown = {"advice": outcome.get("advice") or []}
         if graded is None:
             return None
+        if not size_matches(graded["chosen"], kind, amount, outcome, stack):
+            # The way is the advice's, the chips are not: what they were worth
+            # was never worked out (audit 10/14, P-05: all in for 200 against a
+            # raise to 15 was "best", 0 big blinds lost).
+            graded = {**graded, "size_graded": False,
+                      "grade": "fine" if graded["grade"] == "best" else graded["grade"]}
         return {"at": round(self._clock(), 1), "hand_id": self._hand, **spot,
                 "to_call": None if to_call is None else str(to_call),
                 "action": {"kind": kind, "amount": amount}, **shown, **graded}

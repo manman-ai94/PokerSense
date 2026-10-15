@@ -329,3 +329,36 @@ def test_the_report_gives_your_result_in_big_blinds():
         report = grades(row, frame)
     assert (report["net_chips"], report["net_big_blinds"], report["rebuys"]) == (
         "-25", -12.5, 0)
+
+
+def test_a_bet_or_raise_of_a_size_never_weighed_is_not_graded_best():
+    # Audit 10/14 (P-05): advice to raise to 15, all in for 200 was "best".
+    from poker_engine.desktop.aa_grading import size_matches
+    options = {"options": [{"action": "raise", "big_blinds": 3.0, "to": "15",
+                            "chips_in": "13"},
+                           {"action": "fold", "big_blinds": 0.0}]}
+    stack = Decimal("200")
+    assert not size_matches("raise", "all_in", None, options, stack)
+    assert size_matches("raise", "raise", "13", options, stack)
+    assert size_matches("raise", "raise", "16", options, stack)      # near it
+    assert not size_matches("raise", "raise", "60", options, stack)
+    assert size_matches("call", "call", "4", options, stack)          # not a raise
+    assert size_matches("raise", "raise", None, options, stack)       # chips unread
+    # The solver's all in is your stack; one of several sizes is enough.
+    solver = {"advice": [{"action": "allin", "frequency": 0.6},
+                         {"action": "bet", "frequency": 0.4, "chips": "30",
+                          "to": "30"}]}
+    assert size_matches("raise", "all_in", "200", solver, stack)
+    assert size_matches("raise", "raise", "28", solver, stack)
+    assert not size_matches("raise", "raise", "90", solver, stack)
+
+
+def test_all_in_against_a_small_raise_is_graded_by_its_way_only():
+    raising = Bot({"RAISE 30.000000": 0.8, "CALL": 0.2})
+    sized = turn_decision("raise", "30", bot=raising)[2]["last"]
+    assert sized["grade"] == "best" and "size_graded" not in sized
+    shove = turn_decision("all_in", "200", bot=raising)[2]
+    last = shove["last"]
+    assert (last["chosen"], last["grade"], last["size_graded"]) == (
+        "raise", "fine", False)
+    assert shove["best"] == 0

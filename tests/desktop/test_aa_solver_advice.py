@@ -33,6 +33,8 @@ ACTIONS = [
 ]
 BOARD = {"preflop": [], "flop": ["Ah", "Kd", "7c"], "turn": ["Ah", "Kd", "7c", "2s"]}
 
+TURN_KEY = (9, "turn", "call:10", 0, ("Qh", "Qs"), ("Ah", "Kd", "7c", "2s"))
+
 
 def payload(frame, hero=("Qs", "Qh"), extra_pot=2, seats=6, drop=(), shown=42,
             turn=41, complete=True, stacks_read=True, priced=0, pot_gone=None,
@@ -166,7 +168,7 @@ def test_until_the_solve_is_done_the_range_rule_gives_provisional_advice():
     assert shown == ("ready", "multiway", True, True)
     assert early["advice"][0]["action"] in ("call", "fold", "raise")
     assert "until the heads-up solve is done" in early["basis"]
-    assert advice.settled() == ("hand_1", {(9, "turn", "call:10", 0): None})
+    assert advice.settled() == ("hand_1", {TURN_KEY: None})
     done = AASolverAdvice(Bot({"RAISE 30.000000": 1.0}), Inline())
     final = run(done, range(50))[-1]
     assert final["advice"][0]["action"] == "raise" and "provisional" not in final
@@ -494,7 +496,7 @@ def test_when_the_solve_cannot_answer_the_range_rule_does(monkeypatch):
     assert shown == ("ready", "multiway", "own_hand_not_in_range")
     assert "provisional" not in result and "heads-up cuts" in result["basis"]
     # Grading goes by the action shown.
-    graded = advice.settled()[1][(9, "turn", "call:10", 0)]
+    graded = advice.settled()[1][TURN_KEY]
     assert (graded["kind"], graded["solver_gave_up"]) == ("multiway",
                                                           "own_hand_not_in_range")
     # Without the range rule's action the reason shows until the rough rule.
@@ -849,12 +851,12 @@ def test_settled_lists_this_hands_decisions_and_a_new_source_forgets_them():
     executor = Inline(finish=False)
     advice = AASolverAdvice(Bot({"CALL": 1.0}), executor)
     run(advice, range(50))
-    computing = {(9, "turn", "call:10", 0): None}
+    computing = {TURN_KEY: None}
     assert advice.settled() == ("hand_1", computing)
     done = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     run(done, range(50))
     hand, outcomes = done.settled()
-    assert hand == "hand_1" and outcomes[(9, "turn", "call:10", 0)]["status"] == "ready"
+    assert hand == "hand_1" and outcomes[TURN_KEY]["status"] == "ready"
     done.reset()
     assert done.settled() == (None, {})
 
@@ -1058,3 +1060,50 @@ def test_the_big_pot_guard_holds_back_a_pair_in_the_rough_rule():
                      stakes) == (bet, None)
     assert guard(check, check, ["9h", "2c"], board, "turn", Decimal(135),
                  Decimal(0)) == (check, None)
+
+
+def test_your_cards_read_anew_are_worked_out_again():
+    # Audit 10/14 (P-01): 72o got a fold, the same turn read again as AA kept
+    # the fold. Cards corrected within one decision start a new solve.
+    bot = Bot({"CALL": 1.0})
+    advice = AASolverAdvice(bot, Inline())
+    first = run(advice, range(50))[-1]
+    again = [advice.observe(payload(frame, hero=("Ac", "Ad")), frame)
+             for frame in range(50, 55)][-1]
+    assert first["status"] == again["status"] == "ready"
+    assert len(bot.seen) == 2 and sorted(bot.seen[-1]["own_hole"]) == ["Ac", "Ad"]
+    # The earlier cards' advice is not carried over to the new ones.
+    assert "carried_from" not in again
+
+
+def test_a_stack_read_late_is_worked_out_then():
+    # Audit 10/14 (P-01): your stack unread at your turn left the decision at
+    # "stack unknown" after it was read.
+    bot = Bot({"CALL": 1.0})
+    advice = AASolverAdvice(bot, Inline(), clock=still)
+    unread = run(advice, range(45), stacks_read=False)[-1]
+    assert unread["reason"] == "stack_unknown" or unread["kind"] == "rough"
+    read = run(advice, range(45, 60))[-1]
+    assert (read["status"], read.get("kind")) == ("ready", None) and bot.seen
+
+
+def _rough_seats(participants, hero, button="call", price="10"):
+    fields = {"board": BOARD["turn"] + [None], "participants": participants,
+              "pot": "35", "street_wagers": {},
+              "hero_controls": {"visible": True, "button": button,
+                                "call_amount": price}, "stacks": {"4": "200"}}
+    return aa_solver_advice.rough_advice(fields, list(hero), "turn")
+
+
+def test_the_rough_rule_counts_seats_not_read_as_maybe_in():
+    # Audit 10/14 (P-02): one opponent known and five seats unknown was
+    # answered as heads-up. The answer stands only when it is the same with
+    # the unknown seats in the hand.
+    known = {"2": "active", "3": "folded", "4": "active"}
+    unread = {**known, **{seat: "unknown" for seat in "01567"}}
+    queens = _rough_seats(known, ("Qs", "Qh"))
+    assert queens["advice"][0]["action"] == "call" and "unknown_seats" not in queens
+    assert _rough_seats(unread, ("Qs", "Qh")) is None     # fold against six
+    weak = _rough_seats(unread, ("Js", "Ts"))              # a fold either way
+    assert (weak["advice"][0]["action"], weak["unknown_seats"]) == ("fold", 5)
+    assert weak["range_equity"]["opponents"] == 1
