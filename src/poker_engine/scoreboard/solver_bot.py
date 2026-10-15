@@ -22,9 +22,9 @@ from __future__ import annotations
 from collections import Counter, OrderedDict
 from functools import partial
 
-from poker_engine.solver.texassolver import (Spot, TexasSolver, Tree, all_combos,
-                                             amount_of, combo_key, node_at,
-                                             solver_binary, strategy_of)
+from poker_engine.solver.texassolver import (SolverTimeout, Spot, TexasSolver, Tree,
+                                             all_combos, amount_of, combo_key,
+                                             node_at, solver_binary, strategy_of)
 
 from .bots import RfiTablePolicy, _Policy, _rng, opponents_in_hand
 from .postflop_reading import soft_kept, weights_of
@@ -95,6 +95,9 @@ class SolverBot(_Policy):
             action = self.solved_action(observation, rng, salt)
         except Fallback as reason:
             self.counts[str(reason)] += 1
+            return self.base.decide(observation, rng)
+        except SolverTimeout:        # the solver was killed; the run goes on
+            self.counts["solver_timeout"] += 1
             return self.base.decide(observation, rng)
         self.counts["solved"] += 1
         return action
