@@ -94,14 +94,24 @@ def preflop_shares(observation, spot, seat=None, aa=None):
 
 def preflop_band(observation, aa=None):
     """The band of hand percentiles the seat's earlier actions leave it with."""
+    return band_after(earlier_preflop(observation),
+                      lambda spot: preflop_shares(observation, spot, aa=aa))
+
+
+def earlier_preflop(observation):
+    """[(kind, spot)] of the seat's own earlier actions before the flop."""
     me = observation["observing_seat"]
     history = actions(observation, "preflop")
+    return [(kind, preflop_spot(history[:index], me))
+            for index, (player, kind) in enumerate(history) if player == me]
+
+
+def band_after(earlier, shares):
+    """The band of hand percentiles left by ``earlier`` [(kind, spot)], where
+    ``shares(spot)`` is the seat's (raise, call) shares at each."""
     low, high = 0.0, 1.0
-    for index, (player, kind) in enumerate(history):
-        if player != me:
-            continue
-        raise_share, call_share = preflop_shares(
-            observation, preflop_spot(history[:index], me), aa=aa)
+    for kind, spot in earlier:
+        raise_share, call_share = shares(spot)
         width = high - low
         if kind == "r":
             high = low + raise_share * width
@@ -181,5 +191,6 @@ class AARealBot(PopulationBot):
         return passive(observation)
 
 
-__all__ = ["AARealBot", "aa_name", "aa_stats", "postflop_shares", "preflop_band",
-           "preflop_shares", "pulled", "raise_by_pot"]
+__all__ = ["AARealBot", "aa_name", "aa_stats", "band_after", "earlier_preflop",
+           "postflop_shares", "preflop_band", "preflop_shares", "pulled",
+           "raise_by_pot"]

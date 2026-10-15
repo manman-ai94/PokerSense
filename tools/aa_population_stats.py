@@ -359,12 +359,28 @@ class Tally:
 
 def count_hand(hand, tallies, hero):
     """Add one hand to ``tallies`` (keyed by group name); True if it counted."""
+    found = hand_events(hand, hero)
+    if found is not None:
+        add_events(tallies, *found)
+    return found is not None
+
+
+def hand_events(hand, hero):
+    """What one hand adds to the counts, or None if it does not count:
+    (group, [(part, key, value)]), each event going to the ALL group and to
+    ``group``; part "chance" (value: hit), "preflop" or "postflop" (value:
+    the choice) or "size" (value: the pot share). With ``hero``, your seat's
+    decisions add nothing."""
     placed = replay(hand)
     if placed is None or "preflop" not in placed["closed"]:
-        return False
+        return None
     players, decisions = placed["players"], placed["decisions"]
     remaining = placed["remaining"]
-    targets = [tallies["ALL"], tallies[f"players_{SIZE_GROUPS.get(len(players))}"]]
+    events = []
+
+    def chance(stat, hit):
+        events.append(("chance", stat, bool(hit)))
+
     out_preflop = {d["seat"] for d in decisions
                    if d["street"] == "preflop" and d["choice"] == "fold"}
     saw_flop = [seat for seat in players if seat not in out_preflop]
@@ -376,16 +392,15 @@ def count_hand(hand, tallies, hero):
         len(remaining) < 2 or "river" in placed["closed"]
         or (len(placed["live"]) <= 1 and hand.get("board_max", 0) == 5))
     showdown = whole and len(remaining) >= 2
-    for target in targets:
-        target.chance("hands|dealer_as_read", placed["dealer"] == "read")
-        target.chance("hands|reach_flop", saw_flop)
-        if saw_flop:
-            target.chance("hands|flop_headsup", len(saw_flop) == 2)
-            target.chance("hands|flop_3way", len(saw_flop) == 3)
-            target.chance("hands|flop_4plus", len(saw_flop) >= 4)
-            target.chance("hands|flop_to_river_card", hand.get("board_max", 0) == 5)
-        if saw_flop and whole:
-            target.chance("hands|showdown_after_flop", showdown)
+    chance("hands|dealer_as_read", placed["dealer"] == "read")
+    chance("hands|reach_flop", saw_flop)
+    if saw_flop:
+        chance("hands|flop_headsup", len(saw_flop) == 2)
+        chance("hands|flop_3way", len(saw_flop) == 3)
+        chance("hands|flop_4plus", len(saw_flop) >= 4)
+        chance("hands|flop_to_river_card", hand.get("board_max", 0) == 5)
+    if saw_flop and whole:
+        chance("hands|showdown_after_flop", showdown)
     for seat, name in players.items():
         if hero and seat == HERO_SEAT:
             continue
@@ -393,62 +408,70 @@ def count_hand(hand, tallies, hero):
         pre = [d for d in mine if d["street"] == "preflop"]
         if not pre:
             continue                  # a walk: the blind never decided
-        for target in targets:
-            for key in ("ALL", name):
-                _player_stats(target, key, pre, mine)
-                target.chance(f"{key}|saw_flop", seat in saw_flop)
-                if seat in saw_flop:
-                    if whole:
-                        target.chance(f"{key}|wtsd", showdown and seat in remaining)
+        for key in ("ALL", name):
+            _player_stats(chance, key, pre, mine)
+            chance(f"{key}|saw_flop", seat in saw_flop)
+            if seat in saw_flop:
+                if whole:
+                    chance(f"{key}|wtsd", showdown and seat in remaining)
     for decision in decisions:
         if hero and decision["seat"] == HERO_SEAT:
             continue
-        for target in targets:
-            _decision_stats(target, decision, decisions)
-    return True
+        _decision_stats(events, decision, decisions)
+    return f"players_{SIZE_GROUPS.get(len(players))}", events
 
 
-def _player_stats(target, key, pre, mine):
-    target.chance(f"{key}|vpip",
-                  any(d["action"] in ("call", "raise", "all_in") for d in pre))
-    target.chance(f"{key}|pfr", any(d["choice"] == "raise" for d in pre))
+def add_events(tallies, group, events):
+    """Add ``hand_events`` to the ALL group and to ``group``."""
+    for target in (tallies["ALL"], tallies[group]):
+        for part, key, value in events:
+            if part == "chance":
+                target.chance(key, value)
+            elif part == "size":
+                target.sizes[key].append(value)
+            else:
+                getattr(target, part)[key][value] += 1
+
+
+def _player_stats(chance, key, pre, mine):
+    chance(f"{key}|vpip", any(d["action"] in ("call", "raise", "all_in") for d in pre))
+    chance(f"{key}|pfr", any(d["choice"] == "raise" for d in pre))
     first = pre[0]
     if first["spot"] == "rfi":
-        target.chance(f"{key}|rfi_raise", first["choice"] == "raise")
-        target.chance(f"{key}|rfi_limp", first["choice"] == "call")
+        chance(f"{key}|rfi_raise", first["choice"] == "raise")
+        chance(f"{key}|rfi_limp", first["choice"] == "call")
     for decision in pre:
         if decision["spot"] in ("vs_open", "limp_vs_raise"):
-            target.chance(f"{key}|three_bet", decision["choice"] == "raise")
+            chance(f"{key}|three_bet", decision["choice"] == "raise")
         if decision["spot"] == "open_vs_3bet":
-            target.chance(f"{key}|fold_to_3bet", decision["choice"] == "fold")
+            chance(f"{key}|fold_to_3bet", decision["choice"] == "fold")
     post = [d for d in mine if d["street"] != "preflop"]
     for decision in post:
         if decision["choice"] in ("bet", "raise", "call"):
-            target.chance(f"{key}|postflop_aggressive_share",
-                          decision["choice"] != "call")
+            chance(f"{key}|postflop_aggressive_share", decision["choice"] != "call")
 
 
-def _decision_stats(target, decision, decisions):
+def _decision_stats(events, decision, decisions):
     street, spot, choice = decision["street"], decision["spot"], decision["choice"]
     if street == "preflop":
-        target.preflop[f"{decision['position']}|{spot}"][choice] += 1
-        target.preflop[f"ALL|{spot}"][choice] += 1
+        events.append(("preflop", f"{decision['position']}|{spot}", choice))
+        events.append(("preflop", f"ALL|{spot}", choice))
         if choice == "raise" and decision["share"] is not None:
             what = {"rfi": "preflop_open", "vs_limp": "preflop_iso_raise"}.get(
                 spot, "preflop_reraise")
-            target.sizes[what].append(decision["share"])
+            events.append(("size", what, decision["share"]))
         return
-    target.postflop[spot][choice] += 1
-    target.postflop[f"{street}|ALL"][choice] += 1
+    events.append(("postflop", spot, choice))
+    events.append(("postflop", f"{street}|ALL", choice))
     _, width, role, facing = spot.split("|")
     if street == "flop" and facing == "facing_bet":
         bettor = decision["facing_from"]
         pfa = _preflop_aggressor(decisions)
         if bettor is not None and bettor == pfa:
-            target.postflop["flop|vs_cbet"][choice] += 1
+            events.append(("postflop", "flop|vs_cbet", choice))
     if choice in ("bet", "raise") and decision["share"] is not None:
-        target.sizes[f"{street}_{choice}"].append(decision["share"])
-        target.sizes[f"postflop_{choice}_{width}"].append(decision["share"])
+        events.append(("size", f"{street}_{choice}", decision["share"]))
+        events.append(("size", f"postflop_{choice}_{width}", decision["share"]))
 
 
 def _preflop_aggressor(decisions):
@@ -466,7 +489,13 @@ def build(hands, hero_logs=(), minutes=None, reference=None):
         if not hand.get("complete"):
             continue
         source["complete"] += 1
-        if count_hand(hand, tallies, hand["log"] in hero_logs):
+        if "events" in hand:          # already counted: an opponents-only extract
+            counted = hand["events"] is not None
+            if counted:
+                add_events(tallies, *hand["events"])
+        else:
+            counted = count_hand(hand, tallies, hand["log"] in hero_logs)
+        if counted:
             source["counted"] += 1
     counted = sum(source["counted"] for source in sources.values())
     total_minutes = sum((minutes or {}).values())

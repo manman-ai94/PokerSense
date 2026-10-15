@@ -1,12 +1,16 @@
 """The weekly refit keeps the AA 校准桌 unless new recordings are predicted better."""
 
+import gzip
+import json
 from pathlib import Path
 import re
 
 import pytest
 
 from poker_engine.scoreboard.calibrated import FITTED, cal_stats
+from tests.tools.test_aa_compare_advice import rows
 from tools import refit_aa_cal
+from tools.aa_population_stats import build as build_counts
 
 OLD = {"stats": "old"}
 PARAMS = {"mix": 0.6, "flop": {"slow": 0.4}}
@@ -124,6 +128,65 @@ def test_every_log_of_the_package_must_be_given(monkeypatch, incumbent):
     fake(monkeypatch, {"o1": 5, "n1": 80, "n2": 80}, {})
     with pytest.raises(SystemExit, match="o2"):
         refit_aa_cal.refit(paths("o1", "n1", "n2"), incumbent)
+
+
+def test_a_log_given_twice_is_refused(monkeypatch, incumbent):
+    fake(monkeypatch, {"o1": 5, "o2": 5, "n1": 80}, {})
+    with pytest.raises(SystemExit, match="n1"):
+        refit_aa_cal.refit(paths("o1", "o2", "n1") + [Path("/logs/n1.opp.jsonl.gz")],
+                           incumbent)
+
+
+def frame_log(folder):
+    """A recording where you (seat 4, A♦Q♦) call a re-raise and seat 0 shows."""
+    found = rows(you_call=True)
+    found[-1]["fields"]["shown_cards"] = {"seats": {"0": {"cards": ["Kc", "Kd"]}}}
+    folder.mkdir()
+    path = folder / "frames.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in found), encoding="utf-8")
+    return path
+
+
+def test_an_extract_keeps_the_other_players_and_nothing_of_yours(
+        monkeypatch, tmp_path, capsys):
+    # The history as written: the reader is not run again on a made-up log.
+    monkeypatch.setattr(refit_aa_cal, "replay", lambda rows: rows)
+    frames = frame_log(tmp_path / "du-rec")
+    out = tmp_path / "logs"
+    refit_aa_cal.main(["--extract", "du-rec", "--frames", str(frames),
+                       "--out", str(out)])
+    path = out / "du-rec.opp.jsonl.gz"
+    assert "1 hands for the fit, 1 counted" in capsys.readouterr().out
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        text = handle.read()
+    assert '"Ad"' not in text and '"Qd"' not in text            # your cards
+    extract, full = refit_aa_cal.read_log(path), refit_aa_cal.read_log(frames)
+    assert extract["name"] == full["name"] == "du-rec"
+    assert extract["seated"] is full["seated"] is True
+    assert extract["minutes"] == full["minutes"]
+    # The fit sees the same hands, only without your cards taken out.
+    (mine,), (theirs,) = extract["tasks"], full["tasks"]
+    assert theirs["dead"] == ["Ad", "Qd"] and mine["dead"] == []
+    assert mine == {**json.loads(json.dumps(theirs)), "dead": []}
+    assert mine["shown"] == {"0": ["Kc", "Kd"]}
+    assert all(item["seat"] != 4 for item in mine["decisions"])
+    # The numbers are the same; your seat (the button here) is never counted.
+    counts = build_counts(extract["hands"])
+    assert counts == build_counts(full["hands"], {"du-rec"})
+    assert counts["hands_counted"] == 1
+    assert not any(key.startswith("BTN|")
+                   for key in counts["groups"]["ALL"]["player"])
+    # An extract is never replaced.
+    with pytest.raises(SystemExit, match="already there"):
+        refit_aa_cal.main(["--extract", "du-rec", "--frames", str(frames),
+                           "--out", str(out)])
+
+
+def test_no_extract_of_the_acceptance_recording(tmp_path):
+    frames = frame_log(tmp_path / "aa_phone_record_20260909_031030_54322c62")
+    with pytest.raises(SystemExit, match="never read"):
+        refit_aa_cal.write_extract(frames, "du-x", tmp_path)
+    assert not list(tmp_path.glob("*.gz"))
 
 
 def test_the_package_carries_its_parameters_and_recordings():

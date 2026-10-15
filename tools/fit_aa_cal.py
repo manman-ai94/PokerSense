@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from poker_engine.scoreboard.aa_real import (  # noqa: E402
-    aa_stats, postflop_shares, preflop_band, preflop_shares)
+    aa_stats, band_after, earlier_preflop, postflop_shares, preflop_shares)
 from poker_engine.scoreboard.bots import (  # noqa: E402
     MAX_EQUITY_OPPONENTS, POSTFLOP_TRIALS, opponents_in_hand)
 from poker_engine.scoreboard.calibrated import (  # noqa: E402
@@ -60,7 +60,7 @@ from poker_engine.scoreboard.calibrated import (  # noqa: E402
 from poker_engine.scoreboard.bots import _rng  # noqa: E402
 from poker_engine.scoreboard.fidelity import FLOOR, SALT, options  # noqa: E402
 from poker_engine.scoreboard.population import actions, postflop_situation  # noqa: E402
-from poker_engine.scoreboard.replay import public_replay, with_hole  # noqa: E402
+from poker_engine.scoreboard.replay import public_replay  # noqa: E402
 from poker_engine.scoreboard.spots import preflop_spot  # noqa: E402
 from poker_engine.scoreboard.strength import combo_percentile, equity  # noqa: E402
 from poker_engine.solver.texassolver import all_combos, combo_key  # noqa: E402
@@ -87,6 +87,7 @@ DEPTH = ("price_slope", "depth_slope", "allin_shift", "preflop_price_slope",
          "preflop_depth_slope", "preflop_allin_shift")
 PHH = {}                   # the six DEPTH parameters from --phh; "strength" scales them
 ROUNDS = 3
+TABLE = ("occupied_seats", "dealer_seat", "straddler_seat")   # what positions need
 
 
 def zero_params():
@@ -103,10 +104,15 @@ def blocked(cards):
 # ------------------------------------------------------------------ prepare
 
 
-def prepare(job):
-    """One hand's decisions, with what every possible hand would face."""
-    (where, observation, skip, shown, dead), versions = job
-    prepared = []
+def opponent_hand(task):
+    """A ``sim_fidelity`` task as the fit reads it, ready for JSON: for each
+    decision of a seat not skipped (never yours), what it faced (the board,
+    the price and depth, before the flop the spots of its own earlier actions,
+    after it the situation) and what it did; the table, the final board, the
+    task's dead cards and the cards shown. No hole cards of yours unless
+    ``dead`` holds them, and no decision of yours."""
+    where, observation, skip, shown, dead = task
+    decisions = []
     for decision in public_replay(observation):
         seat = decision.seat
         if seat in skip:
@@ -114,32 +120,68 @@ def prepare(job):
         seen = decision.observation
         can_fold, _, can_raise = (kind in options(seen) for kind in "fcr")
         item = {"seat": seat, "street": decision.street,
-                "scored": (seat, decision.street) not in skip,
-                "actual": KIND_INDEX[decision.kind], "can_fold": can_fold,
-                "can_raise": can_raise, "blocked": blocked(seen["board"]),
-                "features": situation(seen)}
+                "scored": (seat, decision.street) not in skip, "actual": decision.kind,
+                "can_fold": can_fold, "can_raise": can_raise,
+                "board": list(seen["board"]), "features": list(situation(seen))}
         if decision.street == "preflop":
-            spot = preflop_spot(actions(seen, "preflop"), seat)
-            item["bands"] = {name: (*preflop_band(seen, aa=stats),
-                                    *preflop_shares(seen, spot, aa=stats))
-                             for name, stats in versions.items()}
+            item.update(spot=preflop_spot(actions(seen, "preflop"), seat),
+                        earlier=earlier_preflop(seen))
         else:
-            opponents = min(opponents_in_hand(seen), MAX_EQUITY_OPPONENTS)
+            item.update(spot=postflop_situation(seen),
+                        opponents=min(opponents_in_hand(seen), MAX_EQUITY_OPPONENTS),
+                        history=len(seen["public_history"]))
+        decisions.append(item)
+    return {"where": dict(where), "decisions": decisions,
+            "table": {key: observation.get(key) for key in TABLE},
+            "board": list(observation["board"]), "dead": list(dead),
+            "shown": {str(seat): list(cards) for seat, cards in shown.items()}}
+
+
+def prepare(job):
+    """One hand's decisions, with what every possible hand would face. The
+    hand is a ``sim_fidelity`` task or its ``opponent_hand``."""
+    hand, versions = job
+    if not isinstance(hand, dict):
+        hand = opponent_hand(hand)
+    dead, prepared = hand["dead"], []
+    for decision in hand["decisions"]:
+        seat, street = decision["seat"], decision["street"]
+        item = {"seat": seat, "street": street, "scored": decision["scored"],
+                "actual": KIND_INDEX[decision["actual"]],
+                "can_fold": decision["can_fold"], "can_raise": decision["can_raise"],
+                "blocked": blocked(decision["board"]),
+                "features": tuple(decision["features"])}
+        if street == "preflop":
+            seen = {**hand["table"], "observing_seat": seat}
+            item["bands"] = {
+                name: (*band_after(decision["earlier"],
+                                   lambda spot: preflop_shares(seen, spot, aa=stats)),
+                       *preflop_shares(seen, decision["spot"], aa=stats))
+                for name, stats in versions.items()}
+        else:
             win = np.full(len(COMBOS), np.nan)
             for index, cards in enumerate(CARDS):
                 if item["blocked"][index] or cards[0] in dead or cards[1] in dead:
                     continue
-                # The draws ``fidelity`` gives the bot for this hand.
-                hole = with_hole(seen, cards)
-                win[index] = equity(hole["own_hole"], seen["board"], opponents,
-                                    POSTFLOP_TRIALS, _rng(SALT, hole))
-            item.update(spot=postflop_situation(seen), win=win)
+                win[index] = equity(list(cards), decision["board"],
+                                    decision["opponents"], POSTFLOP_TRIALS,
+                                    draws(street, decision["history"],
+                                          decision["board"], cards))
+            item.update(spot=decision["spot"], win=win)
         prepared.append(item)
-    board = observation["board"]
-    return {"where": where, "decisions": prepared,
+    board = hand["board"]
+    return {"where": hand["where"], "decisions": prepared,
             "dead": blocked(dead), "final": blocked(board),
-            "shown": {seat: INDEX[combo_key(cards)] for seat, cards in shown.items()
+            "shown": {int(seat): INDEX[combo_key(cards)]
+                      for seat, cards in hand["shown"].items()
                       if not set(cards) & (set(board) | set(dead))}}
+
+
+def draws(street, history, board, cards):
+    """The draws ``fidelity`` gives the bot holding ``cards`` at a decision
+    after ``history`` actions (``bots._rng`` reads only these)."""
+    return _rng(SALT, {"street": street, "public_history": range(history),
+                       "board": board, "own_hole": list(cards)})
 
 
 # ------------------------------------------------------------------ score

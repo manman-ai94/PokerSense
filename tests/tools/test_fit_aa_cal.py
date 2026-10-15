@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from poker_engine.scoreboard.aa_real import aa_stats
@@ -60,6 +61,35 @@ def test_the_fit_and_the_bot_give_the_same_losses():
     assert fitted[0] == pytest.approx(action, abs=1e-6)
     assert fitted[2] == pytest.approx(cards, abs=1e-6)
     assert math.isfinite(fitted[0])
+
+
+def same_prepared(first, second):
+    assert first["where"] == second["where"] and first["shown"] == second["shown"]
+    assert (first["dead"] == second["dead"]).all()
+    assert (first["final"] == second["final"]).all()
+    assert len(first["decisions"]) == len(second["decisions"])
+    for one, other in zip(first["decisions"], second["decisions"]):
+        assert set(one) == set(other)
+        for key, value in one.items():
+            if isinstance(value, np.ndarray):
+                assert np.array_equal(value, other[key], equal_nan=True), key
+            else:
+                assert value == other[key], key
+
+
+def test_a_hand_prepares_the_same_from_its_opponents_record():
+    versions = {"v": aa_stats(), "w": {**aa_stats(), "preflop": {}}}
+    for seed in (2, 5):
+        where, observation, _, shown, _ = heads_up_hand(seed)
+        seat = max(shown)
+        others = {other: cards for other, cards in shown.items() if other != seat}
+        task = (where, observation, {seat}, others, tuple(shown[seat]))
+        record = json.loads(json.dumps(fit_aa_cal.opponent_hand(task)))
+        assert record["decisions"] and all(item["seat"] != seat
+                                           for item in record["decisions"])
+        assert record["dead"] == list(shown[seat])
+        same_prepared(fit_aa_cal.prepare((task, versions)),
+                      fit_aa_cal.prepare((record, versions)))
 
 
 def test_log_names():
