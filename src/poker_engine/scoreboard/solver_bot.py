@@ -57,8 +57,10 @@ class Fallback(Exception):
 
 class SolverBot(_Policy):
     def __init__(self, name="solver_river", solves=None, threads=1, cache_size=16,
-                 human=False, base=None, timeout=None):
+                 human=False, base=None, timeout=None, rules=frozenset()):
         self.name = name
+        # Style rules on the river answer (``style_rules``), none by default.
+        self.rules = frozenset(rules)
         # Seconds one solve may take (None: the solver's own limit).
         self.timeout = timeout
         # Advising a person: their past actions are read with the population
@@ -105,8 +107,13 @@ class SolverBot(_Policy):
     # -- solving --------------------------------------------------------------
 
     def solved_action(self, observation, rng, salt):
-        return self.to_arena(sample(self.solved_strategy(observation, salt), rng),
-                             observation)
+        strategy = self.solved_strategy(observation, salt)
+        if self.rules:
+            from .style_rules import adjust     # imports ranges, which imports this
+            strategy, rule = adjust(strategy, observation, self.rules)
+            if rule:
+                self.counts[f"style_{rule}"] += 1
+        return self.to_arena(sample(strategy, rng), observation)
 
     def solved_strategy(self, observation, salt):
         """{solver action: probability} for the hand held, at this decision.
@@ -145,6 +152,10 @@ class SolverBot(_Policy):
             if decision.seat == villain:
                 other = weighted(other, node, label) or other
             node = node_at(node, [label])
+        if not (node.get("strategy") or {}).get("strategy"):
+            # The solver leaves a node it never reached without a strategy
+            # (seen on the scoreboard with mixed stacks, 2026-10-15).
+            raise Fallback("no_strategy_at_node")
         try:
             return strategy_of(node, observation["own_hole"]), other
         except KeyError:
@@ -318,7 +329,7 @@ def weighted(weights, node, label):
     """Weights times each hand's probability of taking ``label`` at ``node``."""
     strategy = node["strategy"]
     column = strategy["actions"].index(label)
-    table = strategy["strategy"]
+    table = strategy["strategy"] or {}     # None where the solver never got
     result = {}
     for key, weight in weights.items():
         row = table.get(key)

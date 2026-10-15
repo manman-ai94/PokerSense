@@ -241,10 +241,14 @@ def make_policy(name):
         # "solver_flop+aa_preflop": the solver strategy on another base policy
         from .solver_bot import SolverBot       # needs TexasSolver installed
         # "solver_turn@human+...": your own past actions read with the
-        # population model, as the live window reads a person's
-        streets, _, base = name.partition("+")
-        streets, human = streets.removesuffix("@human"), streets.endswith("@human")
-        bot = SolverBot(streets, base=make_policy(base), human=human)
+        # population model, as the live window reads a person's;
+        # "@nobluff", "@nocatch": style rules on the river (``style_rules``)
+        head, _, base = name.partition("+")
+        streets, *options = head.split("@")
+        human = "human" in options
+        from .style_rules import rules_of
+        rules = rules_of([option for option in options if option != "human"])
+        bot = SolverBot(streets, base=make_policy(base), human=human, rules=rules)
         bot.name = name
         return bot
     if "/" in name:

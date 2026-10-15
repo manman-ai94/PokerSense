@@ -51,6 +51,7 @@ are the same with or without it.
 
 from __future__ import annotations
 
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import hashlib
 import math
@@ -247,9 +248,20 @@ def score_deals(rules_dict, strategies, pool, seeds, base_seed, all_in_ev=True,
                          {part: (chips / scale, hands)
                           for part, (chips, hands) in kind.items()})
         rows.append((seed, row))
-    counts = {name: dict(heroes[name].counts) for name in strategies
-              if getattr(heroes[name], "counts", None)}
+    counts = {name: found for name in strategies
+              if (found := _counts(heroes[name]))}
     return (rows, counts, traces) if exclusion else (rows, counts)
+
+
+def _counts(policy):
+    """The counts ``policy`` keeps and those of the policies it wraps
+    (``base``): ``range_multiway+solver_river+...`` counts its own decisions
+    and the solver's."""
+    found = Counter()
+    while policy is not None:
+        found.update(getattr(policy, "counts", None) or {})
+        policy = getattr(policy, "base", None)
+    return dict(found)
 
 
 def _interval(values):

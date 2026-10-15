@@ -1023,6 +1023,29 @@ def test_the_big_pot_guard_holds_back_a_pair_in_the_solvers_advice():
     assert small["advice"][0]["action"] == "raise" and "guard" not in small
 
 
+def test_a_style_rule_in_the_window_changes_the_solvers_advice(monkeypatch):
+    calls = Bot({"CALL": 0.7, "FOLD": 0.3})
+    # Off by default: the solver's answer as it is.
+    report = run(AASolverAdvice(calls, Inline()), range(50))[-1]
+    assert report["advice"][0]["action"] == "call" and "style" not in report
+    seen = []
+
+    def fold(strategy, observation, rules):
+        seen.append((observation, rules))
+        return {"FOLD": 1.0}, "nocatch"
+
+    monkeypatch.setattr(aa_solver_advice, "STYLE_RULES", frozenset({"nocatch"}))
+    monkeypatch.setattr(aa_solver_advice, "style_adjust", fold)
+    calls = Bot({"CALL": 0.7, "FOLD": 0.3})
+    report = run(AASolverAdvice(calls, Inline()), range(50))[-1]
+    assert report["advice"] == [{"action": "fold", "frequency": 1.0}]
+    assert report["style"] == {"rule": "nocatch",
+                               "was": {"action": "call", "frequency": 0.7}}
+    # The rule sees the pot on screen and the rules named.
+    observation, rules = seen[-1]
+    assert rules == {"nocatch"} and observation["street"] == "turn"
+
+
 def test_the_big_pot_guard_holds_back_a_pair_in_the_range_rule(monkeypatch):
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
     monkeypatch.setattr(advice, "_ranges", lambda observation: {

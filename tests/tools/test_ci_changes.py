@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -76,3 +77,56 @@ def test_a_code_file_renamed_into_docs_still_runs_the_tests(tmp_path, monkeypatc
     files = ci_changes.changed_files(base, head)
     assert "src/mod.py" in files
     assert ci_changes.needs_tests(files)
+
+
+GUARD = json.loads(ci_changes.GUARD.read_text(encoding="utf-8"))
+
+
+def test_every_guarded_pattern_names_files_and_no_file_is_on_both_sides():
+    root = ci_changes.GUARD.parents[1]
+    found = {}
+    for side in ("strategy", "evaluator"):
+        for pattern in GUARD[side]:
+            hits = [path.relative_to(root).as_posix() for path in root.glob(pattern)
+                    if path.is_file()]
+            assert hits, pattern
+            found[side] = found.get(side, set()) | set(hits)
+    assert not found["strategy"] & found["evaluator"]
+
+
+@pytest.mark.parametrize("files, conflict", [
+    (["src/poker_engine/scoreboard/multiway_bot.py",
+      "src/poker_engine/scoreboard/runner.py"], True),
+    (["src/poker_engine/solver/texassolver.py",                # a pattern
+      "configs/evaluator-protection.json"], True),             # the guard itself
+    (["src/poker_engine/scoreboard/ranges.py",
+      "src/poker_engine/desktop/aa_solver_advice.py", "docs/WORKLOG.md"], False),
+    (["src/poker_engine/scoreboard/calibrated.py", "tools/fit_aa_cal.py"], False),
+    (["src/poker_engine/scoreboard/bots.py",                   # shared: neither
+      "src/poker_engine/scoreboard/multiway_bot.py"], False),
+])
+def test_a_change_may_touch_the_strategy_or_the_evaluator_not_both(files, conflict):
+    assert (ci_changes.evaluator_conflict(files) is not None) is conflict
+
+
+def test_only_a_pull_request_that_touches_both_fails(tmp_path, monkeypatch):
+    git(tmp_path, "init", "-q")
+    git(tmp_path, "config", "user.email", "ci@example.invalid")
+    git(tmp_path, "config", "user.name", "ci")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "start")
+    base = git(tmp_path, "rev-parse", "HEAD")
+    for name in ("src/poker_engine/scoreboard/ranges.py", "tools/run_gauntlet.py"):
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text("x = 2\n")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-qm", "both")
+    head = git(tmp_path, "rev-parse", "HEAD")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    assert ci_changes.main([base, head]) == 0
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    assert ci_changes.main([base, head]) == 1
+    assert ci_changes.main([base, base]) == 0
