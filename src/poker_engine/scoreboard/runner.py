@@ -79,9 +79,12 @@ from .stacks import Stacks
 # (aa_real.py) plays the shares and bet sizes measured on AA recordings;
 # "noisy" (opponents.NoisyBot) like them, but after the flop it sometimes
 # slow-plays, bets when it would check or calls when it would fold, as real
-# players do and the model the AI reads ranges with never does.
+# players do and the model the AI reads ranges with never does. "aa_cal"
+# (calibrated.py) is the AA players with those departures and the price
+# fitted on recordings (``tools/sim_fidelity.py`` says how close each is).
 POOLS = {"population": ("population",), "aa": ("aa_population",),
          "aa_real": ("aa_real",), "noisy": ("noisy+aa_real",),
+         "aa_cal": ("aa_cal",),
          "styles": ("tag", "lag", "rock", "station"),
          "reg": ("reg",), "maniac": ("maniac",), "nit": ("nit",),
          "tough": ("reg", "maniac", "nit", "aa_population"),

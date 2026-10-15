@@ -3,10 +3,12 @@ import hashlib
 from itertools import combinations
 import json
 from pathlib import Path
+import threading
 import time
 
 import pytest
 
+from poker_engine.desktop import aa_analysis as analysis_module
 from poker_engine.desktop.aa_analysis import AAConditionalAnalysis, _analysis_worker
 from tests.timing import Stopwatch, budget, over, timing, within_budget
 
@@ -154,6 +156,27 @@ def test_timeout_terminates_without_status_polling_and_allows_new_job():
         assert finish(service)["status"] == "COMPLETE"
     finally:
         service.cancel()
+
+
+def test_timeout_reads_timed_out_once_the_worker_is_gone(monkeypatch):
+    """A busy machine: the deadline timer fires late and the result watcher
+    loses the CPU right after stopping the worker. Whoever sees the worker
+    gone must also see the job over (CI 2026-10-15 read RUNNING here)."""
+    real_timer = analysis_module.threading.Timer
+
+    def late_timer(interval, function, args=()):
+        return real_timer(interval + 5, function, args=args)
+
+    monkeypatch.setattr(analysis_module.threading, "Timer", late_timer)
+    real_terminate = AAConditionalAnalysis._terminate
+
+    def slow_watcher(self, process):
+        real_terminate(self, process)
+        if threading.current_thread().name == "AA-analysis-result-watch":
+            time.sleep(0.5)
+
+    monkeypatch.setattr(AAConditionalAnalysis, "_terminate", slow_watcher)
+    test_timeout_terminates_without_status_polling_and_allows_new_job()
 
 
 def parallel_rejection_and_cancel():

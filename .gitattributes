@@ -1,3 +1,8 @@
 # Strategy fixtures and their calibration hashes are byte-level contracts.
 # Keep checkout bytes stable on every CI runner and developer platform.
 * text=auto eol=lf
+
+# New entries go to docs/worklog/<date>-<branch>.md, one file per PR, because
+# GitHub's own conflict check ignores merge drivers. Union still lets local git
+# merge the nightly roll-up and any direct edit without a hand-resolve.
+docs/WORKLOG.md merge=union
