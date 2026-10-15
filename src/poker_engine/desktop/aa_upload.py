@@ -22,6 +22,13 @@ owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
   uploaded, cut off, or a sheet written afterwards) is uploaded again; rclone
   sends only the files whose size or checksum differ. So the next start
   finishes what the last one did not.
+* Google Drive allows two folders of one name, and rclone makes one more
+  when a folder is created by two transfers at once or a create is retried
+  after a timeout (2026-10-15: 11 "PokerSense 同事数据" folders in one
+  morning). So after the files and before ``upload.json``, ``rclone dedupe
+  --dedupe-mode merge`` folds same-named folders into one, down to the
+  recording folder; it never touches files. Seeing only this computer's own
+  uploads (scope ``drive.file``), it cannot reach anything else.
 * After the files, a small ``upload.json`` (the file list with sizes) is
   written last: a recording without it, or whose files do not match it, is
   still on its way and the pull leaves it alone.
@@ -61,6 +68,7 @@ RETRY_WAITS = (60, 300, 900, 1800)
 REPORT_WAIT = 1800               # longest wait for the check-up sheet
 COPY_TIMEOUT = 3 * 3600
 IDLE_WAIT = 3600                 # a look now and then
+MERGE_DEPTH = 3                  # <folder>/<machine>/<recording>
 UNSET_WAIT = 300                 # how often a window without rclone looks again
 CHECK_EVERY = 60.0               # seconds a "configured" answer is kept
 LOG_LIMIT = 1_000_000
@@ -387,6 +395,7 @@ class Uploader:
         try:
             code, output = self._copy(folder, settings)
             if code == 0:
+                self._merge_folders(settings)
                 marker = {"machine": settings["machine"], "folder": folder.name,
                           "files": files["files"], "bytes": files["bytes"],
                           "uploaded": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
@@ -416,6 +425,19 @@ class Uploader:
         self._log(f"{folder.name} 已上传：{len(files['files'])} 个文件，"
                   f"{files['bytes'] / 1e6:.1f} MB → {target}")
         return True
+
+    def _merge_folders(self, settings):
+        """Same-named folders on the remote merged into one, down to the
+        recording folders; a failure is only logged (the pull waits for a
+        recording whose files are not all next to its ``upload.json``)."""
+        code, output = self.run(
+            [self._rclone(settings), "dedupe", "--dedupe-mode", "merge",
+             "--max-depth", str(MERGE_DEPTH), f"{settings['remote']}:",
+             "--retries", "3", "--contimeout", "30s", "--timeout", "5m",
+             "--stats", "0", "--log-level", "NOTICE"], 600)
+        if code != 0:
+            self._log(f"同名文件夹没合并（{code}）\n{scrub(output)}")
+        return code == 0
 
     @staticmethod
     def destination(settings, name):

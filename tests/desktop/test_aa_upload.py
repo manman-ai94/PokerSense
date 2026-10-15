@@ -42,6 +42,8 @@ class FakeRclone:
         if command == "copy":
             shutil.copytree(args[2], self.where(args[3]), dirs_exist_ok=True)
             return 0, ""
+        if command == "dedupe":
+            return 0, ""
         if command == "copyto":
             target = self.where(args[3])
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -103,6 +105,36 @@ def test_a_finished_recording_goes_up_whole_with_its_list_last(tmp_path):
     assert status["message"].startswith("录像自动上传：开")
     up.upload_all()                           # nothing new: nothing sent
     assert len(rclone.copies()) == 2
+
+
+def test_same_named_folders_are_merged_before_the_list_is_written(tmp_path):
+    """Drive keeps two folders of one name (11 of them on 2026-10-15): they
+    are merged after the files and before ``upload.json``; a failed merge
+    does not stop the upload."""
+    recording(tmp_path / "recordings", "20261015-102047-live")
+
+    class Rclone(FakeRclone):
+        merge_code = 0
+
+        def __call__(self, args, timeout):
+            if args[1] == "dedupe":
+                self.calls.append(args)
+                return self.merge_code, "Failed to dedupe: rate limit"
+            return super().__call__(args, timeout)
+
+    rclone = Rclone(tmp_path / "cloud")
+    up = uploader(tmp_path, rclone)
+    assert up.upload_all() is True
+    order = [args[1] for args in rclone.calls if args[1] != "listremotes"]
+    assert order == ["copy", "dedupe", "copyto"]
+    dedupe = next(args for args in rclone.calls if args[1] == "dedupe")
+    assert dedupe[2:7] == ["--dedupe-mode", "merge", "--max-depth", "3",
+                           "pokersense-upload:"]
+    recording(tmp_path / "recordings", "20261015-120000-live")
+    rclone.merge_code = 1
+    assert up.upload_all() is True
+    log = (tmp_path / "upload" / "upload.log").read_text(encoding="utf-8")
+    assert "同名文件夹没合并" in log
 
 
 def test_a_failed_upload_leaves_the_recording_alone_and_is_tried_again(tmp_path):
