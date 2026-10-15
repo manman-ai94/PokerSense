@@ -1,7 +1,8 @@
 # 工作记录
 
-每个合并的改动都在“记录”最上面加一条，以 `### 日期 · 分支（标题）` 开头，最多 5 行：日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。
-这个文件按 union 合并（`.gitattributes`）：本地 git 合 main 时两边的新记录都保留，不用手解冲突；GitHub 网页不认 union，照样显示冲突，把 main 合进分支再推即可。
+新记录不直接写进这个文件：每个合并的改动在 [`docs/worklog/`](worklog/README.md) 里加一个自己的文件
+（`<日期>-<分支名>.md`，以 `### 日期 · 分支（标题）` 开头，最多 5 行：做了什么、怎么做的、怎么验证的、还剩什么），
+两个 PR 不再碰同一个文件。每晚 `tools/worklog_rollup.py` 把那里的记录按新到旧并进下面“记录”的最上面；还没并进来的几条在那个文件夹里。
 文件太长时，把旧记录移到 `docs/archive/`。
 
 ## 推送情况
@@ -16,6 +17,11 @@
 - 怎么做的：复用 `p30_acceptance.field_coverage/compare`、`aa_session_report`、`aa_population_stats`；状态（复盘过哪些、对手的手）放私有数据目录 `PokerSense_private/tester-review/`，同一场不复盘第二次，下一场写“和上次比”。
 - 怎么验证的：7 个单元测试；杜 10/14 那场 18 分钟录像：每秒读 2.3 帧（Mac 7.8）、识别一帧 360 毫秒（Mac 83）、底池 0%、轮到他 36 次 9 次没建议、24 手 15 手重放不下去、能统计对手的 12/24；AA 真人统计 401 → 414 手，和手工 `aa_population_stats build` 结果逐项一样。
 - 还剩：每天早上由排好的任务跑一次（云端读 Mac 上的云盘文件夹）；真人统计只放私有目录，要不要换进包里的 `aa_real_stats` 由策略那边定。
+**2026-10-15 · `claude/nightly-automation-60jgce`（#56 的同名文件夹合并从来没跑成）**
+- 做了什么：上传后的 `rclone dedupe` 从 `--dedupe-mode merge` 改成 `skip`：rclone 没有 merge 这个模式，每次都报 `unknown mode for dedupe` 只记进日志，同名文件夹一个也没并。合并深度改成按设置算到录像的 `flywheel/`（默认 4 层）。
+- 怎么做的：rclone 除 `list` 外每种模式都先合并同名文件夹；`skip` 对文件只删“同名且内容一样”的多余副本，内容不同的不动。
+- 怎么验证的：测试里的假 rclone 改成照真 rclone（v1.75.2 源码）只认 9 种模式，旧代码在它上面失败；新增“合并失败照样传完、写 upload.json、记成已传、不重传”；上传和拉取测试 23 个、flake8 通过。夜间代码体检发现。
+- 还剩：同时上传的两个进程没有跨进程的锁，合并扫的是整个云盘根目录，留给上传线程看。
 
 ### 2026-10-15 · `claude/ci-speedup-5yxfv0`（GitHub 检查提速：测试并行、工作日志不再撞车）
 - 做了什么：Windows/macOS 测试 job 改成 `pytest -n auto --dist loadfile -m "not timing"`，计时测试另一步单进程跑；装包加 pip 缓存；`docs/WORKLOG.md` 按 union 合并，新记录用 `###` 开头；“Build Legacy macOS”只在打包文件改动时跑，新的 main 推送取消还在排队的旧打包。

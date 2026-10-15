@@ -2,8 +2,7 @@
 # Keep checkout bytes stable on every CI runner and developer platform.
 * text=auto eol=lf
 
-# Every PR adds its entry at the top of the work log, so two open PRs always
-# touch the same spot. Union keeps both entries instead of a conflict (a
-# conflicted PR gets no CI run at all). Entries start with a "### " heading so
-# they stay apart even when union drops the blank line between them.
+# New entries go to docs/worklog/<date>-<branch>.md, one file per PR, because
+# GitHub's own conflict check ignores merge drivers. Union still lets local git
+# merge the nightly roll-up and any direct edit without a hand-resolve.
 docs/WORKLOG.md merge=union
