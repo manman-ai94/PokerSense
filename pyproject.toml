@@ -29,6 +29,8 @@ solver-tools = [
 dev = [
     "pytest",
     "pytest-cov",
+    # CI runs the suite on every CPU core (pytest -n auto).
+    "pytest-xdist==3.8.0",
     "flake8",
     "httpx",
 ]

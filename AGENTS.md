@@ -31,8 +31,8 @@ export PATH="/opt/homebrew/bin:$PATH"   # Homebrew（gh、node）不在默认 PA
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -e ".[dev,desktop,solver-tools,perceptual]"
 
-# 全量测试约 10 分钟；pyproject 里已默认 -q
-PYTHONPATH=src:. .venv/bin/python -m pytest
+# 全量测试约 10 分钟；pyproject 里已默认 -q。CI 和下面一样分两步：先按 CPU 核数并行，再单独跑计时测试
+PYTHONPATH=src:. .venv/bin/python -m pytest -n auto --dist loadfile -m "not timing" && PYTHONPATH=src:. .venv/bin/python -m pytest -m timing
 .venv/bin/python -m flake8 src tests tools research/hu_root research/coverage_bridge
 ```
 
@@ -164,10 +164,10 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（第二台电脑从源码装见 
 3. 改代码并带测试；修问题先复现再修。
 4. 按改动类型自己验证：都要过相关测试和 flake8；识别、实时链路要在录像上量出前后数字（跳过 300–820 秒）；
    策略要在记分牌上和参照策略比出提升，并换 `--seed` 复核；界面要在录像回放上实际打开看过。
-5. 开 PR（中文：做了什么、怎么验证的、还剩什么），打开自动合并。
+5. 开 PR（中文：做了什么、怎么验证的、还剩什么），打开自动合并。推送后几分钟内确认检查真的开跑了（和 main 有冲突时 GitHub 不跑，先合 main）。
 6. 三项检查全绿就合并；绿了没自动合并就手动合并；红了查原因修到绿，不跳过、不关掉测试。
 7. 收尾：里程碑有变化就更新 ROADMAP；新学到的事实写进项目记忆；给主人一条中文结果：做成了什么、他能看到什么变化、需要他做什么。
-   每个合并的改动都在 [docs/WORKLOG.md](docs/WORKLOG.md) 顶部加一条中文记录，和改动一起提交：最多 5 行，写日期和分支、做了什么、怎么做的、怎么验证的、还剩什么。文件太长时把旧记录移到 `docs/archive/`。
+   每个合并的改动都在 [docs/WORKLOG.md](docs/WORKLOG.md) 顶部加一条中文记录，和改动一起提交：以 `### 日期 · 分支（标题）` 开头，最多 5 行，写日期和分支、做了什么、怎么做的、怎么验证的、还剩什么（本地 git 按 union 自动合并两边的新记录；GitHub 网页不认 union，照样显示冲突、不跑检查，这时把 main 合进分支再推）。文件太长时把旧记录移到 `docs/archive/`。
 8. 不等主人说“继续”，按路线图顺序做下一件，开始前在项目里发一行说明。
 
 在哪里做：改代码、跑测试、开 PR、合并在云端或本地都可以，改完都推到 GitHub，以 `main` 为准。
@@ -188,7 +188,7 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（第二台电脑从源码装见 
 - 分支命名：`feat/`、`fix/`、`docs/`、`chore/`、`research/` 加简短英文描述。
 - 一个 PR 只做一件事；main 必须随时能跑。PR 描述用中文写清：做了什么、怎么验证的、还剩什么。
 - 修改 `.github/workflows/` 需要 `gh` 带 `workflow` 权限。
-- 2026-10-06 前的旧分支存为 `archive/<原分支名>` 标签（只在 Mac 和备份包里）；新仓库的分支保护和自动合并由主人决定。
+- 2026-10-06 前的旧分支存为 `archive/<原分支名>` 标签（只在 Mac 和备份包里）；分支保护由主人决定；仓库已允许自动合并（2026-10-15 主人勾选），每个 PR 都打开（merge commit 方式）。
 
 ## 文档规则
 
