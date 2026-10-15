@@ -268,11 +268,12 @@ def test_more_than_one_opponent_gets_the_range_rules_action():
     assert edge["opponents"] == 2 and edge["hands"] is None
     assert set(edge["hands_each"]) == {"1", "2"} and 0 < edge["value"] < 1
     # Seat 2 bets 10 into a pot of 37 on screen (2 more than the rules post).
+    # Calling makes it 47, and the table rakes 2 of it (5%, to the chip).
     assert report["pot"] == "37" and report["pot_offset"] == "2"
-    assert report["cuts"] == {"call": round(10 / 47, 3), "raise": DEFAULTS["raise"]}
+    assert report["cuts"] == {"call": round(10 / 45, 3), "raise": DEFAULTS["raise"]}
     share, [row] = edge["value"], report["advice"]
     expected = ("raise" if share >= DEFAULTS["raise"] else
-                "call" if share >= 10 / 47 else "fold")
+                "call" if share >= 10 / 45 else "fold")
     assert row["action"] == expected and row["frequency"] == 1.0
     assert bot.seen == [] and report["advice_emitted"] is True
     assert "no multiway solver" in report["basis"]
@@ -856,7 +857,7 @@ def test_a_bomb_pot_gets_advice_after_the_flop_like_any_other_hand():
         "ready", "multiway", "flop")
     assert report["bomb_pot"] == "14" and report["pot"] == "104"
     assert report["range_equity"]["opponents"] == 2
-    assert report["cuts"]["call"] == round(20 / 124, 3)
+    assert report["cuts"]["call"] == round(20 / (124 - 6), 3)     # 6 raked
     # A normal hand's report says it is not one.
     normal = [advice.observe(three_handed(frame), frame) for frame in range(50)][-1]
     assert normal["bomb_pot"] is None

@@ -149,6 +149,7 @@ from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy
 from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
+from poker_engine.scoreboard.side_pots import pots as side_pots
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
 from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
@@ -688,18 +689,26 @@ class AASolverAdvice:
         return {**observation, "reads": reads} if reads else observation
 
     def _ranges(self, observation):
-        """Your share of the pot against every opponent's range, or None."""
+        """Your share of the pot against every opponent's range, or None:
+        of the chips you can win, each side pot against the players in it
+        (``side_pots``)."""
         warming = self._warming
         if warming is not None and warming[0] == self._hand_id:
             wait([warming[1]])         # what it reads is read once, not twice
         ranges = opponent_ranges(observation, self._range_model())
+        split = side_pots(observation)
         value, counts = ranges_equity(observation["own_hole"], observation["board"],
-                                      ranges)
+                                      ranges, pots=split)
         if value is None:
             return None
-        return {"value": round(value, 3), "opponents": len(counts),
-                "hands": sum(counts.values()) if len(counts) == 1 else None,
-                "hands_each": {str(seat): count for seat, count in counts.items()}}
+        report = {"value": round(value, 3), "opponents": len(counts),
+                  "hands": sum(counts.values()) if len(counts) == 1 else None,
+                  "hands_each": {str(seat): count for seat, count in counts.items()}}
+        if len(split) > 1:
+            report["side_pots"] = [{"chips": round(chips, 2),
+                                    "seats": [str(seat) for seat in seats]}
+                                   for chips, seats in split]
+        return report
 
     def _multiway(self, observation, fields, started):
         """The ``range_multiway`` action for your share of the pot against the
@@ -707,16 +716,18 @@ class AASolverAdvice:
         heads_up = len([seat for seat in observation["occupied_seats"]
                         if seat not in observation["folded"]]) == 2
         idle = "heads_up_flop" if heads_up else "more_than_one_opponent"
+        pot = _decimal(fields.get("pot"))
+        offset = None
+        if pot is not None and pot > Decimal(observation["pot"]):
+            # The screen's pot: what it holds above the replay's is in the
+            # main pot (``side_pots``).
+            offset = pot - Decimal(observation["pot"])
+            observation = {**observation, "pot": str(pot)}
         edge = self._ranges(observation)
         if edge is None:
             return {"status": "idle", "reason": idle}
         if HERO in observation["stacks_unknown"]:
             return {"status": "idle", "reason": idle, "range_equity": edge}
-        pot = _decimal(fields.get("pot"))
-        offset = None
-        if pot is not None and pot > Decimal(observation["pot"]):
-            offset = pot - Decimal(observation["pot"])
-            observation = {**observation, "pot": str(pot)}
         bold = unguarded(observation, edge["value"])
         action = guard_action(observation, bold, edge["value"])
         guard = None

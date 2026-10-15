@@ -215,7 +215,7 @@ def test_a_multiway_action_is_graded_against_the_range_rule():
          "amount_source": "pot_rise"})
     last = feed(advice, grades, rows + [(50, after)])["last"]
     share = last["share"]
-    assert last["kind"] == "multiway" and last["cuts"]["call"] == round(10 / 47, 3)
+    assert last["kind"] == "multiway" and last["cuts"]["call"] == round(10 / 45, 3)
     assert last["advice"][0]["action"] in ("fold", "call", "raise")
     if last["advice"][0]["action"] == "call":
         assert last["grade"] == "best"
