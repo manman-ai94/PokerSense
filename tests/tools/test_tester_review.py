@@ -33,11 +33,12 @@ RAISED = [(3, "preflop", 5, "raise", "8", "bet")]
 BLANK = {"status": "abstain", "reason": "dealer_ambiguous"}
 
 
-def recording(tmp_path, name="20261015-102047-live", *, machine="du"):
+def recording(tmp_path, name="20261015-102047-live", *, machine="du", rows=None):
     """One hand on a slow computer: its turn comes and no advice shows."""
-    rows = ([row(f) for f in range(3)]
-            + [row(f, actions=RAISED) for f in range(3, 5)]
-            + [row(f, turn=True, advice=BLANK, actions=RAISED) for f in range(5, 8)])
+    rows = rows or ([row(f) for f in range(3)]
+                    + [row(f, actions=RAISED) for f in range(3, 5)]
+                    + [row(f, turn=True, advice=BLANK, actions=RAISED)
+                       for f in range(5, 8)])
     folder = tmp_path / machine / name
     folder.mkdir(parents=True)
     text = "\n".join(json.dumps(item) for item in rows) + "\n"
@@ -122,6 +123,63 @@ def test_the_next_recording_says_what_moved(tmp_path):
     sheet = (tmp_path / "out" / review.SHEET).read_text(encoding="utf-8")
     assert "和上次（20261015-102047-live）比：读帧 2.5/秒 → 8/秒；没建议的轮次 100% → 0%" in sheet
     assert "电脑太慢" not in sheet
+
+
+CALL = {"status": "ready", "kind": "preflop", "advice": [{"action": "call"}]}
+
+
+def four_handed(frame, hand, stack, *, cards=("As", "Kd"), **more):
+    """A frame at four players with him on the button (dealer)."""
+    item = row(frame, hand=hand, **more)
+    fields = item["fields"]
+    fields["hero"] = list(cards)
+    fields["participants"]["7"] = "active"
+    fields["stacks"] = {"4": stack}
+    fields["dealer"] = fields["actions_v1"]["dealer"] = 4
+    return item
+
+
+def played_rows():
+    """He calls 4 on the button with ace-king and loses it, then folds 7-2."""
+    called = [(6, "preflop", 4, "call", "4", "bet")]
+    return ([four_handed(f, "hand_0", "100") for f in range(5)]
+            + [four_handed(5, "hand_0", "100", turn=True, advice=CALL),
+               four_handed(6, "hand_0", "96", actions=called)]
+            + [four_handed(f, "hand_7", "96", cards=("7c", "2d")) for f in range(7, 12)]
+            + [four_handed(f, "hand_12", "96") for f in range(12, 15)])
+
+
+def test_results_with_the_luck_out_go_on_the_sheet_and_stay_private(tmp_path, capsys):
+    folder = recording(tmp_path, "20261016-190000-live", rows=played_rows())
+    review.run(args(tmp_path, [folder]))
+    state, out = tmp_path / "state", tmp_path / "out"
+    hands = review.read_lines(state / review.RESULTS)
+    assert [(line["machine"], line["log"], line["bb"]) for line in hands] == [
+        ("du", "du-20261016-190000-live", -2.0), ("du", "du-20261016-190000-live", 0.0)]
+    assert hands[0]["seat"] == "BTN" and hands[0]["card_luck"] is not None
+    assert hands[0]["code"] == "f2ef4cbda7a3"
+    [decision] = review.read_lines(state / review.DECISIONS)
+    assert (decision["advice"], decision["you_did"], decision["followed"]) == (
+        "call", "call", True)
+    result = json.loads((out / "du-20261016-190000-live.json").read_text(
+        encoding="utf-8"))
+    assert result["results"]["hands"] == 2 and "hand_id" not in str(result["results"])
+    sheet = (out / review.SHEET).read_text(encoding="utf-8")
+    assert "成绩（积分）：\n- 2 手：打出来 -100 bb/100；扣掉运气 " in sheet
+    assert "## du 到今天为止的成绩" in sheet
+    lines = (out / review.LINES).read_text(encoding="utf-8").splitlines()
+    assert "；du 累计 2 手扣掉运气 " in lines[2] and lines[2].endswith("（说不准）")
+    again = args(tmp_path, [folder])
+    again.again = True
+    review.run(again)                                 # replaced, not added
+    assert len(review.read_lines(state / review.RESULTS)) == 2
+    assert len(review.read_lines(state / review.DECISIONS)) == 1
+    capsys.readouterr()
+    total = tmp_path / "成绩.json"
+    assert review.main(["results", "--state", str(state), "--out", str(total)]) == 0
+    report = json.loads(total.read_text(encoding="utf-8"))
+    assert report["machines"]["du"]["hands"] == 2 and report["all"]["hands"] == 2
+    assert capsys.readouterr().out.startswith("du：2 手：打出来 -100 bb/100")
 
 
 def result(**more):
