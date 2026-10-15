@@ -268,15 +268,28 @@ def test_the_console_update_says_what_happened(tmp_path):
 
 
 def bundle_zip(files):
+    """The same bytes every time: each file gets a fixed date, not the clock's."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as handle:
         for name, data in files.items():
-            handle.writestr(name, data)
+            entry = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+            entry.external_attr = 0o600 << 16
+            handle.writestr(entry, data)
     return buffer.getvalue()
 
 
 BUNDLE = bundle_zip({"profile.json": b"{}", "bundle-manifest.json": b"{}",
                      "assets/heads_path.npz": b"model"})
+
+
+def test_the_bundle_bytes_do_not_depend_on_the_clock(monkeypatch):
+    # BUNDLE is a test parameter, so its bytes are in the test's name: if
+    # they followed the clock, parallel workers collecting a second apart
+    # would see different tests (pytest-xdist refuses to run then).
+    files = {"profile.json": b"{}"}
+    first = bundle_zip(files)
+    monkeypatch.setattr("time.time", lambda: 1_000_000_000.0)
+    assert bundle_zip(files) == first
 
 
 def with_recognition(data=BUNDLE, digest="d" * 64, **changes):
