@@ -1,5 +1,6 @@
 import json
 import sys
+import time
 
 import cv2
 import numpy as np
@@ -82,11 +83,19 @@ def test_profile_times_each_frame_and_splits_the_reader(tmp_path):
     json.dumps(result)
 
 
+class SleepyReader(SlowReader):
+    def read(self, image, frame, sample):
+        time.sleep(0.02)  # the feed offers every 1/30 s; let it tick
+        return super().read(image, frame, sample)
+
+
 def test_profile_with_the_recorder_running(tmp_path):
     video = recording(tmp_path / "rec")
     scratch = tmp_path / "scratch"
     scratch.mkdir()
-    result = tool.profile(video, SlowReader, start=0, step=2, count=6,
+    # Six frames read in a few ms each (a fast runner) could all pass
+    # before the recorder's first 1/30 s tick; at 20 ms each they cannot.
+    result = tool.profile(video, SleepyReader, start=0, step=2, count=6,
                           load="recorder", scratch=scratch)
     assert result["recorder"]["offered"] > 0
     assert (scratch / "recording" / "recording.json").is_file()
