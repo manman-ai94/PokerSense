@@ -77,7 +77,7 @@ PYTHONPATH=src:. .venv/bin/python tools/run_gauntlet.py --deals 1000 --strategie
 # 加 --reads 100：每个决策带上“已经看了 100 手”的对手读数（入池率、加注率），aa_preflop 按人调整翻前范围；“noreads+甲”是不记对手的甲
 # AA 真人桌用的数字：AA 真人打法统计出新版后，把需要的汇总次数存进包里
 PYTHONPATH=src:. .venv/bin/python tools/build_aa_real_stats.py <aa_population_stats_v1.json>
-# 模拟对手像不像 AA 真人：录像里每个真人决定和亮出的牌交给各桌对手模型打分（对数损失，越低越像），按街、单挑/多人、下注大小拆开；只写汇总
+# 模拟对手像不像 AA 真人：录像里每个真人决定和亮出的牌交给各桌对手模型打分（对数损失，越低越像），按街、单挑/多人、下注大小拆开；只写汇总。`tools/sim_real_rank.py --sim <记分牌.json> --frames <日志...>` 量记分牌给策略变体的排序和录像里按亮牌算的排序是否一致（至少 8 个变体）
 PYTHONPATH=src:. .venv/bin/python tools/sim_fidelity.py --frames <录像>/frames.jsonl [...] --pools aa_real,noisy,aa_cal --out <目录>
 # AA 校准桌（--pool aa_cal）的拟合：在录像上按最大似然拟合慢打、诈唬、硬跟和对下注大小、筹码深浅、全下的反应（--phh 换用 phh_depth_stats.py 从 PHH 牌谱数出的形状），两半录像交叉检验；数字、参数（FITTED）和用过的录像都在 aa_cal_stats_v1.json。每周日 `tools/refit_aa_cal.py --frames <日志...> --out <目录> [--apply]` 在没用过的新录像上比新旧两版，两半都更准才换。校准桌筹码浅时按录像的比例直接全下
 PYTHONPATH=src:. .venv/bin/python tools/fit_aa_cal.py --frames <录像>/frames.jsonl [...] --fold A=<日志,...> --fold B=<日志,...> --out <目录>
