@@ -167,6 +167,7 @@ THREADS = 4                     # solver threads (the scoreboard uses one)
 SOLVE_TIMEOUT = 30.0
 MAX_ROWS = 6000                 # frames of one hand kept (10 minutes at 10 fps)
 RETRY = 3                       # frames to wait for the action before your turn
+STACK_RETRY = 10                # frames before an unread stack is looked for again
 SWITCH_SECONDS = 0.0001         # thread switch while a background job runs
 SALT = "live-advice"
 BASIS = ("heads-up TexasSolver strategy; ranges from a population model of "
@@ -229,12 +230,17 @@ def _decimal(value):
 
 
 def decision_key(fields, history):
-    """(actions read, street, your button, actions without chips yet): one of
-    your decisions."""
+    """(actions read, street, your button, actions without chips yet, your
+    cards, the board): one of your decisions. A card read anew (a misread
+    corrected, a board card read late or gone) is a new decision, worked out
+    again: before, a fold for 72o stayed up after the cards were read again
+    as AA (audit 10/14, P-01)."""
     controls = fields.get("hero_controls") or {}
     waiting = sum(action[4] is None for action in history["actions"])
     return (len(history["actions"]), fields.get("street"),
-            f"{controls.get('button')}:{controls.get('call_amount')}", waiting)
+            f"{controls.get('button')}:{controls.get('call_amount')}", waiting,
+            tuple(sorted(card for card in fields.get("hero") or () if card)),
+            tuple(card for card in fields.get("board") or () if card))
 
 
 def advice_rows(strategy, observation):
@@ -394,10 +400,33 @@ def rough_advice(fields, cards, street, pot=None, stakes=None):
     seats = fields.get("participants") or {}
     opponents = sorted(seat for seat, state in seats.items()
                        if seat != str(HERO) and state in IN_HAND)
+    unknown = sorted(seat for seat, state in seats.items()
+                     if seat != str(HERO) and state == "unknown")
     read = _decimal(fields.get("pot"))
     pot = read if read is not None else pot
     if not opponents or pot is None:
         return None
+    advice = _rough_for(fields, cards, street, board, opponents, pot, read, stakes)
+    if advice is None or not unknown:
+        return advice
+    # A seat not read may still be in the hand (audit 10/14, P-02: one
+    # opponent known and six seats unknown was answered as heads-up): the
+    # advice stands only when it is the same with them all in, else none.
+    every = _rough_for(fields, cards, street, board, sorted(opponents + unknown),
+                       pot, read, stakes)
+    if every is None or _rough_action(every) != _rough_action(advice):
+        return None
+    return {**advice, "unknown_seats": len(unknown)}
+
+
+def _rough_action(advice):
+    """Check, call, fold, bet or raise: the size of a bet may change with
+    the number of opponents (``size3``), the action may not."""
+    return advice["advice"][0]["action"]
+
+
+def _rough_for(fields, cards, street, board, opponents, pot, read, stakes):
+    """``rough_advice`` against ``opponents``."""
     wagers = {seat: _decimal(value) or Decimal(0)
               for seat, value in (fields.get("street_wagers") or {}).items()}
     for seat, chips in put_in(fields, street).items():
@@ -565,6 +594,11 @@ class AASolverAdvice:
                 self._jobs[key] = self._start(fields, cards, frame, key)
             except Exception:              # the rough rule answers; the window goes on
                 self._jobs[key] = {"status": "abstain", "reason": "advice_failed"}
+            job = self._jobs[key]
+            if isinstance(job, dict) and job.get("reason") == "stack_unknown":
+                # A stack read a moment later is worked out then (P-01: the
+                # advice stayed at "stack unknown" after the stack was read).
+                job["retry_at"] = frame + STACK_RETRY
         report = self._outcome(key, street)
         if report["status"] != "ready":
             report = self._carried(key, street) or report
@@ -900,12 +934,14 @@ class AASolverAdvice:
     def _carried(self, key, street):
         """The advice of the decision just before this one, while this one is
         worked out, when only the number of actions read differs: the same
-        street and the same button and price. An action the table had already
-        shown (and the replay filled in) being read for real is not a new
-        decision for you; on 10/10 that made the advice go fold, rough call,
-        fold, fold in 3.5 s on one river call (the rough rule answers first)."""
+        street, the same button and price and the same cards. An action the
+        table had already shown (and the replay filled in) being read for real
+        is not a new decision for you; on 10/10 that made the advice go fold,
+        rough call, fold, fold in 3.5 s on one river call (the rough rule
+        answers first)."""
         for earlier in reversed(list(self._jobs)):
-            if earlier == key or earlier[1:3] != key[1:3] or earlier[0] >= key[0]:
+            if (earlier == key or earlier[1:3] != key[1:3] or earlier[4:] != key[4:]
+                    or earlier[0] >= key[0]):
                 continue
             report = self._outcome(earlier, street)
             if report["status"] == "ready":
