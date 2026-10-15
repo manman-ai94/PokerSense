@@ -45,6 +45,8 @@
     "tools/sim_fidelity.py",
     "tools/fit_aa_cal.py",
     "tools/refit_aa_cal.py",
+    "tools/sim_real_rank.py",
+    "tools/aa_compare_advice.py",
     "tools/flywheel_gates.py",
     "tools/release_check.py",
     "tools/p30_acceptance.py",

@@ -55,6 +55,7 @@ from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     HERO as HERO_SEAT, hand_facts, table_observation)
 from poker_engine.scoreboard.postflop_reading import VETO, WEIGHTS  # noqa: E402
 from poker_engine.scoreboard.ranges import ranges_equity  # noqa: E402
+from poker_engine.scoreboard.replay import with_hole  # noqa: E402
 from poker_engine.solver.texassolver import combo_key  # noqa: E402
 from poker_engine.scoreboard.preflop_policy import (  # noqa: E402
     AAPreflopPolicy, PreflopParams)
@@ -170,7 +171,22 @@ def chips(answer, observation, share):
 def shown_value(rows, indexes, item):
     """{"cards", "share", "before", "after"}: both answers in chips against the
     cards the opponents still in showed, or None when one of them did not."""
-    hand = item["hand_id"]
+    spot = shown_spot(rows, indexes, item["hand_id"])
+    if spot is None:
+        return None
+    observation, share, cards = spot
+    result = {"cards": cards, "share": round(share, 3)}
+    for label in ("before", "after"):
+        value = chips(item[label], observation, share)
+        result[label] = None if value is None else round(value, 1)
+    return result
+
+
+def shown_spot(rows, indexes, hand):
+    """(the table at the start of your turn, holding the cards read for you,
+    your share of the pot against the cards the opponents still in showed,
+    those cards), or None when one of them did not show, your cards were not
+    read or the hand does not replay."""
     start = next(i for i in range(indexes[0], -1, -1)
                  if ((rows[i]["fields"].get("actions_v1") or {}).get("hand_id")
                      != hand) or i == 0)
@@ -185,8 +201,13 @@ def shown_value(rows, indexes, item):
         observation = table_observation(hand_facts(upto), HERO_SEAT)
     except Exception:
         return None
-    if observation is None or not all(observation["own_hole"]):
+    # The replay deals placeholders; your cards are the ones read at your turn.
+    hero = mode(" ".join(fields["hero"]) for fields in
+                (rows[index]["fields"] for index in indexes)
+                if fields.get("hero") and all(fields["hero"]))
+    if observation is None or not hero:
         return None
+    observation = with_hole(observation, hero.split())
     live = [seat for seat in observation["occupied_seats"]
             if seat not in observation["folded"] and seat != HERO_SEAT]
     if not live or any(seat not in shown for seat in live):
@@ -197,12 +218,7 @@ def shown_value(rows, indexes, item):
                              trials=SHOWN_TRIALS)
     if share is None:
         return None
-    result = {"cards": {str(seat): " ".join(shown[seat]) for seat in live},
-              "share": round(share, 3)}
-    for label in ("before", "after"):
-        value = chips(item[label], observation, share)
-        result[label] = None if value is None else round(value, 1)
-    return result
+    return observation, share, {str(seat): " ".join(shown[seat]) for seat in live}
 
 
 def decision(name, rows, indexes, before, after, final):

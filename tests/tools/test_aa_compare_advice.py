@@ -91,3 +91,14 @@ def test_hands_are_picked_by_cards_or_id_and_unchanged_ones_left_out(tmp_path):
     # Every recording under a folder.
     main(["--recordings", str(tmp_path), "--hero", "A♦ Q♦", "--out", str(out)])
     assert len(json.loads(out.read_text(encoding="utf-8"))) == 1
+
+
+def test_answers_are_priced_with_your_cards_against_the_cards_shown():
+    found = rows()
+    found[-1]["fields"]["shown_cards"] = {"seats": {"0": {"cards": ["Kc", "Kd"]}}}
+    (item,) = compare([("log", found)], heroes=["A♦ Q♦"])
+    shown = item["shown"]
+    # A♦ Q♦ (not the replay's placeholder cards) against K♣ K♦: about 31%.
+    assert shown["cards"] == {"0": "Kc Kd"} and 0.28 < shown["share"] < 0.34
+    # Calling 130 into 256 for 31% of 386 loses; the raise puts in more.
+    assert shown["after"] < 0 and shown["before"] < shown["after"]
