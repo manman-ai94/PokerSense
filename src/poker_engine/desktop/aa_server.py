@@ -18,7 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from . import aa_recorder
 from . import aa_upload
 from .aa_reader import AA8Reader, preflight_profile
-from .aa_session import AARecognitionSession
+from .aa_session import AARecognitionSession, EncodedJSON
 from .aa_grading import AAGrades
 from .aa_solver_advice import AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
@@ -92,6 +92,23 @@ def plain_json(content):
         return JSONResponse(content)
     except (TypeError, ValueError):
         return content
+
+
+def status_json(content):
+    """``plain_json`` for a status whose payload may still be the JSON text
+    the session published (``EncodedJSON``): that text goes into the answer
+    as it is, the rest is encoded around it."""
+    payload = content.get("payload")
+    if not isinstance(payload, EncodedJSON):
+        return plain_json(content)
+    rest = {key: value for key, value in content.items() if key != "payload"}
+    try:
+        head = json.dumps(rest, ensure_ascii=False, allow_nan=False,
+                          separators=(",", ":"))
+    except (TypeError, ValueError):
+        return {**rest, "payload": json.loads(payload)}
+    body = head[:-1] + ("," if rest else "") + '"payload":' + payload + "}"
+    return Response(body.encode("utf-8"), media_type="application/json")
 
 
 def ui_root():
@@ -455,7 +472,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     def status():
         touched()
         with controls_lock:
-            result = service.snapshot()
+            result = getattr(service, "status_snapshot", service.snapshot)()
             table_rules = rules.get()
             analysis_status = analysis.status()
             binding = analysis_status.get("binding", {})
@@ -482,7 +499,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         # advice supplied in a reader payload or a custom session snapshot.
         result["realtime"] = observation_runtime_status(result, now=time.monotonic())
         result["realtime"]["rules_revision"] = table_rules["revision"]
-        return plain_json(result)
+        return status_json(result)
 
     @app.post("/api/review/issues/{issue_id}/river-input")
     async def saved_river_input(issue_id: str, request: Request):

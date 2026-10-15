@@ -596,6 +596,10 @@ def test_each_snapshot_gets_its_own_copy_of_the_result():
         assert second["actions"] == [{"seat": 3, "amount": None}]
         assert second["hero"] == ["Ah", "Kd"] and second["pot"] == {"value": 12.5}
         assert second is not first
+        # The window's status gets the published JSON text itself.
+        status = session.status_snapshot()
+        assert json.loads(status["payload"]) == second and status["payload"]
+        assert status["realtime"]["reason"] == session.snapshot()["realtime"]["reason"]
     finally:
         session.stop()
         wait_until(lambda: source.closed.is_set())

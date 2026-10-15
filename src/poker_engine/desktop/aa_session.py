@@ -100,13 +100,15 @@ class AARecognitionSession:
             self._error = None
             self._clear()
 
-    def _snapshot(self):
+    def _snapshot(self, encoded=False):
+        payload = self._payload_json
+        if payload is not None:
+            payload = EncodedJSON(payload) if encoded else json.loads(payload)
         result = {
                 "status": self._status, "instance_id": self._instance_id,
                 "generation": self._generation,
                 "sequence": self._sequence, "source_frame": self._source_frame,
-                "payload": (None if self._payload_json is None
-                            else json.loads(self._payload_json)),
+                "payload": payload,
                 "error": self._error,
                 "processing_ms": self._processing_ms,
                 "source_kind": self._source_kind, "pts_seconds": self._pts_seconds,
@@ -145,6 +147,15 @@ class AARecognitionSession:
         with self._lock:
             self._expire()
             return self._snapshot()
+
+    def status_snapshot(self):
+        """``snapshot`` with the payload left as the JSON text it was
+        published as (``EncodedJSON``), for the status the window asks for
+        four times a second: it goes out as it is, never parsed and encoded
+        again (``aa_server.status_json``)."""
+        with self._lock:
+            self._expire()
+            return self._snapshot(encoded=True)
 
     def table_seen(self):
         """Seconds since a frame of the running source last showed the AA
@@ -371,6 +382,14 @@ class AARecognitionSession:
                     self._status = "STOPPED"
 
 
+class EncodedJSON(str):
+    """A JSON object's text standing in for the object; true when the object
+    is not empty, as the object would be."""
+
+    def __bool__(self):
+        return self != "{}"
+
+
 _ACTION_KEYS = ("frame", "confirmed_at", "slot", "kind", "glyph", "amount", "street",
                 "epoch", "status")
 
@@ -484,4 +503,4 @@ def _append_frame_log(path, processed, record, timing, payload, video_seconds=No
         handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 
 
-__all__ = ["AARecognitionSession"]
+__all__ = ["AARecognitionSession", "EncodedJSON"]

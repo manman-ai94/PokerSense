@@ -421,3 +421,31 @@ def test_the_status_is_answered_as_plain_json_with_fastapis_bytes(tmp_path):
     with TestClient(app) as client:
         status = client.get("/api/status").json()
     assert status["payload"] == content["payload"] and status["sequence"] == 3
+
+    # A session that keeps the published JSON: it goes out as it is.
+    from poker_engine.desktop.aa_session import EncodedJSON
+
+    class Published(Running):
+        def __init__(self, payload):
+            super().__init__()
+            self.text = json.dumps(payload)
+
+        def status_snapshot(self):
+            return {**self.snapshot(), "payload": EncodedJSON(self.text)}
+
+    app = aa_server.create_app(tmp_path / "missing.json",
+                               session=Published(content["payload"]))
+    with TestClient(app) as client:
+        answer = client.get("/api/status")
+    assert answer.headers["content-type"] == "application/json"
+    assert answer.json()["payload"] == content["payload"]
+    assert answer.json()["realtime"]["reason"] != "NO_CURRENT_OBSERVATION"
+    assert {key: value for key, value in answer.json().items() if key != "payload"} == {
+        key: value for key, value in status.items() if key != "payload"}
+    # Around it, what plain JSON cannot hold still goes through FastAPI.
+    mixed = {"payload": EncodedJSON(json.dumps({"a": [1, None]})),
+             "amount": Decimal("1.5")}
+    assert aa_server.status_json(mixed) == {"amount": Decimal("1.5"),
+                                            "payload": {"a": [1, None]}}
+    empty = aa_server.status_json({"payload": EncodedJSON("{}")})
+    assert json.loads(empty.body) == {"payload": {}} and not EncodedJSON("{}")
