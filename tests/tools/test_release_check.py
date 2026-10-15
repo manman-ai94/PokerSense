@@ -246,9 +246,19 @@ def test_page_says_what_ran_and_what_did_not():
     assert "求解器当作立刻算完" in text
 
 
-def test_main_replays_both_versions_in_worktrees_and_cleans_up(tmp_path, capsys):
+def test_main_replays_both_versions_in_worktrees_and_cleans_up(
+        tmp_path, capsys, monkeypatch):
     write_log(tmp_path / "rec" / "20261010-120000-live", rows())
-    before = git("worktree", "list")
+    # Only this run's worktrees: tests in other workers add their own meanwhile.
+    made = []
+    real = check.checkout
+
+    def checkout(ref):
+        commit, folder = real(ref)
+        made.append(folder)
+        return commit, folder
+
+    monkeypatch.setattr(check, "checkout", checkout)
     out = tmp_path / "out"
     status = check.main(["HEAD", "HEAD", "--recording", str(tmp_path / "rec"),
                          "--no-tests", "--window-open-ok", "--out", str(out)])
@@ -261,4 +271,8 @@ def test_main_replays_both_versions_in_worktrees_and_cleans_up(tmp_path, capsys)
     assert (out / "复查单.md").read_text(encoding="utf-8").startswith(
         "# 装新版前复查：通过（没跑：测试和代码检查、按原速重放、杜的 P30 验收）")
     assert "录像日志重放" in capsys.readouterr().out
-    assert git("worktree", "list") == before
+    listed = git("worktree", "list", "--porcelain")
+    assert len(made) == 1  # the same commit is checked out once
+    assert not any(folder.exists() for folder in made)
+    assert not any(str(path) in listed for folder in made
+                   for path in (folder, folder.resolve()))

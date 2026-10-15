@@ -104,12 +104,18 @@ def test_lines_say_each_gate_in_plain_words():
     assert text[-1] == "三道关：没过"
 
 
-def test_main_checks_out_the_base_and_cleans_it_up(tmp_path, capsys):
-    before = gates.git("worktree", "list")
+def test_main_checks_out_the_base_and_cleans_it_up(tmp_path, capsys, monkeypatch):
+    # Only this run's worktree: tests in other workers add their own meanwhile.
+    made = []
+    real = gates.base_tree
+    monkeypatch.setattr(gates, "base_tree",
+                        lambda ref, folder: made.append(folder) or real(ref, folder))
     status = gates.main(["--base", "HEAD", "--no-tests", "--out", str(tmp_path)])
     assert status == 1  # nothing ran, so nothing passed
     result = json.loads((tmp_path / "gates.json").read_text(encoding="utf-8"))
     assert result["base"] == gates.git("rev-parse", "HEAD")
     assert result["gates"] == {"replay": None, "sim": None, "tests": None}
     assert "三道关：一道都没跑" in capsys.readouterr().out
-    assert gates.git("worktree", "list") == before
+    listed = gates.git("worktree", "list", "--porcelain")
+    assert len(made) == 1 and not made[0].exists()
+    assert str(made[0]) not in listed and str(made[0].resolve()) not in listed
