@@ -292,6 +292,13 @@ uv pip install --python .venv\Scripts\python.exe -e ".[dev,desktop]"
 
    最后写“都传好了。”就对了；写“没传完”就把这几行发给主人。
 
+   2026-10-15 以前录的、一小时几十 GB 的大录像，先关掉窗口压小再 push（帧数不变，原件移到
+   `C:\PokerSense_data\PokerSense_private\upload\originals\`，主人收到后可以手动删）：
+
+   ```powershell
+   .venv\Scripts\python.exe tools\shrink_recording.py C:\PokerSense_data\PokerSense_private\aa-mac-recordings\<录像文件夹名>
+   ```
+
 设好后告诉主人一声“上传设好了”就行，不用发别的东西（不要发任何登录信息）。
 
 ## 主人那边（在 Mac 上，杜的助手不用做）
