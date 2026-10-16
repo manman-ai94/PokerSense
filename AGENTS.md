@@ -96,7 +96,7 @@ PYTHONPATH=src:. .venv/bin/python tools/run_scoreboard.py --deals 600 --workers 
 #   加 hu=1 单挑翻牌也这样打（线是 hu_bet、hu_raise），实时窗口就是这样给单挑翻牌建议的
 # 核对轮到你时的按钮（跟注额 / 让牌 / All in）和标注是否一致
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_call_button.py --video <录像> --labels tests/fixtures/aa_reference_hands/hero_call_button_labels_v1.json
-# 第二台机器（杜的华为 P30）画面验收：手机画面位置和三星的 711–1208 列差 ≤ 3 列；每一项识别率（含轮到你的按钮、跟注额）不低于三星基准的 90%，基准在 configs/acceptance/second_seat_baseline_v1.json；观战录像没有你的手牌和按钮，结论只会是“没量全”。同事每天上传的录像用 `tools/tester_review.py run --recording <云盘里的录像> --state PokerSense_private/tester-review --out <目录>` 复盘（电脑读帧速度、各项识别、轮到他没建议的次数、能统计对手的手、扣掉运气的成绩；`population` 把这些手加进 AA 真人统计，`results` 出每台机器到现在的成绩）。扣掉运气的成绩（起手牌运气和全下后发牌的运气扣掉，结论用随时看都算数的 95% 区间；每手和每个决定的明细只进私有目录）也能单独跑：`tools/luck_results.py --frames <录像>/frames.jsonl [...]`；起手牌运气表用 `tools/build_luck_table.py` 在模拟牌桌上重建
+# 第二台机器（杜的华为 P30）画面验收：手机画面位置和三星的 711–1208 列差 ≤ 3 列；每一项识别率（含轮到你的按钮、跟注额）不低于三星基准的 90%，基准在 configs/acceptance/second_seat_baseline_v1.json；观战录像没有你的手牌和按钮，结论只会是“没量全”。同事每天上传的录像用 `tools/tester_review.py run --recording <云盘里的录像> --state PokerSense_private/tester-review --out <目录>` 复盘（电脑读帧速度、各项识别、轮到他没建议的次数、能统计对手的手、扣掉运气的成绩；`population` 把这些手加进 AA 真人统计，`results` 出每台机器到现在的成绩；主人 Mac 上的录像加 `--machine peng` 一起复盘，最后一行是上桌条件：全部机器 2000 手、扣掉运气不明显输）。扣掉运气的成绩（起手牌运气和全下后发牌的运气扣掉，结论用随时看都算数的 95% 区间；每手和每个决定的明细只进私有目录）也能单独跑：`tools/luck_results.py --frames <录像>/frames.jsonl [...]`；起手牌运气表用 `tools/build_luck_table.py` 在模拟牌桌上重建
 PYTHONPATH=src:. .venv/bin/python tools/p30_acceptance.py run --video <录像文件夹> --out <新目录>
 # 核对每手牌的行动记录：自动查漏（底池涨了没人下注等），以及和人工标注逐手比对（--hand-labels <标注.json> --recording <录像名>）
 PYTHONPATH=src:. .venv/bin/python tools/check_aa_action_history.py --frames <测量目录>/frames.jsonl

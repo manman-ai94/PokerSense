@@ -1,4 +1,5 @@
-"""A tester's uploaded recordings, reviewed the morning after (同事录像每日复盘).
+"""A tester's uploaded recordings, reviewed the morning after (同事录像每日复盘);
+the owner's own Mac recordings the same way (``--machine peng``).
 
 Exception-based: nobody watches the video. For each recording another
 computer uploaded (``poker_engine.desktop.aa_upload``: ``frames.jsonl``, the
@@ -42,7 +43,9 @@ last review) and ``三行.txt`` into ``--out``, and adds to the state:
 for the population statistics), ``results.jsonl`` (a line per hand with
 its result and luck) and ``decisions.jsonl`` (a line per decision: the
 advice, what he did, the hand's result). The sheet's results are totals,
-for the recording and for the machine so far. ``results`` writes the
+for the recording and for the machine so far; a last line counts every
+machine's hands with a result toward the table condition (``TABLE_HANDS``
+hands, luck-adjusted not clearly losing). ``results`` writes the
 totals so far per machine (and all machines together) as JSON and prints
 them in plain lines. ``population`` builds the statistics from the
 base sample of ``<复盘目录>/population-base.json`` (``{"hands": <hand lines>,
@@ -102,6 +105,11 @@ MAC_MISREADS = {"board_card_read_two_ways": 0.038, "your_cards_read_two_ways": 0
                 "hands_with_unrecorded_folds": 0.003, "hand_split_in_two": 0.0,
                 "dealer_unread": 0.043}
 TIMES_MAC = 2
+# The condition for playing on (peng, Oct 15): this many hands with a
+# result, all machines together, luck-adjusted not clearly losing.
+TABLE_HANDS = 2000
+# How a machine is named to people (the rest by their machine name).
+SHOWN = {"du": "杜"}
 # Why a turn got no advice, or a hand stopped replaying, in plain words.
 CAUSES = {
     "dealer_ambiguous": "庄位没认清", "no_dealer_fits": "庄位对不上",
@@ -259,6 +267,10 @@ def review(folder, baseline, machine=None):
     return result, lines, hands, ledger
 
 
+def show(machine):
+    return SHOWN.get(machine, machine)
+
+
 def _pct(value):
     return "—" if value is None else f"{value:.0%}"
 
@@ -399,17 +411,34 @@ def change(before, after):
     return moved
 
 
-def sheet(results, day, totals=None):
-    """The day's review sheet (totals only) and its three lines. ``totals``:
+def table_condition(lines, machines=()):
+    """One line: the hands with a result so far toward ``TABLE_HANDS``, by
+    machine, and the luck-adjusted verdict of all of them together."""
+    counts = Counter(line.get("machine") for line in lines)
+    for machine in machines:
+        counts.setdefault(machine, 0)
+    verdict = luck_results.summarize(lines).get("verdict") if lines else None
+    order = sorted(counts.items(), key=lambda item: str(item[0]))
+    by = "，".join(f"{show(machine)} {count}" for machine, count in order)
+    return (f"上桌条件：{len(lines)}/{TABLE_HANDS} 手" + (f"（{by}）" if by else "")
+            + f"，扣掉运气 {verdict or '说不准'}")
+
+
+def sheet(results, day, totals=None, condition=None):
+    """The day's review sheet (totals only) and its lines: three, and the
+    table ``condition`` (``table_condition``) when given. ``totals``:
     {machine: ``luck_results.summarize`` of all its recordings so far}."""
     totals = totals or {}
-    text = [f"# 同事录像复盘 · {day}", ""]
+    results = sorted(results, key=lambda item: (item["machine"], item["folder"]))
+    text = [f"# 录像复盘 · {day}", ""]
+    if condition:
+        text += [condition, ""]
     if not results:
         text.append("没有新录像。")
     for item in results:
         facts = item["recording"]
         head = " · ".join(filter(None, (
-            item["machine"], item["folder"], when(facts["started"]),
+            show(item["machine"]), item["folder"], when(facts["started"]),
             f"{facts['minutes']:g} 分钟" if facts["minutes"] else None,
             f"代码 {facts['code'][:7]}" if facts["code"] else None)))
         text += [f"## {head}", ""]
@@ -440,38 +469,48 @@ def sheet(results, day, totals=None):
                         + ("；".join(since["moved"]) or "没有明显变化"))
         if item.get("results"):
             text += ["", "成绩（积分）："]
-            text += [f"- {line}" for line in luck_results.plain_lines(item["results"])]
+            text += [f"- {line}" for line in luck_results.plain_lines(
+                item["results"], show(item["machine"]))]
         text.append("")
     for machine, summary in sorted(totals.items()):
-        text += [f"## {machine} 到今天为止的成绩", ""]
-        text += [f"- {line}" for line in luck_results.plain_lines(summary)]
+        text += [f"## {show(machine)} 到今天为止的成绩", ""]
+        text += [f"- {line}"
+                 for line in luck_results.plain_lines(summary, show(machine))]
         text.append("")
+    tail = [condition] if condition else []
     if not results:
-        return "\n".join(text).rstrip() + "\n", ["没有新录像", "—", "—"]
+        return "\n".join(text).rstrip() + "\n", ["没有新录像", "—", "—"] + tail
     worth = [item for item in results
              if not short(item["recording"]["minutes"])] or results
-    found = [line for item in worth for line in item["problems"]]
+    machines = sorted({item["machine"] for item in results})
+    # Each machine's problems on their own, so one's never reads as the other's.
+    found = []
+    for machine in machines:
+        own = [line.split("（")[0] for item in worth if item["machine"] == machine
+               for line in item["problems"]][:TOP_PROBLEMS]
+        if own:
+            found.append((f"{show(machine)}：" if len(machines) > 1 else "")
+                         + "；".join(own))
     minutes = sum(item["recording"]["minutes"] or 0 for item in results)
     hands = sum((item["advice"] or {}).get("hands", 0) for item in results)
     usable = sum(item["opponents_usable"][0] for item in results)
-    machines = "、".join(sorted({item["machine"] for item in results}))
     # Every recording's speed, even a fast one: the slow-computer work
     # follows it from day to day.
     speeds = "；".join(
+        f"{show(item['machine']) + ' ' if len(machines) > 1 else ''}"
         f"{item['folder'].removesuffix('-live')} 读帧 "
         f"{item['speed']['frames_per_second']:g}/秒、识别 "
         f"{item['speed']['recognition_ms']} 毫秒/帧"
         for item in results if item["speed"]["frames_per_second"] is not None)
-    lines = [f"复盘了 {machines} 的 {len(results)} 场录像（{minutes:.0f} 分钟，{hands} 手）"
-             + (f"；{speeds}" if speeds else ""),
-             ("问题：" + "；".join(line.split("（")[0] for line in found[:TOP_PROBLEMS])
-              if found else "没有要看的问题"),
+    lines = [f"复盘了 {'、'.join(map(show, machines))} 的 {len(results)} 场录像"
+             f"（{minutes:.0f} 分钟，{hands} 手）" + (f"；{speeds}" if speeds else ""),
+             ("问题：" + "。".join(found)) if found else "没有要看的问题",
              f"对手统计新加 {usable} 手能用的牌局" + "".join(
-                 f"；{machine} 累计 {summary['hands']} 手扣掉运气 "
+                 f"；{show(machine)} 累计 {summary['hands']} 手扣掉运气 "
                  f"{summary['adjusted_bb_per_100']:+g} bb/100（{summary['verdict']}）"
                  for machine, summary in sorted(totals.items())
                  if summary.get("hands"))]
-    return "\n".join(text).rstrip() + "\n", lines
+    return "\n".join(text).rstrip() + "\n", lines + tail
 
 
 def run(args):
@@ -526,7 +565,8 @@ def run(args):
     write_lines(state / DECISIONS, ledger_lines)
     day = args.day or datetime.now(los_angeles()).strftime("%Y-%m-%d")
     totals = machine_totals(kept, {item["machine"] for item in results})
-    text, lines = sheet(results, day, totals)
+    condition = table_condition(kept, {item["machine"] for item in ledger})
+    text, lines = sheet(results, day, totals, condition)
     (out / SHEET).write_text(text, encoding="utf-8")
     (out / LINES).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
@@ -550,9 +590,11 @@ def results_so_far(args):
     Path(args.out).write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n",
                               encoding="utf-8")
     for machine, summary in report["machines"].items():
-        print(f"{machine}：" + "；".join(luck_results.plain_lines(summary)))
+        print(f"{show(machine)}：" + "；".join(
+            luck_results.plain_lines(summary, show(machine))))
     if not machines:
         print("还没有成绩")
+    print(table_condition(lines))
     return 0
 
 
@@ -589,7 +631,8 @@ def main(argv=None):
     go.add_argument("--state", type=Path, required=True)
     go.add_argument("--out", type=Path, required=True)
     go.add_argument("--baseline", type=Path, default=p30.DEFAULT_BASELINE)
-    go.add_argument("--machine", help="when the folder has no upload.json")
+    go.add_argument("--machine", help="when the folder has no upload.json "
+                    "(the owner's own Mac recordings: peng)")
     go.add_argument("--day", help="the sheet's date (default: today in Los Angeles)")
     go.add_argument("--again", action="store_true")
     build = commands.add_parser("population")

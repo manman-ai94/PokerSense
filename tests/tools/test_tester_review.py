@@ -90,14 +90,17 @@ def test_a_run_reviews_new_recordings_once(tmp_path, capsys):
     assert "- 电脑太慢：每秒只读 2.5 帧" in sheet
     assert "轮到他 1 次，1 次窗口没给建议（庄位没认清 1）" in sheet
     lines = (out / review.LINES).read_text(encoding="utf-8").splitlines()
-    assert lines[0] == ("复盘了 du 的 1 场录像（18 分钟，1 手）；"
+    assert lines[0] == ("复盘了 杜 的 1 场录像（18 分钟，1 手）；"
                         "20261015-102047 读帧 2.5/秒、识别 300 毫秒/帧")
+    assert lines[3] == "上桌条件：0/2000 手（杜 0），扣掉运气 说不准"
+    assert sheet.startswith("# 录像复盘 · 2026-10-15\n\n上桌条件：0/2000 手")
     assert lines[1].startswith("问题：电脑太慢：每秒只读 2.5 帧；轮到他 1 次")
     assert "（" not in lines[1]
     capsys.readouterr()
     review.run(args(tmp_path, [folder]))            # nothing new: skipped
     assert "已经复盘过" in capsys.readouterr().out
-    assert (out / review.LINES).read_text(encoding="utf-8").startswith("没有新录像")
+    assert (out / review.LINES).read_text(encoding="utf-8").splitlines() == [
+        "没有新录像", "—", "—", "上桌条件：0/2000 手（杜 0），扣掉运气 说不准"]
     again = args(tmp_path, [folder])
     again.again = True
     review.run(again)
@@ -166,9 +169,10 @@ def test_results_with_the_luck_out_go_on_the_sheet_and_stay_private(tmp_path, ca
     assert result["results"]["hands"] == 2 and "hand_id" not in str(result["results"])
     sheet = (out / review.SHEET).read_text(encoding="utf-8")
     assert "成绩（积分）：\n- 2 手：打出来 -100 bb/100；扣掉运气 " in sheet
-    assert "## du 到今天为止的成绩" in sheet
+    assert "## 杜 到今天为止的成绩" in sheet
     lines = (out / review.LINES).read_text(encoding="utf-8").splitlines()
-    assert "；du 累计 2 手扣掉运气 " in lines[2] and lines[2].endswith("（说不准）")
+    assert "；杜 累计 2 手扣掉运气 " in lines[2] and lines[2].endswith("（说不准）")
+    assert lines[3] == "上桌条件：2/2000 手（杜 2），扣掉运气 说不准"
     again = args(tmp_path, [folder])
     again.again = True
     review.run(again)                                 # replaced, not added
@@ -179,7 +183,32 @@ def test_results_with_the_luck_out_go_on_the_sheet_and_stay_private(tmp_path, ca
     assert review.main(["results", "--state", str(state), "--out", str(total)]) == 0
     report = json.loads(total.read_text(encoding="utf-8"))
     assert report["machines"]["du"]["hands"] == 2 and report["all"]["hands"] == 2
-    assert capsys.readouterr().out.startswith("du：2 手：打出来 -100 bb/100")
+    printed = capsys.readouterr().out
+    assert printed.startswith("杜：2 手：打出来 -100 bb/100")
+    assert printed.endswith("上桌条件：2/2000 手（杜 2），扣掉运气 说不准\n")
+
+
+def test_the_owners_own_recordings_are_reviewed_and_counted_apart(tmp_path):
+    tester = recording(tmp_path, "20261016-190000-live", rows=played_rows())
+    own = recording(tmp_path, "20261016-200000-live", machine="mac", rows=played_rows())
+    (own / "upload.json").unlink()                  # a recording on this Mac
+    run = args(tmp_path, [own, tester])
+    run.machine = "peng"
+    review.run(run)
+    hands = review.read_lines(tmp_path / "state" / review.RESULTS)
+    assert sorted({line["log"] for line in hands}) == [
+        "du-20261016-190000-live", "peng-20261016-200000-live"]
+    sheet = (tmp_path / "out" / review.SHEET).read_text(encoding="utf-8")
+    assert sheet.index("## 杜 · 20261016-190000-live") < sheet.index(
+        "## peng · 20261016-200000-live")
+    assert "## 杜 到今天为止的成绩" in sheet and "## peng 到今天为止的成绩" in sheet
+    lines = (tmp_path / "out" / review.LINES).read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("复盘了 杜、peng 的 2 场录像（36 分钟，4 手）；"
+                               "杜 20261016-190000 读帧 ")
+    assert "；peng 20261016-200000 读帧 " in lines[0]
+    assert lines[1].startswith("问题：杜：") and "。peng：" in lines[1]
+    assert "；杜 累计 2 手扣掉运气 " in lines[2] and "；peng 累计 2 手扣掉运气 " in lines[2]
+    assert lines[3] == "上桌条件：4/2000 手（杜 2，peng 2），扣掉运气 说不准"
 
 
 def result(**more):
