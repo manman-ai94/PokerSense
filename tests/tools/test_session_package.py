@@ -184,8 +184,10 @@ def test_shown_cards_carry_the_range_and_where_the_hand_sits_in_it(built):
 def test_the_denominators_count_the_seats_that_never_showed(built):
     _, found = built
     counts = found["shown_denominators"]
-    assert counts["raise"]["showdown"] == 1
-    assert counts["none"]["folded"] >= 3
+    assert counts["raise"] == {"seats": 1, "showdown": 1}
+    # Hand 1: seats 0, 1, 2 and 5 folded before putting chips in; hand 2 is
+    # not seen from its start (and the log ends in it).
+    assert counts["none"] == {"seats": 9, "folded": 4, "late": 5}
 
 
 def test_misreads_count_the_inferred_actions_and_missing_numbers(built):
@@ -263,3 +265,18 @@ def test_the_window_writes_the_sheet_then_the_package(built, capsys, monkeypatch
         encoding="utf-8"))
     assert found["rule_hits"]["from"].startswith("flywheel/summary.json")
     assert "package.json" in capsys.readouterr().out
+
+
+def test_the_hand_the_log_ends_in_counts_as_unfinished(tmp_path):
+    folder = tmp_path / "20261016-220000-live"
+    folder.mkdir()
+    cut = rows()
+    for item in cut:
+        history = item["fields"]["actions_v1"]
+        if history["hand_id"] == "hand_2":
+            history["complete"] = True          # seen from its start
+    (folder / "frames.jsonl").write_text(
+        "\n".join(json.dumps(item) for item in cut) + "\n", encoding="utf-8")
+    found = package.build(folder, settings={"machine": "du", "player": ""})
+    assert found["shown_denominators"]["none"] == {"seats": 9, "folded": 4,
+                                                   "unfinished": 5}

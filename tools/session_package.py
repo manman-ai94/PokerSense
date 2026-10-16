@@ -52,7 +52,9 @@ Blocks (``FORMAT`` 1; ``tools/session_evidence.py`` reads them):
 10. ``shown_denominators``: for each preflop class (section 4), how many
     opponent seats were in it and how each ended (shown at an all-in or a
     plain showdown, shown by choice, mucked, folded, won without a
-    showdown); only all-in and plain showdowns calibrate a range.
+    showdown; ``late`` for a hand not seen from its start, ``unfinished``
+    for the hand the log ends in); only all-in and plain showdowns of hands
+    seen whole calibrate a range.
 
 The package holds other players' hands: it stays in the private data folder
 and the owner's cloud folder, never in the repository. All of it is table
@@ -517,8 +519,10 @@ def how_shown(seat, folded, live, all_in):
     return "allin_showdown" if all_in else "showdown"
 
 
-def shown_block(name, rows, facts, replay, page, your_cards):
-    """(shown seats, {seat: (class, outcome)}) of one hand."""
+def shown_block(name, rows, facts, replay, page, your_cards, finished=True):
+    """(shown seats, {seat: (class, outcome)}) of one hand. A hand not seen
+    from its start (``late``) or cut off by the end of the log
+    (``unfinished``) calibrates nothing."""
     frames = video_at(rows)
     actions = history_actions(rows, frames)
     seats, dealer, straddler, bomb = table_of(facts, replay)
@@ -550,17 +554,22 @@ def shown_block(name, rows, facts, replay, page, your_cards):
                                  for kind, all_in_ in found]
                         for street, found in moves.get(seat, {}).items()},
             "range": reading, "range_missing": why,
-            "calibrates": how in CALIBRATING and not corrected and reading is not None})
+            "calibrates": (how in CALIBRATING and not corrected and reading is not None
+                           and facts["complete"] is True)})
     outcomes = {}
     showing = {item["seat"]: item for item in items}
     for seat in seats:
         if seat == HERO:
             continue
-        if seat in showing:
+        if facts["complete"] is not True:
+            outcome = "late"
+        elif seat in showing:
             outcome = ("corrected" if showing[seat]["corrected"]
                        else showing[seat]["how"])
         elif seat in folded:
             outcome = "folded"
+        elif not finished:
+            outcome = "unfinished"
         elif len(live) < 2:
             outcome = "won_uncontested"
         else:
@@ -908,6 +917,7 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
             grouped.setdefault(history["hand_id"], []).append((row, _advice(row)))
     stakes, earlier = {}, None
     decisions, shown, outcomes, records = [], [], [], []
+    last = list(grouped)[-1] if grouped else None
     for hand_id, pairs in grouped.items():
         hand_rows = [row for row, _ in pairs]
         facts = hand_facts(hand_rows, earlier)
@@ -922,7 +932,8 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
         your_cards = (hand or {}).get("your_cards")
         records.append(hand_record(name, hand_rows, facts, replay, hand, start, page,
                                    results.get(hand_id, {}).get("adjusted")))
-        found, ends = shown_block(name, hand_rows, facts, replay, page, your_cards)
+        found, ends = shown_block(name, hand_rows, facts, replay, page, your_cards,
+                                  finished=hand_id != last)
         shown += found
         outcomes += list(ends.values())
         decisions += decision_rows(name, pairs, hand_id, facts, replay, page, start,
