@@ -58,6 +58,15 @@ def test_an_all_in_with_every_hand_shown_is_scored_against_the_average_board():
     assert -84 < found["luck"] < -76
 
 
+def test_an_all_in_the_replay_settles_otherwise_keeps_its_luck():
+    # The table took 100 from you; a replay paying out 60 more or less than
+    # that (more than 5% of the pot) put in other chips than the table did.
+    for chips in (-40.0, -160.0):
+        found = results.runout(hand(chips=chips), facts(), 2.0)
+        assert found["allin"] is True and found["luck"] is None
+        assert found["why"] == "settle_mismatch" and found["settle_matches"] is False
+
+
 def test_an_all_in_that_cannot_be_worked_out_says_why():
     assert results.runout(hand(shown=()), facts(), 2.0)["why"] == "cards_not_shown"
     assert results.runout(hand(), facts(board=BOARD[:4]), 2.0)["why"] == "board_unread"

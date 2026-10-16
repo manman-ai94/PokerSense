@@ -184,6 +184,12 @@ def stack(rows, seat=HERO):
     return number(Counter(readings).most_common(1)[0][0]) if readings else None
 
 
+def readings(rows, seat=HERO):
+    """The seat's stack in each frame of these rows that read one."""
+    values = [number((row["fields"].get("stacks") or {}).get(seat)) for row in rows]
+    return [value for value in values if value is not None]
+
+
 def stalls(rows):
     """Gaps between two frames shown one after the other, in seconds."""
     gaps = []
@@ -234,6 +240,8 @@ def hand_report(rows, advice, gaps=()):
         "stalls": [gap for gap in gaps
                    if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]],
         "start_stack": stack(rows),
+        "first_stack": next(iter(readings(rows)), None),
+        "end_stack": (readings(rows) or [None])[-1],
         "most_pot": max(filter(None, map(number, (f.get("pot") for f in fields))),
                         default=None)}
 
@@ -326,7 +334,12 @@ def chips(hands):
     recording. A hand that goes on with your same two cards was split in two
     (a new hand was started in the middle of it): both parts count as one, on
     the first. A rise larger than the hand's biggest pot is a rebuy or a
-    misread and is left out."""
+    misread and is left out.
+
+    A hand you finished all in with nothing left (``busted``) costs your
+    whole start. Until 10/16 those were left out (no stack read after it)
+    or counted against the rebuy (10 busts on 10/07-10/16, about 1,060 big
+    blinds). A rebuy before the next hand cannot be told from a win."""
     parts = []
     for hand in hands:
         last = parts[-1][-1] if parts else None
@@ -344,14 +357,35 @@ def chips(hands):
                    default=None)
         for hand in whole:
             hand["your_chips"] = None
-        if not any(h["you_in"] for h in whole) or one is None or two is None:
+        if not any(h["you_in"] for h in whole) or one is None:
+            continue
+        if busted(whole, after):
+            first["your_chips"] = round(-one, 2)
+            continue
+        if two is None:
             continue
         change = two - one
         if change > 0 and (most is None or change > most):
             continue
         first["your_chips"] = round(change, 2)
     for hand in hands:
-        del hand["start_stack"], hand["most_pot"]
+        for key in ("start_stack", "most_pot", "first_stack", "end_stack"):
+            del hand[key]
+
+
+def busted(whole, after):
+    """Whether you lost all your chips in this hand (``whole``, its parts):
+    your last stack read 0, and either the recording ended after the hand
+    ended or the whole next hand (``after``, its parts) went by without you
+    dealt in, your stack first read 0 or not read (a rebuy comes later)."""
+    last = whole[-1]
+    if last["end_stack"] != 0:
+        return False
+    if after is None:
+        return last["complete"]
+    following = after[0]
+    return (following["complete"] and not following["you_in"]
+            and not following["first_stack"])
 
 
 def followed(hand):

@@ -1,6 +1,8 @@
-"""The simulation's order of strategy variants against the shown cards' order."""
+"""The simulation's order of strategy variants against the shown cards' order,
+and its level against what the window's strategy really made."""
 
 from decimal import Decimal
+import json
 
 import pytest
 
@@ -101,3 +103,73 @@ def test_too_few_variants_or_turns_are_not_enough(monkeypatch):
     many = {f"v{index}": float(index) for index in range(1, 9)}
     result = ranked(monkeypatch, many, many, differ=10)
     assert result["verdict"] == "not enough data" and result["tau"] == 1.0
+
+
+def hand(log, hand_id, adjusted, followed="yes", machine=None):
+    line = {"log": log, "hand_id": hand_id, "adjusted": adjusted, "followed": followed}
+    return {**line, "machine": machine} if machine else line
+
+
+def test_only_hands_played_as_advised_without_a_rough_advice_count():
+    hands = [hand("a", "h1", 1.0), hand("a", "h2", 2.0, followed="no"),
+             hand("a", "h3", 3.0, followed="no_advice"), hand("a", "h4", 4.0),
+             hand("b", "h4", 5.0, machine="du")]
+    decisions = [{"log": "a", "hand_id": "h4", "kind": "multiway"},
+                 {"log": "a", "hand_id": "h4", "kind": "rough"},
+                 {"log": "b", "hand_id": "h4", "kind": "preflop", "machine": "du"}]
+    assert sim_real_rank.advised(hands, decisions) == [1.0, 5.0]
+
+
+def leveled(sim_value, values):
+    sim = {"pool": ["aa_cal"],
+           "strategies": {sim_real_rank.LIVE: {"bb_per_100": sim_value,
+                                               "ci95": [sim_value - 30,
+                                                        sim_value + 30]}}}
+    return sim_real_rank.level(sim, values)
+
+
+def test_a_simulation_above_the_real_interval_is_too_optimistic():
+    values = [-30.0, 25.0] * 200                  # -2.5 bb a hand, spread 27.5
+    result = leveled(173.2, values)
+    assert result["hands"] == 400 and result["real"] == -250.0
+    low, high = result["real_ci95"]
+    assert low < -250 < high < 173.2
+    assert result["verdict"] == "sim too optimistic"
+    wide = result["always_valid_ci95"]
+    assert wide[0] < low and wide[1] > high       # the lasting one is wider
+    assert result["outside_always_valid"] is (173.2 > wide[1])
+    line = sim_real_rank.level_summary(result)
+    assert line.startswith("sim vs real level: sim too optimistic (sim +173.2")
+    assert "400 hands played as advised" in line
+
+
+def test_inside_below_and_too_few_hands():
+    values = [-30.0, 25.0] * 200
+    assert leveled(-250.0, values)["verdict"] == "inside"
+    assert leveled(-900.0, values)["verdict"] == "sim too pessimistic"
+    few = leveled(173.2, values[:150])
+    assert few["verdict"] == "not enough data" and few["real_ci95"] is None
+    assert "not enough data" in sim_real_rank.level_summary(few)
+    with pytest.raises(SystemExit):
+        sim_real_rank.level({"strategies": {}}, values)
+
+
+def test_the_level_alone_from_the_command_line(tmp_path, capsys):
+    sim = {"pool": ["aa_cal"], "reference": "aa_preflop",
+           "strategies": {sim_real_rank.LIVE: {"bb_per_100": 173.2,
+                                               "ci95": [142.5, 203.8]}}}
+    (tmp_path / "sim.json").write_text(json.dumps(sim), encoding="utf-8")
+    lines = [hand("a", f"h{index}", value)
+             for index, value in enumerate([-30.0, 25.0] * 150)]
+    (tmp_path / "hands.jsonl").write_text(
+        "".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8")
+    (tmp_path / "decisions.jsonl").write_text("", encoding="utf-8")
+    sim_real_rank.main(["--sim", str(tmp_path / "sim.json"),
+                        "--real-hands", str(tmp_path / "hands.jsonl"),
+                        "--real-decisions", str(tmp_path / "decisions.jsonl"),
+                        "--out", str(tmp_path / "out")])
+    assert "sim too optimistic" in capsys.readouterr().out
+    found = json.loads((tmp_path / "out" / "level.json").read_text(encoding="utf-8"))
+    assert found["hands"] == 300 and not (tmp_path / "out" / "rank.json").exists()
+    with pytest.raises(SystemExit):
+        sim_real_rank.main(["--sim", str(tmp_path / "sim.json")])

@@ -13,7 +13,8 @@ in big blinds at the hand's own level):
   come, what the board that came won or lost against the average board,
   when every live hand was face up and the whole board read. The hand is
   replayed on the AA table (``aa_solver_input``, from the stacks read, else
-  deep) for what each player put in;
+  deep) for what each player put in, and only counts when that replay pays
+  you what the table did (within ``SETTLE_MATCH`` of the pot);
 * the result less both: on average the same as the result, whatever was
   decided (only chance is taken out), with less spread.
 
@@ -159,10 +160,14 @@ def runout(hand, facts, big_blind):
     at = arena._seats.index(SEAT)
     unit = float(arena.rules.minimum_chip)
     pot = sum(contributions) * unit
+    if abs(actual[at] * unit - hand["your_chips"]) > SETTLE_MATCH * pot:
+        # The replay put in or paid out other chips than the table did (a
+        # stack misread): its luck is not this hand's (10/08, a 130 bb bust
+        # replayed deep came out 570 bb unlucky).
+        return {**found, "why": "settle_mismatch", "settle_matches": False}
     return {**found, "why": None,
             "luck": (actual[at] - expected[at]) * unit / big_blind,
-            "settle_matches": abs(actual[at] * unit - hand["your_chips"])
-            <= SETTLE_MATCH * pot}
+            "settle_matches": True}
 
 
 def hand_lines(name, rows, code=None):
