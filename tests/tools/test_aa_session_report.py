@@ -170,3 +170,36 @@ def test_cards_shown_with_the_seat_s_actions():
     assert hand["shown_unknown"] == [2]
     assert report["summary"]["shown_cards"] == {"hands": 1, "seats": 1,
                                                 "seats_unknown": 1}
+
+
+def test_each_hand_pays_its_own_blinds_antes_and_mushroom_post():
+    """Your stack is read once the pot holds the hand's blinds and antes, so
+    each hand's chips add back what it posted (10/17: a hand counted the next
+    hand's posts instead, a folded small blind cost 4 big blinds on
+    1/2/4(2), the dealer's mushroom post and ante)."""
+    def hand(name, start, dealer, stack, cards):
+        rows = [row(start + f, (start + f) * 0.1, hand=name, stack=stack, cards=cards)
+                for f in range(6)]
+        for item in rows:
+            item["fields"]["participants"] = {str(seat): "active" for seat in range(8)}
+            item["fields"]["actions_v1"]["dealer"] = dealer
+        return rows
+    # 100 chips: the small blind (1 and the ante 2), fold; the dealer
+    # (ante 2 and the mushroom post of 3 big blinds), fold; then the cutoff.
+    rows = (hand("hand_0", 0, 3, "97", ("7c", "2d"))
+            + hand("hand_6", 6, 4, "89", ("8c", "3d"))
+            + hand("hand_12", 12, 5, "87", ("9c", "4d")))
+    first, second, third = session_report([("log", rows)])["hands"]
+    assert (first["your_chips"], second["your_chips"]) == (-3.0, -8.0)
+    assert third["your_chips"] is None
+    # The small blind wins and takes the mushroom pool: more than the pot (10)
+    # with the posts back, still counted.
+    won = [{**item, "fields": {**item["fields"], "stacks": {"4": "106"}}}
+           for item in rows[6:12]]
+    first = session_report([("log", rows[:6] + won + rows[12:])])["hands"][0]
+    assert first["your_chips"] == 14.0
+    # The dealer not read: the hand counts as before.
+    for item in rows[6:12]:
+        item["fields"]["actions_v1"]["dealer"] = None
+    first, second, _ = session_report([("log", rows)])["hands"]
+    assert (first["your_chips"], second["your_chips"]) == (-11.0, 0.0)
