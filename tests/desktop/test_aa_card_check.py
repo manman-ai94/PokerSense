@@ -60,6 +60,38 @@ def test_dimmed_cards_at_the_showdown_are_held_back():
     assert not any(report["new_deal"] for _, _, report in rows)
 
 
+def test_after_you_folded_your_cards_no_longer_change():
+    # 杜's P30, 10/16: read for two seconds, folded, then the dimmed cards
+    # read with another suit for half a minute.
+    check = AACardCheck()
+    rows = [check.observe(["3d", "5c"], [None] * 5, "hand_1", at * 0.4)
+            for at in range(5)]
+    rows += [check.observe(["3s", "5c"], [None] * 5, "hand_1", 2.0 + at * 0.4,
+                           folded=True) for at in range(75)]
+    assert all(hero is None for hero, _, _ in rows[5:])
+    assert rows[-1][2]["folded"] is True
+    assert rows[-1][2]["held_back"]["hero"] == ["3s", "5c"]
+    # Without the fold the longer reading takes over.
+    check = AACardCheck()
+    for at in range(5):
+        check.observe(["3d", "5c"], [None] * 5, "hand_1", at * 0.4)
+    last = [check.observe(["3s", "5c"], [None] * 5, "hand_1", 2.0 + at * 0.4)
+            for at in range(75)]
+    assert last[-1][0] == ["3s", "5c"]
+
+
+def test_the_last_hands_fold_does_not_lock_the_new_hands_cards():
+    check = AACardCheck()
+    for at in range(10):
+        check.observe(["Kd", "Qs"], [None] * 5, "hand_1", at * 0.4, folded=at > 4)
+    # The new hand: the fold still shows before your new cards are read.
+    hero, _, report = check.observe(None, [None] * 5, "hand_2", 4.4, folded=True)
+    assert report["folded"] is False
+    rows = [check.observe(["Ah", "9s"], [None] * 5, "hand_2", 4.8 + at * 0.4)
+            for at in range(3)]
+    assert all(hero == ["Ah", "9s"] for hero, _, _ in rows)
+
+
 def test_the_last_hands_cards_on_screen_do_not_block_the_new_ones():
     check = AACardCheck()
     old = ["Kc", "Kh", "6c", "6h", "6s"]

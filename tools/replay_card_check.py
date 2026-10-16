@@ -43,8 +43,9 @@ def replay(rows):
             out.append(row)
             continue
         hand = (fields.get("actions_v1") or {}).get("hand_id")
+        folded = (fields.get("participants") or {}).get("4") == "folded"
         hero, board, report = check.observe(fields.get("hero"), fields.get("board"),
-                                            hand, row.get("pts_seconds"))
+                                            hand, row.get("pts_seconds"), folded=folded)
         if report["held_back"]:
             frames += 1
             hands.add(hand)

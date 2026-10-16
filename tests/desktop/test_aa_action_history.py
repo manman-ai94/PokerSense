@@ -91,6 +91,49 @@ def test_signals_between_hands_mark_one_start():
     assert later["hand_id"] == start["hand_id"] and later["dealer"] == 0
 
 
+def dealt(hero, pot="23", **kwargs):
+    item = payload(pot, **kwargs)
+    return {**item, "cards": {**item["cards"], "hero": list(hero)}}
+
+
+def test_your_new_cards_start_a_hand_the_other_signals_missed():
+    # 杜's PC, 10/16: a hand that ended before the flop with no action read,
+    # the pot never read going down and the button unread, then the next deal.
+    history = AAActionHistory()
+    feed(history, [dealt(["Kd", "7c"], dealer=None)] * 6)
+    frames = [dealt(["4h", "Js"], dealer=None)] * 5
+    hands = [history.observe(item, 6 + at) for at, item in enumerate(frames)]
+    first = hands[0]["hand_id"]
+    same = [hand["hand_id"] == first for hand in hands]
+    assert same == [True, True, False, False, False]
+    assert hands[2]["start"] == "new_hole_cards" and hands[2]["complete"] is False
+    assert hands[4]["hand_id"] == hands[2]["hand_id"]
+
+
+def test_a_card_read_another_way_or_the_last_hands_cards_are_no_new_deal():
+    history = AAActionHistory()
+    feed(history, [dealt(["3d", "5c"])] * 6)
+    # Dimmed after the fold: one card read with another suit.
+    dim = [history.observe(dealt(["3s", "5c"]), 6 + at) for at in range(6)]
+    assert {hand["hand_id"] for hand in dim} == {"hand_0"}
+    # The next hand starts by the pot; your last cards are still on screen.
+    history.observe(dealt(["3d", "5c"], pot="88"), 12)
+    history.observe(dealt(["3d", "5c"], pot="88"), 13)
+    history.observe(dealt(["3d", "5c"]), 14)
+    start = history.observe(dealt(["3d", "5c"]), 15)
+    assert start["start"] == "pot_went_down"
+    new = [history.observe(dealt(["Ah", "9s"]), 16 + at) for at in range(5)]
+    assert {hand["hand_id"] for hand in new} == {start["hand_id"]}
+
+
+def test_cards_read_only_a_moment_are_no_new_deal():
+    history = AAActionHistory()
+    feed(history, [dealt(["Kd", "7c"])] * 6)
+    blip = [dealt(["4h", "Js"])] * 2 + [dealt(["Kd", "7c"])] + [dealt(["4h", "Js"])] * 2
+    hands = [history.observe(item, 6 + at) for at, item in enumerate(blip)]
+    assert {hand["hand_id"] for hand in hands} == {"hand_0"}
+
+
 def test_a_hand_over_ends_the_hand_and_old_actions_stay_with_it():
     history = AAActionHistory()
     feed(history, [payload("23")] * 3 + [payload("40", "flop")] * 3)
