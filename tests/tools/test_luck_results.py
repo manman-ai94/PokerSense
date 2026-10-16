@@ -88,6 +88,102 @@ def test_no_runout_when_nothing_was_left_to_come_for_you():
     assert found == {"allin": None, "luck": None, "why": "replay:players_3"}
 
 
+# The same all-in as the frames show it: you (seat 4) all in for your last
+# 100 with aces, seat 7 with kings. The pot holds 15 of blinds and antes;
+# the screen's pot keeps a bet you could not call until the hand is paid.
+STREETS = ["preflop", "flop", "flop", "turn", "river", "river"]
+
+
+def frame(at, *, street="preflop", pot=15, you="100", them="300", you_state="active",
+          them_state="active"):
+    return {"processed": at, "pts_seconds": at * 0.5,
+            "fields": {"street": street, "pot": pot, "stacks": {"4": you, "7": them},
+                       "participants": {"4": you_state, "5": "folded", "6": "folded",
+                                        "7": them_state}}}
+
+
+def runout_frames(kind):
+    """``called``: you shove, seat 7 calls (300 behind); ``both``: seat 7
+    shoves 300, you call all in; ``raised``: seat 7 (500) bets 300, you call
+    all in, and his 200 you could not call goes back with the pot."""
+    them = "500" if kind == "raised" else "300"
+    rows = [frame(at, them=them) for at in range(5)]
+    gone = {"you": "0", "you_state": "all_in"}
+    if kind == "called":
+        rows += [frame(at, pot=115, **gone) for at in range(5, 8)]
+        paid, left = "405", "200"
+    elif kind == "both":
+        rows += [frame(at, pot=315, them="0", them_state="all_in")
+                 for at in range(5, 8)]
+        paid, left = "405", "0"
+    else:
+        rows += [frame(at, pot=315, them="200") for at in range(5, 8)]
+        paid, left = "605", "200"
+    pot = 215 if kind == "called" else 415
+    rows += [frame(at, street=street, pot=pot, them=left, **gone)
+             for at, street in zip(range(8, 14), STREETS)]
+    return rows + [frame(at, street="river", pot=pot, them=paid, **gone)
+                   for at in (14, 15)]
+
+
+SCREEN = {"board": BOARD, "seats": [4, 5, 6, 7], "stakes": None}
+
+
+def test_an_all_in_that_does_not_replay_is_worked_out_from_the_screen():
+    # The pot played for is 215, 205 after rake, however it was read: the
+    # pot when seat 7 called; the pot less his 200 over your 100 with both
+    # all in; what he won (105) plus what you lost.
+    found = [results.screen_runout(hand(), runout_frames(kind), SCREEN, 2.0)
+             for kind in ("called", "both", "raised")]
+    assert all(item["allin"] is True and item["why"] is None
+               and item["replay"] == "screen" for item in found)
+    assert -86 < found[0]["luck"] < -80
+    assert found[0]["luck"] == pytest.approx(found[1]["luck"])
+    assert found[0]["luck"] == pytest.approx(found[2]["luck"])
+    # The river not read: your result says you lost, the luck is the same.
+    cut = results.screen_runout(hand(), runout_frames("called"),
+                                {**SCREEN, "board": BOARD[:4]}, 2.0)
+    assert cut["luck"] == pytest.approx(found[0]["luck"])
+    # Three seats dealt (the AA rules cover 4-8): the same rake.
+    three = results.screen_runout(hand(), runout_frames("called"),
+                                  {**SCREEN, "seats": [4, 5, 7]}, 2.0)
+    assert three["luck"] == pytest.approx(found[0]["luck"])
+    # runout() takes it when the hand does not replay.
+    unfinished = facts([(10, "preflop", 4, "call", "4")])
+    assert results.runout(hand(), unfinished, 2.0, runout_frames("called")) == found[0]
+
+
+def test_a_screen_all_in_whose_result_does_not_add_up_keeps_its_luck():
+    # 160 lost where you had 100: no reading of the pot agrees.
+    for kind in ("called", "both"):
+        found = results.screen_runout(hand(chips=-160.0), runout_frames(kind),
+                                      SCREEN, 2.0)
+        assert found["allin"] is True and found["luck"] is None
+        assert found["why"] == "settle_mismatch"
+
+
+def test_the_screen_says_when_nothing_was_left_to_come_or_cards_are_missing():
+    rows = runout_frames("called")
+    found = results.screen_runout(hand(shown=()), rows, SCREEN, 2.0)
+    assert (found["allin"], found["luck"], found["why"]) == (True, None,
+                                                             "cards_not_shown")
+    # Seat 7 folded (and showed his cards anyway): you won it without a runout.
+    folded = [frame(at, them_state="active") for at in range(3)] + [
+        frame(at, them_state="folded") for at in range(3, 8)]
+    found = results.screen_runout(hand(), folded, SCREEN, 2.0)
+    assert (found["allin"], found["luck"]) == (False, 0.0)
+    # You folded.
+    yours = [frame(at) for at in range(3)] + [frame(at, you_state="folded")
+                                              for at in range(3, 8)]
+    assert results.screen_runout(hand(), yours, SCREEN, 2.0)["allin"] is False
+    # All in on the river: nothing left to come.
+    late = [{**item, "fields": {**item["fields"], "street": "river"}} for item in rows]
+    assert results.screen_runout(hand(), late, SCREEN, 2.0)["allin"] is False
+    # Never dealt in: the screen cannot tell.
+    away = [frame(at, you_state="waiting") for at in range(8)]
+    assert results.screen_runout(hand(), away, SCREEN, 2.0) is None
+
+
 def row(frame, *, hand_id="hand_0", turn=False, cards=("As", "Kd"), advice=None,
         stack="100", pot=15, actions=()):
     return {"processed": frame, "pts_seconds": frame * 0.5,
@@ -124,7 +220,9 @@ def test_every_hand_gets_its_result_and_luck_and_every_decision_a_line():
     assert (first["hand_id"], first["seat"], first["bb"]) == ("hand_0", "BTN", -2.0)
     assert first["card_luck"] == round(luck.hole_luck(["As", "Kd"], 7), 3)
     assert first["adjusted"] == round(-2.0 - luck.hole_luck(["As", "Kd"], 7), 3)
-    assert first["allin"] is None and first["runout_missing"].startswith("replay:")
+    # It does not replay; the screen shows nobody all in.
+    assert first["allin"] is False and first["runout_missing"] is None
+    assert first["runout_from"] == "screen"
     assert first["followed"] == "yes" and first["code"] == "abc1234"
     assert second["bb"] == 0.0 and second["followed"] == "no_decision"
     assert "your_cards" not in first                  # the worth, not the cards
@@ -156,7 +254,8 @@ def test_the_summary_splits_by_kind_followed_and_code():
                                 "missing": {"dealer_unread": 10}}
     assert summary["allin"] == {"hands": 2, "taken_out": 1, "not_replayed": 0,
                                 "missing": {"cards_not_shown": 1},
-                                "settle_matches": 1}
+                                "settle_matches": 1, "from_screen": 0,
+                                "screen_checked": 0}
     assert summary["runout_luck_bb"] == -40.0
     assert summary["by_kind"]["bomb_pot"]["hands"] == 5
     assert summary["by_followed"]["no"]["hands"] == 5

@@ -119,27 +119,39 @@ def runout_luck(contributions, holes, board, street, rake_share=0.0, *,
     shown = SHOWN[street]
     if shown >= 5 or len(holes) < 2:
         return None
-    known = [CARD_ID[card] for card in board[:shown]]
-    ids = {player: [CARD_ID[card] for card in cards] for player, cards in holes.items()}
-    dead = set(known) | {card for cards in ids.values() for card in cards}
-    deck = [CARD_ID[card] for card in DECK if CARD_ID[card] not in dead]
-    need = 5 - shown
+    outcomes = runout_outcomes(contributions, holes, board[:shown], rake_share,
+                               samples=samples, seed=seed)
+    totals = [0.0] * len(contributions)
+    for _, results in outcomes:
+        for player, value in enumerate(results):
+            totals[player] += value
+    return (runout_result(contributions, holes, board, rake_share),
+            [total / len(outcomes) for total in totals])
+
+
+def runout_outcomes(contributions, holes, known, rake_share=0.0, *,
+                    samples=RUNOUT_SAMPLES, seed=0):
+    """[(the cards that came, net result per player)] for every board that
+    could have come after ``known`` (the board when the betting closed): the
+    boards ``runout_luck`` averages over."""
+    dead = set(known) | {card for cards in holes.values() for card in cards}
+    deck = [card for card in DECK if card not in dead]
+    need = 5 - len(known)
     if need <= 2:
         runouts = list(combinations(deck, need))
     else:
         rng = random.Random(seed)
         runouts = [rng.sample(deck, need) for _ in range(samples)]
+    return [(tuple(extra), runout_result(contributions, holes, [*known, *extra],
+                                         rake_share))
+            for extra in runouts]
 
-    def results(cards):
-        ranks = {player: _EVALUATE_7(*hole, *cards) for player, hole in ids.items()}
-        return settle(contributions, ranks, rake_share)
 
-    actual = results([CARD_ID[card] for card in board])
-    totals = [0.0] * len(contributions)
-    for extra in runouts:
-        for player, value in enumerate(results(known + list(extra))):
-            totals[player] += value
-    return actual, [total / len(runouts) for total in totals]
+def runout_result(contributions, holes, board, rake_share=0.0):
+    """Net result per player when ``board`` (five cards) came."""
+    ranks = {player: _EVALUATE_7(*(CARD_ID[card] for card in (*cards, *board)))
+             for player, cards in holes.items()}
+    return settle(contributions, ranks, rake_share)
 
 
 def interval(values):
