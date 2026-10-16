@@ -15,7 +15,10 @@ and ``upload.json``) it says what went wrong, against the Samsung baseline of
   was read from the table;
 * advice (``tools/aa_session_report.py``): the tester's turns with no advice
   on screen (there should be none), and why; hands advised at every step;
-  stalls over two seconds;
+  stalls over two seconds; the turns where the advice and his answer were
+  far apart (``far_apart``: a big bet, raise or all in advised and he
+  folded, or a fold advised and he put a lot in), the advice to look at
+  first;
 * opponents: the hands whose other seats' actions are clean enough for the
   AA population statistics (``tools/aa_population_stats.py``; the tester's
   own seat is left out, as peng's is);
@@ -62,6 +65,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 import json
 import statistics
 from pathlib import Path
@@ -97,6 +101,14 @@ USABLE_LINE = 0.7           # hands usable for the opponents (Mac: about 85%)
 SHORT_MINUTES = 3           # shorter: numbers are only a hint
 TOP_CAUSES = 3
 TOP_PROBLEMS = 3            # in the three lines
+# Advice and answer far apart: this many big blinds or more advised and
+# folded, or put in against a fold (10/16: an all in to 143 advised with 3-8
+# after a misread level; peng caught it by eye).
+FAR_BB = 20
+FAR_SHOWN = 3               # of them in the problem line
+ALL_IN_SHARE = Decimal("0.95")  # of his chips: an all in
+HERO = "4"
+STREETS = {"preflop": "翻前", "flop": "翻牌", "turn": "转牌", "river": "河牌"}
 LA_FALLBACK = timezone(timedelta(hours=-7), "UTC-7")
 # Shares of hands on the owner's Mac (9 recordings of 10/08-10/10, 394
 # hands, measured at 8f4f2c3): a tester's share is a problem past twice that
@@ -214,6 +226,95 @@ def advice(name, rows):
             "hand_problems": summary["hand_problems"]}
 
 
+def _decimal(value):
+    try:
+        return None if value in (None, "") else Decimal(str(value))
+    except InvalidOperation:
+        return None
+
+
+def far_apart(rows, started=None):
+    """His turns where the advice and his answer were far apart: a bet,
+    raise or all in of ``FAR_BB`` big blinds or more advised and he folded,
+    or a fold advised and he put that much in (called, raised or went all
+    in). His play is not judged: it is the advice there to look at again,
+    worst read first (a misread level, a hand run on into the next)."""
+    hands = fly.by_hand(rows)
+    stakes = fly.hand_stakes(hands)
+    found = []
+    for hand_id, part in hands.items():
+        big_blind = _decimal(stakes[hand_id]["big_blind"])
+        actions = part[-1]["fields"]["actions_v1"].get("actions") or []
+        turn = []
+        for row in part + [None]:
+            if row is not None and (row["fields"].get("hero_controls")
+                                    or {}).get("visible"):
+                turn.append(row)
+                continue
+            item = _far(hand_id, turn, actions, big_blind, started) if turn else None
+            if item:
+                found.append(item)
+            turn = []
+    return found
+
+
+def _far(hand_id, turn, actions, big_blind, started):
+    """One turn's far-apart line, or None."""
+    ready = [report for report in map(fly._advice, turn)
+             if report.get("status") == "ready" and report.get("advice")]
+    if not ready or not big_blind:
+        return None
+    advised, street = ready[-1]["advice"][0], ready[-1].get("street")
+    first = turn[0]
+    answer = next((item for item in actions if str(item[2]) == HERO
+                   and item[1] == street and item[0] >= first["processed"]), None)
+    if answer is None:
+        return None
+    advice, did = advised.get("action"), answer[3]
+    fields = first["fields"]
+    chips = ((_decimal((fields.get("stacks") or {}).get(HERO)) or 0)
+             + (_decimal((fields.get("street_wagers") or {}).get(HERO)) or 0))
+    to = _decimal(advised.get("to"))
+    paid = _decimal(answer[4]) if len(answer) > 4 else None
+    if did == "call" and not paid:
+        paid = _decimal((fields.get("hero_controls") or {}).get("call_amount"))
+
+    def blinds(value):
+        return f"{float(value / big_blind):.0f}"
+
+    if (advice in ("bet", "raise", "all_in") and did == "fold" and to
+            and to >= FAR_BB * big_blind):
+        shove = advice == "all_in" or (chips and to >= ALL_IN_SHARE * chips)
+        text = (f"建议全下 {blinds(to)} 个大盲" if shove else
+                f"建议{'下注' if advice == 'bet' else '加注到'} {blinds(to)} 个大盲"
+                ) + "、他弃牌"
+    elif (advice == "fold" and did in ("call", "bet", "raise", "all_in") and paid
+          and paid >= FAR_BB * big_blind):
+        text = "建议弃牌、他" + {"call": "跟了", "all_in": "全下"}.get(
+            did, "加注到") + f" {blinds(paid)} 个大盲"
+    else:
+        return None
+    seconds = first.get("video_seconds")
+    return {"hand_id": hand_id, "video_seconds": seconds, "street": street,
+            "advice": advice, "advice_to": None if to is None else str(to),
+            "you_did": did, "you_put": None if paid is None else str(paid),
+            "big_blind": str(big_blind),
+            "text": f"{clock(started, seconds)} {STREETS.get(street, '')}{text}"}
+
+
+def clock(started, seconds):
+    """When in the recording, as peng reads it: 19:29 (Los Angeles), or the
+    minute of the recording when its start is not known."""
+    try:
+        moment = datetime.strptime(started, "%Y-%m-%dT%H:%M:%S%z")
+    except (TypeError, ValueError):
+        moment = None
+    if moment is None or not isinstance(seconds, (int, float)):
+        return f"第 {int(seconds or 0) // 60} 分钟"
+    local = (moment + timedelta(seconds=seconds)).astimezone(los_angeles())
+    return f"{local.hour}:{local.minute:02d}"
+
+
 def opponents(log, rows):
     """The hand lines for the population statistics and how many are usable."""
     lines = pop.reduce_log(rows, log)
@@ -264,6 +365,7 @@ def review(folder, baseline, machine=None):
               "recognition": p30.compare(measured, baseline) if rows else None,
               "stakes_read": stakes_read(rows),
               "advice": advice(log, rows) if rows else None,
+              "far_apart": far_apart(rows, facts["started"]),
               "opponents_usable": usable,
               "results": luck_results.summarize(hands)}
     result["problems"] = problems(result)
@@ -305,6 +407,11 @@ def problems(result):
         return ["窗口日志是空的：这场没有可复盘的帧"]
     if facts["error"]:
         found.append(f"录像出错：{facts['error']}")
+    far = result.get("far_apart") or []
+    if far:
+        found.append(f"建议和他的选择差很远 {len(far)} 次，先看这几处建议对不对："
+                     + "，".join(item["text"] for item in far[:FAR_SHOWN])
+                     + ("等" if len(far) > FAR_SHOWN else ""))
     rate = result["speed"]["frames_per_second"]
     if rate is not None and rate < SLOW_FPS:
         found.append(
