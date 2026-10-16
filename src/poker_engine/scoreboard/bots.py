@@ -234,6 +234,9 @@ def make_policy(name):
     if name.startswith("noisy") and "+" in name:
         from .opponents import noisy_from_name   # imports this module
         return noisy_from_name(name, make_policy)
+    if name == "simple" or name.startswith("simple+"):
+        from .simple import from_name as simple_from_name   # imports this module
+        return simple_from_name(name, make_policy)
     if name.startswith("range_multiway") and "+" in name:
         from .multiway_bot import from_name      # imports this module
         return from_name(name, make_policy)
