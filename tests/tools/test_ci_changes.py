@@ -20,6 +20,7 @@ def test_prose_only_skips_the_tests(files):
     ["docs/WORKLOG.md", "src/poker_engine/desktop/live.py"],
     ["docs/strategy-requirements-matrix.md"],              # a test reads it
     ["docs/strategy-regression-test-matrix.md"],
+    ["docs/second-seat-windows.md"],                       # test_setup_texassolver
     ["docs/examples/frozen-postflop/root-oop-aa.json"],    # a test reads it
     ["src/poker_engine/strategy/assets/notes.md"],          # shipped with the package
     ["launch/mac/README.md"],
