@@ -27,8 +27,8 @@ that replay, and checks the hand on the way:
   fold on the river with nothing to call is a check.
 
 An action the reader missed can be filled in from the table, at most
-``MAX_INFERRED`` per hand and only with the dealer that was read, when only
-one action fits (``inferred``):
+``MAX_INFERRED`` per hand besides checks and only with the dealer that was
+read, when only one action fits (``inferred``):
 
 - the next seat called or folded with nothing to call: the seat bet, as much
   as that call (or the next call, or your price, or its bet still on the
@@ -47,7 +47,20 @@ one action fits (``inferred``):
 - before your turn, the seats still to act folded (folded on the table) or
   checked or called, unless your price (the button's call amount; after the
   flop, when it is not read, the bets on the table) is more than that leaves
-  you: then the one of them still in bet up to it.
+  you: then the one of them still in bet up to it. When your button says
+  check, nobody bet: every seat before you checked or folded, however many;
+- a street the table has gone past with nobody to call a bet and no chips
+  put in after its last action read (the pot read then is the pot read as
+  the next street began, ``street_pots``): the seats still to act on it
+  checked (before the flop, the big blind or straddle checking its option).
+
+The last two are what the replay has on 杜's computer (Huawei P30): its
+reader never reads the check badge (10/16, 80 hands: none of about 790
+badges, against about a third of the badges on the Mac recordings), so a
+street checked by more than three players stopped the replay and every
+decision after it got only the rough advice (a flush checked on the turn
+and the river of a bomb pot, the rough rule taking each of seven opponents
+for a hand that entered the pot).
 
 Anything else that does not fit stops the replay with a reason: no advice
 should be given from such a hand. The opening pot is compared with the antes,
@@ -59,7 +72,10 @@ A bomb pot (暴击: everyone puts in 7 big blinds, no preflop betting, the
 hand starts on the flop) is told by its first pot (``bomb_post``) and
 replayed as one; the observation then says ``bomb_pot`` and the range and
 solver replays rebuild it so. Any other hand whose first action read is
-after the flop stops ("starts_after_preflop").
+after the flop stops ("starts_after_preflop"). A bomb pot shows no blinds,
+and its dealer button can still be the last hand's (10/16: seat 3 read, the
+dealer was seat 4): its dealer is the seat before the first one read as
+having to act (``first_actor``), when that is read.
 
 A big blind posted on coming back to the table (after a rebuy or on sitting
 down) is not in the replay either. For the seat asking for advice it is read
@@ -141,12 +157,15 @@ def hand_facts(rows, stakes=None):
             "opening_wagers": _opening_wagers(opening, stakes["small_blind"]),
             "actions": actions, "board": board, "stacks": stacks,
             "opening_pot": opening_pot,
+            "first_actor": _first_actor(opening),
+            "street_pots": _street_pots(rows[start:], fields[start:], actions),
             "states": {int(seat): state for seat, state in
                        (latest.get("participants") or {}).items()},
             "wagers": {int(seat): Decimal(value) for seat, value in
                        (latest.get("street_wagers") or {}).items()
                        if value not in (None, "")},
             "price": _price(latest.get("hero_controls") or {}),
+            "button": _button(latest.get("hero_controls") or {}),
             "turn_frames": _turn_frames(fields),
             "all_in": _all_in(latest.get("hero_controls") or {})}
 
@@ -205,6 +224,12 @@ def _price(controls):
     if controls.get("button") == "call" and amount not in (None, ""):
         return Decimal(str(amount))
     return None
+
+
+def _button(controls):
+    """The kind of your call button on screen ("check", "call", "all_in"),
+    or None."""
+    return controls.get("button") if controls.get("visible") else None
 
 
 def _turn_frames(fields):
@@ -268,6 +293,51 @@ def _deal_start(rows, fields, first):
     return start
 
 
+def _first_actor(fields):
+    """The first seat read as the one to act on two frames in a row, or None
+    (``fields``: the hand's frames before its first action)."""
+    last = None
+    for f in fields:
+        actor = f.get("actor")
+        if actor is None:
+            continue
+        if actor == last:
+            return int(actor)
+        last = actor
+    return None
+
+
+def _street_pots(rows, fields, actions):
+    """{street: (pot as it began, pot after its last action read)}: each the
+    pot read on two frames in a row while the board shows that street, from
+    its first frame and from after its last action read (from its first
+    frame when none was read)."""
+    last = {}
+    for action in actions:
+        last[action["street"]] = max(last.get(action["street"], 0), action["frame"])
+    pots = {}
+    for street in STREETS:
+        count = dict(BOARD).get(street, 0)
+        begun = settled = None
+        previous = {"begun": None, "settled": None}
+        for row, f in zip(rows, fields):
+            if len([card for card in f.get("board") or () if card]) != count:
+                continue
+            pot = f.get("pot")
+            if pot in (None, ""):
+                continue
+            if begun is None and previous["begun"] == pot:
+                begun = Decimal(pot)
+            previous["begun"] = pot
+            if row["processed"] > last.get(street, -1):
+                if settled is None and previous["settled"] == pot:
+                    settled = Decimal(pot)
+                previous["settled"] = pot
+        if begun is not None or settled is not None:
+            pots[street] = (begun, settled)
+    return pots
+
+
 def _opening_pot(rows, fields, first):
     """The steady pot before the first action, after the last empty pot."""
     pots = [f.get("pot") for row, f in zip(rows, fields)
@@ -323,6 +393,10 @@ def replay_hand(facts, stacks=None):
     reported, source = facts["dealer"], "reader"
     if reported is None and facts.get("blind_dealer") is not None:
         reported, source = facts["blind_dealer"], "blinds"
+    if bomb is not None and facts.get("first_actor") in seats:
+        before = seats[seats.index(facts["first_actor"]) - 1]
+        if before != reported:
+            reported, source = before, "actor"
     candidates = ([reported] if reported in seats else []) + [
         seat for seat in seats if seat != reported]
     tried = {}
@@ -368,9 +442,22 @@ def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None,
             if retry[2] > at + 1:
                 actions, outcome = swapped, retry
                 continue
+        if table is not None and _ahead(actions[at], outcome[3]):
+            checks = _checked_around(outcome[3], table)
+            for check in checks or ():
+                check["frame"] = actions[at]["frame"]
+            filled = actions[:at] + (checks or []) + actions[at:]
+            retry = (_steps(seats, dealer, filled, board, stacks, bomb, opening, stakes)
+                     if checks else None)
+            if retry is None or (retry[0] != "ok" and retry[2] < at + len(checks)):
+                return (*outcome, inferred)
+            inferred.extend(checks)
+            actions, outcome = filled, retry
+            continue
+        guessed = sum(action["kind"] != "check" for action in inferred)
         filled = (_fill(outcome[3], actions, at, table)
                   if table is not None and outcome[1] == "not_this_seats_turn"
-                  and len(inferred) < MAX_INFERRED else None)
+                  and guessed < MAX_INFERRED else None)
         if filled is None:
             return (*outcome, inferred)
         retry = _steps(seats, dealer, filled, board, stacks, bomb, opening, stakes)
@@ -378,7 +465,54 @@ def _replay(seats, dealer, actions, board, stacks, table=None, bomb=None,
             return (*outcome, inferred)
         inferred.append(filled[at])
         actions, outcome = filled, retry
+    while table is not None:
+        checks = _checked_around(outcome[3], table)
+        if not checks:
+            break
+        frame = actions[-1]["frame"] if actions else 0
+        for check in checks:
+            check["frame"] = frame
+        retry = _steps(seats, dealer, actions + checks, board, stacks, bomb, opening,
+                       stakes)
+        if retry[0] != "ok":
+            break                     # a seat all in without a stack reading
+        actions, outcome = actions + checks, retry
+        inferred.extend(checks)
     return (*outcome, inferred)
+
+
+def _ahead(action, arena):
+    """``action`` was read on a later street than the replay is on."""
+    street = action.get("street")
+    return (arena is not None and street in STREETS and arena.street in STREETS
+            and STREETS.index(street) > STREETS.index(arena.street))
+
+
+def _checked_around(arena, table):
+    """The checks of the seats still to act on the replay's street when the
+    table has gone past it with no chips put in on it and nobody has a bet
+    to call (see the module notes), or None."""
+    if arena is None or arena.terminal or arena.street == "river" or _to_call(arena):
+        return None
+    street = arena.street
+    later = STREETS[STREETS.index(street) + 1]
+    pots = table.get("street_pots") or {}
+    settled = (pots.get(street) or (None, None))[1]
+    if (STREETS.index(_table_street(table)) <= STREETS.index(street)
+            or settled is None or settled != (pots.get(later) or (None, None))[0]):
+        return None
+    checks, probe = [], deepcopy(arena)
+    while not probe.terminal and probe.street == street:
+        checks.append({"slot": probe.actor, "kind": "check", "street": street,
+                       "amount": "0", "source": "inferred"})
+        probe.step("check_call")
+    return checks
+
+
+def _table_street(table):
+    """The street the table's board is on."""
+    return next((name for name, count in reversed(BOARD)
+                 if len(table.get("board") or ()) >= count), "preflop")
 
 
 def _missed(arena, seat, table, amount_from):
@@ -496,7 +630,8 @@ def fill_to_seat(arena, seat, table):
     table = {**table, "price": price}
     frame = max((action["frame"] for action in table["actions"]), default=0)
     filled, probe = [], arena
-    for _ in range(MAX_INFERRED):
+    # Your button says check: nobody bet, so any number of seats checked.
+    for _ in range(len(arena.occupied_seats) if price == 0 else MAX_INFERRED):
         if probe.terminal or probe.actor == seat:
             break
         actor = probe.actor
@@ -720,7 +855,8 @@ def solver_observation(facts, seat, cards):
         return None, first["reason"]
     if not first["arena"].terminal and first["arena"].actor != seat:
         filled = (fill_to_seat(first["arena"], seat, facts)
-                  if first["dealer_source"] in ("reader", "blinds") else None)
+                  if first["dealer_source"] in ("reader", "blinds", "actor")
+                  else None)
         if filled:
             facts = {**facts, "actions": facts["actions"] + filled}
             first = replay_hand(facts)
@@ -737,6 +873,10 @@ def solver_observation(facts, seat, cards):
     if len(observation["board"]) > len(facts["board"]):
         return None, "board_not_read"
     to_call = Decimal(observation["to_call"])
+    if to_call <= 0 and facts.get("button") in ("call", "all_in"):
+        # Your button asks for chips nobody has bet in the replay: an action
+        # before yours is not read yet (on 杜's computer your own check too).
+        return None, "not_your_turn_yet"
     post = own_post(facts, observation, seat)
     if post and to_call - post == facts.get("price"):
         observation, to_call = with_post(observation, seat, post), to_call - post
