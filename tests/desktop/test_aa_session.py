@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pytest
 
-from poker_engine.desktop.aa_session import AARecognitionSession
+from poker_engine.desktop.aa_session import AARecognitionSession, SIGNAL_KEYS
 
 
 def wait_until(predicate):
@@ -576,6 +576,40 @@ def test_the_status_says_which_device_the_source_found():
     finally:
         session.stop()
         wait_until(lambda: source.closed.is_set())
+
+
+def test_the_signal_window_gets_only_the_keys_it_reads():
+    class Wide(Reader):
+        def read(self, image, sequence, sample):
+            return {"scene_supported": True, "pot": {"value": "12"},
+                    "cards": {"hero": ["Ah", "Kd"]}, "current_actor": None,
+                    "critical_perception_v1": {"actions": list(range(200))},
+                    "evaluation_fields": {"note": "证据"}}
+
+    source = Source()
+    session = AARecognitionSession(
+        lambda _: source, Wide,
+        solver_advice=lambda payload, frame: {"status": "idle", "note": "等你"})
+    session.start({})
+    try:
+        wait_until(lambda: session.snapshot()["payload"] is not None)
+        full = session.snapshot()["payload"]
+        status = session.status_snapshot(view="signal")
+        signal = json.loads(status["payload"])
+        assert signal == {key: full[key] for key in SIGNAL_KEYS if key in full}
+        assert set(signal) == {"scene_supported", "pot", "cards", "current_actor",
+                               "solver_advice_v1"}
+        # Compact, and Chinese as it is (three bytes, not a six-byte escape).
+        assert '"note":"等你"' in status["payload"]
+        whole = session.status_snapshot()
+        assert len(status["payload"]) < len(whole["payload"]) / 4
+        assert set(status) == set(whole)
+        with pytest.raises(ValueError):
+            session.status_snapshot(view="classic")
+    finally:
+        session.stop()
+        wait_until(lambda: source.closed.is_set())
+    assert session.status_snapshot(view="signal")["payload"] is None
 
 
 def test_each_snapshot_gets_its_own_copy_of_the_result():

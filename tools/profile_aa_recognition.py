@@ -3,7 +3,8 @@
 ``log`` reads window logs (``frames.jsonl`` in a recording folder, and its
 ``recording.json``) and prints totals only: frames read a second, the time
 of each step of a frame (waiting for the card, recognition, table math,
-advice), how many frames the card gave and the recorder skipped.
+advice), how many frames the card gave and the recorder skipped, and how
+long the heads-up turn and river solves took.
 
 ``run`` reads a recording's frames one after another (every ``--step``-th
 video frame, as the window samples them) and recognizes each twice: once
@@ -12,7 +13,7 @@ reader's steps (scene, glyphs, money, cards, seats, ...). The same command on
 two computers says which step makes one slower. ``--load recorder`` runs the
 window's recorder at 30 frames a second alongside, as it does live;
 ``--load status`` asks for the window's state four times a second, as the
-signal window does (``/api/status``: the latest result copied and encoded);
+signal window does (``/api/status``, answered as this checkout answers it);
 with a load the run is timed only (Python 3.12's profiler sees every
 thread). ``--threads N`` limits OpenCV's and the math libraries' worker
 threads to N. ``--hashes FILE`` writes a fingerprint of each frame's result,
@@ -133,7 +134,28 @@ def log_summary(path):
                 item.get("recognition_ms"))
     out["recognition_ms_p50_by_10min"] = [quantile(values, .5)
                                           for _, values in sorted(by_part.items())]
+    out["solves"] = solve_summary(rows)
     return out
+
+
+def solve_summary(rows):
+    """Your heads-up turn and river decisions, by the last advice each
+    showed: answered by the solver (and its seconds, from your turn to the
+    answer) or by the range rule (the solve could not run, timed out, or
+    was not done before you acted)."""
+    last = {}
+    for row in rows:
+        advice = (row.get("fields") or {}).get("solver_advice") or {}
+        if (advice.get("street") in ("turn", "river") and advice.get("decision")
+                is not None and advice.get("status") == "ready"):
+            last[advice.get("hand_id"), advice["decision"], advice["street"]] = advice
+    solved = [item for item in last.values() if "kind" not in item]
+    rule = [item for item in last.values()
+            if item.get("kind") == "multiway" and item.get("heads_up") is True]
+    if not solved and not rule:
+        return None
+    return {"solver": len(solved), "range_rule": len(rule),
+            "solver_seconds": spread([item.get("seconds") for item in solved])}
 
 
 def recording_summary(folder):
@@ -318,10 +340,13 @@ class RecorderLoad:
 
 
 def status_answer():
-    """How this checkout answers ``/api/status`` for the latest result, given
-    as (its published JSON text, the parsed result): the text spliced into the
-    answer as it is, or, before the window kept that text, the result copied
-    (``aa_session``) and encoded value by value (FastAPI)."""
+    """How this checkout answers the signal window's ``/api/status``:
+    (name, keep, answer). ``keep(text, payload)`` is what the window keeps
+    of each frame's result when it publishes it (given its JSON text and
+    the parsed result), ``answer(kept)`` the reply's bytes. Newest first:
+    the signal window's part of the result kept as compact JSON and spliced
+    into the reply (``?view=signal``); the whole text spliced in; or the
+    result copied (``aa_session``) and encoded value by value (FastAPI)."""
     try:
         from poker_engine.desktop.aa_server import status_json
         from poker_engine.desktop.aa_session import EncodedJSON
@@ -329,15 +354,19 @@ def status_answer():
         import copy
         from fastapi.encoders import jsonable_encoder
 
-        def answer(text, payload):
+        def copied(payload):
             return json.dumps(jsonable_encoder({"payload": copy.deepcopy(payload)}),
                               ensure_ascii=False, allow_nan=False,
                               separators=(",", ":")).encode("utf-8")
-        return "copy-and-encode", answer
+        return "copy-and-encode", lambda text, payload: payload, copied
 
-    def answer(text, payload):
-        return status_json({"payload": EncodedJSON(text)}).body
-    return "published-json", answer
+    def spliced(kept):
+        return status_json({"payload": EncodedJSON(kept)}).body
+    try:
+        from poker_engine.desktop.aa_session import signal_json
+    except ImportError:
+        return "published-json", lambda text, payload: text, spliced
+    return "signal-json", lambda text, payload: signal_json(payload), spliced
 
 
 class StatusLoad:
@@ -347,7 +376,7 @@ class StatusLoad:
 
     def __init__(self):
         import threading
-        self.path, self.answer = status_answer()
+        self.path, _, self.answer = status_answer()
         self.latest = None
         self.lock = threading.Lock()
         self.times, self.sizes = [], []
@@ -362,7 +391,7 @@ class StatusLoad:
             if latest is None:
                 continue
             began = time.perf_counter()
-            body = self.answer(*latest)
+            body = self.answer(latest)
             self.times.append((time.perf_counter() - began) * 1000)
             self.sizes.append(len(body) / 1024)
 
@@ -455,6 +484,7 @@ def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
     profiler = cProfile.Profile()
     recorder = RecorderLoad(scratch) if load == "recorder" else None
     status = StatusLoad() if load == "status" else None
+    _, keep, _ = status_answer()
     times = {key: [] for key in ("recognition_ms", "profiled_ms", "hash_ms",
                                  "json_ms", "preview_ms", "summary_ms")}
     sizes = []
@@ -473,13 +503,16 @@ def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
             hashed = time.perf_counter()
             payload = timed.read(image, frame, sample)
             read = time.perf_counter()
+            # Published as the window does: encoded, parsed again, and what
+            # its status answers from kept.
             text = json.dumps(payload, allow_nan=False)
             payload = json.loads(text)
+            kept = keep(text, payload)
             encoded = time.perf_counter()
             sizes.append(len(text) / 1024)
             if status is not None:
                 with status.lock:
-                    status.latest = text, payload
+                    status.latest = kept
             cv2.imencode(".jpg", image)
             previewed = time.perf_counter()
             json.dumps(frame_summary(payload), ensure_ascii=False)

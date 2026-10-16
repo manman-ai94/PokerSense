@@ -17,6 +17,21 @@ import numpy as np
 from ..code_version import code_version
 from .aa_turn_runtime import observation_runtime_status
 
+# The payload keys the signal window reads (``PAYLOAD_KEYS`` in
+# ui/aa-live/signal_view.js). Its status, asked four times a second, carries
+# only these, not the whole payload (several hundred KB, growing over a
+# session), which the browser on the same computer would parse every time.
+SIGNAL_KEYS = ("action_history_v1", "cards", "current_actor", "dealer_seat",
+               "grade_v1", "hero_controls_v1", "pot", "scene_supported",
+               "seat_states_v1", "solver_advice_v1", "stacks", "street_v1",
+               "table_math_v1")
+
+
+def signal_json(payload):
+    """The signal window's part of a published payload, as compact JSON."""
+    return json.dumps({key: payload[key] for key in SIGNAL_KEYS if key in payload},
+                      ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+
 
 class AARecognitionSession:
     """Own source lifetime without blocking the server event loop.
@@ -71,8 +86,9 @@ class AARecognitionSession:
         self._instance_id = uuid.uuid4().hex
         self._status = "STOPPED"
         # The latest result as JSON text: every snapshot parses its own copy
-        # (several times faster than copying the parsed result).
-        self._payload_json = self._preview = self._sequence = None
+        # (several times faster than copying the parsed result); and the
+        # signal window's part of it.
+        self._payload_json = self._signal_json = self._preview = self._sequence = None
         self._source_frame = self._processing_ms = self._last_result = None
         self._source_kind = self._pts_seconds = None
         self._source_options = {}
@@ -83,7 +99,7 @@ class AARecognitionSession:
         self._table_seen = None          # when a frame last showed the AA table
 
     def _clear(self):
-        self._payload_json = self._preview = self._sequence = None
+        self._payload_json = self._signal_json = self._preview = self._sequence = None
         self._source_frame = self._processing_ms = self._last_result = None
         self._pts_seconds = None
         self._timing = None
@@ -100,8 +116,8 @@ class AARecognitionSession:
             self._error = None
             self._clear()
 
-    def _snapshot(self, encoded=False):
-        payload = self._payload_json
+    def _snapshot(self, encoded=False, view=None):
+        payload = self._signal_json if view == "signal" else self._payload_json
         if payload is not None:
             payload = EncodedJSON(payload) if encoded else json.loads(payload)
         result = {
@@ -148,14 +164,17 @@ class AARecognitionSession:
             self._expire()
             return self._snapshot()
 
-    def status_snapshot(self):
+    def status_snapshot(self, view=None):
         """``snapshot`` with the payload left as the JSON text it was
         published as (``EncodedJSON``), for the status the window asks for
         four times a second: it goes out as it is, never parsed and encoded
-        again (``aa_server.status_json``)."""
+        again (``aa_server.status_json``). ``view="signal"``: only the
+        payload keys the signal window reads (``SIGNAL_KEYS``)."""
+        if view not in (None, "signal"):
+            raise ValueError(f"unknown status view: {view!r}")
         with self._lock:
             self._expire()
-            return self._snapshot(encoded=True)
+            return self._snapshot(encoded=True, view=view)
 
     def table_seen(self):
         """Seconds since a frame of the running source last showed the AA
@@ -305,6 +324,7 @@ class AARecognitionSession:
                 # Detach mutable reader results and reject NaN/non-JSON values.
                 encoded_payload = json.dumps(payload, allow_nan=False)
                 payload = json.loads(encoded_payload)
+                encoded_signal = signal_json(payload)
                 ok, encoded = cv2.imencode(".jpg", image)
                 if not ok:
                     raise ValueError("could not encode frame preview")
@@ -314,6 +334,7 @@ class AARecognitionSession:
                     self._status = "RUNNING"
                     self._error = None
                     self._payload_json = encoded_payload
+                    self._signal_json = encoded_signal
                     if payload.get("scene_supported") is True:
                         self._table_seen = time.monotonic()
                     self._preview = encoded.tobytes()
@@ -503,4 +524,4 @@ def _append_frame_log(path, processed, record, timing, payload, video_seconds=No
         handle.write(json.dumps(row, ensure_ascii=False, allow_nan=False) + "\n")
 
 
-__all__ = ["AARecognitionSession", "EncodedJSON"]
+__all__ = ["AARecognitionSession", "EncodedJSON", "SIGNAL_KEYS", "signal_json"]

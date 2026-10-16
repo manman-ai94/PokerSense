@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from poker_engine.desktop import aa_server
+from poker_engine.desktop.aa_session import SIGNAL_KEYS
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -30,6 +32,17 @@ def test_the_signal_window_view_covers_each_state():
         capture_output=True, text=True, encoding="utf-8", timeout=30, check=False)
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "signal view cases passed" in completed.stdout
+
+
+def test_the_signal_window_asks_for_only_the_keys_its_view_reads():
+    # The view script checks it reads no key outside PAYLOAD_KEYS; the
+    # session sends the same list.
+    view = (ROOT / "ui/aa-live/signal_view.js").read_text(encoding="utf-8")
+    listed = re.search(r"const PAYLOAD_KEYS = \[(.*?)\];", view, re.S).group(1)
+    assert tuple(re.findall(r'"(\w+)"', listed)) == SIGNAL_KEYS
+    page = (ROOT / "ui/aa-live/signal.js").read_text(encoding="utf-8")
+    assert page.count('fetch("/api/status?view=signal"') == 1
+    assert 'fetch("/api/status"' not in page
 
 
 def test_the_signal_window_is_the_front_page_and_the_old_page_stays(tmp_path):

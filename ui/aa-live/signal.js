@@ -224,7 +224,8 @@
     if (pending || (document.hidden && !pip)) return;
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 2500);
     try {
-      const response = await fetch("/api/status", {headers, cache: "no-store", signal: abort.signal});
+      // Only the payload keys the view reads (SignalView.PAYLOAD_KEYS).
+      const response = await fetch("/api/status?view=signal", {headers, cache: "no-store", signal: abort.signal});
       if (!response.ok) throw Error(`HTTP ${response.status}`);
       const state = await response.json();
       // A new launch replaced the window this page came from: load its page.

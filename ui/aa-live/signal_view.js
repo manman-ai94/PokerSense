@@ -14,6 +14,12 @@
   };
   const HERO = 4;
   const BOARD = {preflop: 0, flop: 3, turn: 4, river: 5};
+  // Every payload key this view reads. signal.js asks for the status with
+  // only these (/api/status?view=signal, aa_session.SIGNAL_KEYS lists the
+  // same), not the whole payload of several hundred KB.
+  const PAYLOAD_KEYS = ["action_history_v1", "cards", "current_actor", "dealer_seat",
+    "grade_v1", "hero_controls_v1", "pot", "scene_supported", "seat_states_v1",
+    "solver_advice_v1", "stacks", "street_v1", "table_math_v1"];
   // A missing read this soon after your buttons appear is usually the screen
   // settling (cards sliding in, a new street), so it waits before warning.
   const SETTLE_SECONDS = 1.5;
@@ -780,7 +786,7 @@
     return {...view, tone: "info", title: "这一步不给建议", note: `${reasonText(reason)}。`};
   }
 
-  const api = {signalView, positions, reasonText, gradeView, sessionView};
+  const api = {signalView, positions, reasonText, gradeView, sessionView, PAYLOAD_KEYS};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.SignalView = api;
 })(typeof window !== "undefined" ? window : globalThis);

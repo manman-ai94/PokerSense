@@ -13,7 +13,7 @@ from poker_engine.core.enums import Position
 from poker_engine.desktop import aa_solver_advice
 from poker_engine.desktop.aa_session import frame_summary
 from poker_engine.desktop.aa_solver_advice import (
-    AASolverAdvice, multiway_row, pot_on_screen)
+    AASolverAdvice, multiway_row, pot_on_screen, solver_threads)
 from poker_engine.scoreboard.multiway_bot import DEFAULTS
 from poker_engine.scoreboard.solver_bot import Fallback
 from tests.timing import Stopwatch, budget, over, timing, within_budget
@@ -103,6 +103,16 @@ def still():
 
 def run(advice, frames, **options):
     return [advice.observe(payload(frame, **options), frame) for frame in frames]
+
+
+def test_the_solve_leaves_half_the_computer_to_recognition(monkeypatch):
+    # 4 on the Mac (10) as before, 2 on a laptop with 2 cores and 4 threads.
+    assert [solver_threads(cpus) for cpus in (1, 2, 3, 4, 6, 8, 10, 16)] == [
+        1, 1, 1, 2, 3, 4, 4, 4]
+    monkeypatch.setattr(aa_solver_advice.os, "cpu_count", lambda: None)
+    assert solver_threads() == 1
+    monkeypatch.setattr(aa_solver_advice.os, "cpu_count", lambda: 4)
+    assert solver_threads() == 2
 
 
 def test_your_turn_on_the_turn_gets_the_solvers_frequencies():

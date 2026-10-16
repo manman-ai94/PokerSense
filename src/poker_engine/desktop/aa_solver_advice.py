@@ -141,6 +141,7 @@ from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from itertools import combinations
 import json
+import os
 import sys
 import time
 
@@ -168,9 +169,21 @@ from .aa_solver_input import (RULES_PATH, hand_facts, solver_observation,
                               table_observation)
 from .aa_stakes import settle_stakes, stakes_report
 
+
+def solver_threads(cpus=None):
+    """Solver threads for a heads-up solve on your turn: half this
+    computer's logical CPUs, 1 to 4 (the scoreboard uses one). The solve
+    runs next to recognition, the recorder and the browser: 4 threads took
+    every CPU of a laptop with 2 cores and 4 threads, and even on the Mac,
+    with 4 of its 10, a frame's recognition took half as long again while
+    one ran (129 against 88 ms)."""
+    cpus = os.cpu_count() if cpus is None else cpus
+    return max(1, min(4, (cpus or 2) // 2))
+
+
 HERO = 4                        # your seat: bottom centre
 SOLVED = ("turn", "river")      # heads-up: a flop solve takes about a minute
-THREADS = 4                     # solver threads (the scoreboard uses one)
+THREADS = solver_threads()      # solver threads, 4 on the Mac
 # Seconds: a solve this late is past your turn; the solver is stopped and the
 # range rule answers.
 SOLVE_TIMEOUT = 30.0
