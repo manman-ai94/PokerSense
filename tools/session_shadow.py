@@ -48,6 +48,11 @@ never shown to the player.
   straddle or bomb post; 0 after a bust). A fold at the decision comes to 0
   by this count; ``fold_check`` counts the decisions you folded where it did
   not (a stack read wrong). A dealer's mushroom post is not in it.
+* ``plain_fold_shown`` (the minutes' P3 count): after the flop, the times
+  plain folds and every opponent still in later shows his cards, and how
+  many of those he showed one pair or less of his own on the last board
+  read (``multiway_bot.weak_hand``: a pair on the board is not his), a pair
+  or a bluff the fold gave up to; every such decision, a divergence or not.
 * ``booked`` (every first divergence, both lines worth 0 when they fold and
   what you got when they are what you did) and ``by_shown`` (every
   divergence where the opponents still in showed their cards, both lines
@@ -69,6 +74,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     hand_facts, table_observation)
+from poker_engine.scoreboard.multiway_bot import weak_hand  # noqa: E402
 from poker_engine.scoreboard.plain_policy import hands as hand_set  # noqa: E402
 from poker_engine.scoreboard.strength import hand_class  # noqa: E402
 from tools.aa_compare_advice import chips, shown_spot  # noqa: E402
@@ -245,12 +251,32 @@ def luck_out(here, hand):
     return round(here - runout, 2)
 
 
-def by_shown(rows, indexes, hand_id, old, plain, big_blind):
-    """Both lines against the cards the opponents still in showed, or None."""
+def spot_of(rows, indexes, hand_id):
+    """``aa_compare_advice.shown_spot`` (the table at the decision, your share
+    against the cards the opponents still in showed, those cards), or None."""
     try:
-        spot = shown_spot(rows, indexes, hand_id)
+        return shown_spot(rows, indexes, hand_id)
     except Exception:                   # noqa: BLE001 - a hand that does not replay
         return None
+
+
+def last_board(rows):
+    """The most board cards read in the hand."""
+    return max(([card for card in row["fields"].get("board") or () if card]
+                for row in rows), key=len, default=[])
+
+
+def weak_shown(spot, rows):
+    """Whether every opponent still in showed one pair or less of his own on
+    the last board read, or None when they did not all show."""
+    board = last_board(rows)
+    if spot is None or len(board) < 3:
+        return None
+    return all(weak_hand(cards.split(), board) for cards in spot[2].values())
+
+
+def by_shown(spot, old, plain, big_blind):
+    """Both lines against the cards the opponents still in showed, or None."""
     big_blind = _decimal(big_blind)
     if spot is None or not big_blind:
         return None
@@ -313,7 +339,14 @@ def decision_item(rows, position, replayed, hand, after, turn, decision, *, firs
             else old["action"] == plain["action"],
             "first_divergence": False, "group": None, "entered": None,
             "in_minus_fold_bb": None, "in_minus_fold_luck_out_bb": None,
-            "booked": None, "by_shown": None, "loosened": loosened(decision, plain)}
+            "booked": None, "by_shown": None, "plain_fold_weak_shown": None,
+            "loosened": loosened(decision, plain)}
+    folds = (plain is not None and plain["action"] == "fold"
+             and decision.get("street") != "preflop")
+    spot = (spot_of(rows, indexes, hand["hand_id"])
+            if folds or item["agree"] is False else None)
+    if folds:
+        item["plain_fold_weak_shown"] = weak_shown(spot, hand["rows"])
     if item["loosened"]:
         item["entered"] = None if you is None else you in ("call", "raise")
         if item["entered"]:
@@ -321,8 +354,7 @@ def decision_item(rows, position, replayed, hand, after, turn, decision, *, firs
             item["in_minus_fold_luck_out_bb"] = luck_out(here, hand)
     if item["agree"] is not False:
         return item
-    item["by_shown"] = by_shown(rows, indexes, hand["hand_id"], old, plain,
-                                hand["big_blind"])
+    item["by_shown"] = by_shown(spot, old, plain, hand["big_blind"])
     if not first:
         return item
     group = group_of(decision, old, plain)
@@ -389,6 +421,13 @@ def summary(items, code, page_version):
         "first_divergences": len(first), "groups": groups, "loosened": loose,
         "booked": {"n": len(booked), "plain_minus_old_bb": round(sum(booked), 2)},
         "by_shown": {"n": len(shown), "plain_minus_old_bb": round(sum(shown), 2)},
+        "plain_fold_shown": {
+            "n": sum(item["plain_fold_weak_shown"] is not None for item in items),
+            "weak": sum(item["plain_fold_weak_shown"] is True for item in items),
+            "diverged": sum(item["plain_fold_weak_shown"] is not None
+                            for item in diverged),
+            "diverged_weak": sum(item["plain_fold_weak_shown"] is True
+                                 for item in diverged)},
         "fold_check": {"n": len(folds),
                        "off": sum(abs(value) > FOLD_OFF_BB for value in folds)},
         "convention": CONVENTION}
