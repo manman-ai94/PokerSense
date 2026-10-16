@@ -107,7 +107,13 @@ FACING_RAISE = {"hu": (0.15, 0.45), "multi": (0.05, 0.22)}
 SIZE_FACTOR = ((0.4, 1.25), (0.8, 1.0), (1.2, 0.75), (None, 0.55))
 MIX = 0.6                       # before the flop: decisions not by the cards
 # After the flop, the weight hands outside the band keep (of the band's 1):
-SLOW = 0.3                      # strong hands that check or call
+# Strong hands that check or call, by street: the AA calibrated table's fit
+# (aa_cal_stats_v1.json; strong hands check the river 70% of the time).
+SLOW = {"flop": 0.4, "turn": 0.5, "river": 0.7}
+# A bet or raise of this much of the pot or more is read from the range as
+# it was when the flop came: the checks and calls before it do not make his
+# strong hands less likely (#114 reads the range rule's big bets this way).
+BIG_BET = 0.9
 BLUFF = {"flop": 0.10, "turn": 0.08, "river": 0.05}     # bets without one
 STICKY = {"flop": 0.15, "turn": 0.10, "river": 0.05}    # calls without one
 # Raises without one: the AA calibrated table fitted no bluff raises at all
@@ -297,7 +303,7 @@ def likelihood(move, place):
         bet = CHECKED_TO.get((move.street, move.width, move.role), 0.3)
         if move.kind == "r":
             return np.where(place <= min(1.0, bet * factor), 1.0, BLUFF[move.street])
-        return np.where(place <= bet, SLOW, 1.0)
+        return np.where(place <= bet, SLOW[move.street], 1.0)
     if move.spot == "facing_bet":
         raise_share, call_share = FACING_BET.get((move.street, move.width), (0.1, 0.3))
     else:
@@ -306,7 +312,7 @@ def likelihood(move, place):
         return np.where(place <= raise_share * factor, 1.0, RAISE_FLOOR)
     keep = min(1.0, (raise_share + call_share) * factor)
     top = min(raise_share * factor, keep)       # the hands that would raise
-    return np.where(place <= top, SLOW,
+    return np.where(place <= top, SLOW[move.street],
                     np.where(place <= keep, 1.0, STICKY[move.street]))
 
 
@@ -314,10 +320,14 @@ def read_ranges(moves, seats, dead=()):
     """{seat: weights over ``PAIRS``} for each of ``seats`` after ``moves``,
     without the hands that use a card of ``dead`` (yours and the board)."""
     ranges = {seat: np.ones(len(PAIRS)) for seat in seats}
+    flop = {}                   # each range as the flop came
     for move in moves:
         if move.seat not in ranges or move.kind == "f":
             continue
-        weights = ranges[move.seat] * alive(move.board)
+        if move.street != "preflop":
+            flop.setdefault(move.seat, ranges[move.seat])
+        big = move.street != "preflop" and move.kind == "r" and move.size >= BIG_BET
+        weights = (flop[move.seat] if big else ranges[move.seat]) * alive(move.board)
         strength = board_strength(move.board)
         after = weights * likelihood(move, places(weights, strength))
         if after.sum() > 0:

@@ -54,19 +54,31 @@ def test_every_action_keeps_every_hand_possible():
 
 def test_a_bigger_bet_keeps_fewer_hands_and_the_best_ones_whole():
     dead = ("Qh", "Qd", *RIVER)
-    half = simple.read_ranges(BEFORE_RIVER + (shove(0.5),), (0,), dead)[0]
+    pot = simple.read_ranges(BEFORE_RIVER + (shove(1.0),), (0,), dead)[0]
     jam = simple.read_ranges(BEFORE_RIVER + (shove(2.0),), (0,), dead)[0]
-    assert jam.sum() < half.sum()
+    assert jam.sum() < pot.sum()
     strength = simple.board_strength(RIVER)
-    nuts = int(np.argmax(np.where(half > 0, strength, -1)))
+    nuts = int(np.argmax(np.where(pot > 0, strength, -1)))
     assert sorted((simple.KEYS[nuts][:2], simple.KEYS[nuts][2:]))[0][0] in "86"
     # The best hands are read the same; the middle is cut; air keeps its
     # bluffing weight, so a shove is never read as nothing but the nuts.
-    assert jam[nuts] == half[nuts] > 0
-    assert (jam < half).any()
+    assert jam[nuts] == pot[nuts] > 0
+    assert (jam < pot).any()
     air = simple.KEYS.index(next(key for key in simple.KEYS
                                  if sorted((key[:2], key[2:])) == ["3c", "4h"]))
-    assert jam[air] == half[air] > 0
+    assert jam[air] == pot[air] > 0
+
+
+def test_a_big_bet_is_read_from_the_range_he_took_to_the_flop():
+    # His turn check marked top two pair down as a slow play; a pot-sized
+    # river bet starts again from his range as the flop came, a small one
+    # keeps the mark.
+    dead = ("Qh", "Qd", *RIVER)
+    small = simple.read_ranges(BEFORE_RIVER + (shove(0.5),), (0,), dead)[0]
+    big = simple.read_ranges(BEFORE_RIVER + (shove(1.0),), (0,), dead)[0]
+    two_pair = simple.KEYS.index(next(key for key in simple.KEYS
+                                      if sorted((key[:2], key[2:])) == ["9h", "Kh"]))
+    assert big[two_pair] == pytest.approx(small[two_pair] / simple.SLOW["turn"])
 
 
 def test_one_pair_folds_to_a_big_river_shove_and_the_nuts_call():
