@@ -74,6 +74,7 @@ def test_this_computers_own_uploads_are_not_pulled_back(tmp_path):
 def test_setup_keeps_the_player_the_synced_folder_and_since(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, "private_root", lambda: tmp_path / "private")
     monkeypatch.setattr(sync.shutil, "which", lambda name: None)
+    monkeypatch.setattr(aa_upload, "rclone_places", lambda: [])   # not this host's
     sync.main(["setup", "--machine", "peng", "--player", "peng", "--since",
                "20261016", "--root", str(tmp_path / "rec")])
     settings = json.loads((tmp_path / "private" / "upload" / "settings.json")
