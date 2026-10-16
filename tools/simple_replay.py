@@ -226,26 +226,38 @@ def screen_spot(fields, rows, facts, cards, street, stakes):
 # -- what a fold would have kept -----------------------------------------------
 
 def final_stacks(rows):
-    """{hand id: your chips once the hand was over}: the next hand's stack at
-    its start (``aa_session_report.stack``, read after its antes and blinds)
-    plus what you posted for it; None after the log's last hand (or a bust).
-    A hand that goes on with your same two cards (split in two) is one hand."""
+    """{hand id: (your chips at its start, once it was over)}. The start is
+    ``aa_session_report.stack`` (read after the antes and blinds); the end is
+    the next hand's start plus what you posted for it, or 0 after a bust
+    (your last stack read 0 and the next hand dealt you no cards or read no
+    stack, or the log ended), as ``luck_results`` counts it; None when not
+    known. A hand that goes on with your same two cards (split in two) is
+    one hand, from the first part's start."""
     grouped = fly.by_hand(rows)
     stakes = fly.hand_stakes(grouped)
     ids = list(grouped)
     cards = {hand_id: mode(" ".join(row["fields"]["hero"]) for row in part
                            if row["fields"].get("hero") and all(row["fields"]["hero"]))
              for hand_id, part in grouped.items()}
-    found = {}
+    found, begin = {}, None
     for index, hand_id in enumerate(ids):
+        before = ids[index - 1] if index else None
+        if not (before and cards[hand_id] and cards[hand_id] == cards[before]):
+            begin = stack(grouped[hand_id])
         later = next((other for other in ids[index + 1:]
                       if not (cards[other] and cards[other] == cards[hand_id])), None)
         start = stack(grouped[later]) if later is not None else None
-        if start is None:
-            found[hand_id] = None
+        readings = [number((row["fields"].get("stacks") or {}).get(str(HERO)))
+                    for row in grouped[hand_id]]
+        last = next((value for value in reversed(readings) if value is not None), None)
+        if last == 0 and (later is None or not start or not cards[later]):
+            found[hand_id] = (begin, 0.0)
             continue
-        found[hand_id] = float(Decimal(str(start)) + posted(
-            hand_facts(grouped[later], stakes[later])))
+        if later is None or not start:
+            found[hand_id] = (begin, None)
+            continue
+        found[hand_id] = (begin, float(Decimal(str(start)) + posted(
+            hand_facts(grouped[later], stakes[later]))))
     return found
 
 
@@ -279,7 +291,7 @@ def posted(facts, seat=HERO):
 
 def results(name, rows):
     """{hand id: (your result in big blinds, all-in luck in big blinds)} as
-    ``luck_results`` counts them."""
+    ``luck_results`` counts them (the luck is used here)."""
     lines, _ = luck_results.hand_lines(name, rows)
     return {line["hand_id"]: (line["bb"], line["runout_luck"] or 0.0) for line in lines}
 
@@ -375,16 +387,17 @@ def replay_log(name, rows, solver=False):
             item["you_put"] = done["amount"]
         now_stack = number(mode((rows[i]["fields"].get("stacks") or {}).get(str(HERO))
                                 for i in indexes))
-        ended = finals.get(hand_id)
-        result = outcome.get(hand_id)
+        item["stack"] = now_stack
+        begin, ended = finals.get(hand_id) or (None, None)
+        luck = (outcome.get(hand_id) or (None, 0.0))[1]
         big_blind = float((window.stakes() or {}).get("big_blind") or 2)
         if now_stack is not None and ended is not None:
             # Folding here keeps what you have now; the hand ended with
             # ``ended`` (less the all-in luck, as the results count it).
-            luck = result[1] if result else 0.0
             item["fold_keeps_bb"] = round((now_stack - ended) / big_blind + luck, 2)
-        if result is not None:
-            item["hand_bb"], item["hand_luck_bb"] = result
+        if begin is not None and ended is not None:
+            item["hand_bb"] = round((ended - begin) / big_blind, 2)
+            item["hand_luck_bb"] = luck
         spot = shown_spot(rows, indexes, hand_id)
         if spot is not None:
             observation, share, cards = spot
