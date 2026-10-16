@@ -107,3 +107,14 @@ def test_a_range_s_share_counts_every_hand_an_opponent_could_hold():
     dead = {"Qs", "Qh", "Ah", "Kd", "7c"}
     assert range_share({"AcAd": 1.0, "KcKs": 0.5}, dead) == 1.5 / (47 * 46 / 2)
     assert range_share({"QsQd": 1.0}, dead) == 0.0          # holds one of your cards
+
+
+def test_the_advice_stands_when_its_sentence_cannot_be_written(monkeypatch):
+    from poker_engine.desktop import aa_classic_advice
+
+    def broken(*args):
+        raise ValueError("no sentence")
+    monkeypatch.setattr(aa_classic_advice, "postflop_why", broken)
+    observation = spot({4: "QsQh"}, "AhKd7c", "3f 4r12 5f 6f 7f 0f 1f 2c 2r20")
+    report = ClassicPolicy().decide(observation)
+    assert report["kind"] == "multiway" and report["why"] is None

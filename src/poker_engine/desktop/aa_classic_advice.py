@@ -267,7 +267,7 @@ class ClassicPolicy:
         return {"kind": "preflop", "advice": [advice], "options": options,
                 "mushroom_pool": counted, "reads_hands": _read_hands(observation),
                 "basis": PREFLOP_BASIS,
-                "why": preflop_why(observation, self.preflop_policy(), options)}
+                "why": _why(preflop_why, observation, self.preflop_policy(), options)}
 
     def postflop(self, observation):
         live = [seat for seat in observation["occupied_seats"]
@@ -299,8 +299,8 @@ class ClassicPolicy:
             report["guard"] = guard_report(guarded(observation),
                                            multiway_row(bold, observation),
                                            observation["street"])
-        report["why"] = postflop_why(observation, ranges, value, line,
-                                     report["advice"][0], report.get("guard"))
+        report["why"] = _why(postflop_why, observation, ranges, value, line,
+                             report["advice"][0], report.get("guard"))
         return report
 
 
@@ -334,6 +334,15 @@ def _line(table):
     stacks, the cards on the board and the actions."""
     return (table["starting_stacks"], table["board"],
             [row["id"] for row in table["public_history"]])
+
+
+def _why(function, *args):
+    """The answer's sentence, numbers and flip (``aa_classic_why``), or None:
+    the advice stands without them."""
+    try:
+        return function(*args)
+    except Exception:
+        return None
 
 
 def _read_hands(observation):
