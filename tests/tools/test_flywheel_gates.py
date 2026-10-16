@@ -89,6 +89,19 @@ def test_default_tests_look_in_the_checkout_given(tmp_path):
     assert gates.default_tests(changed, root=tmp_path) == ["tests/desktop"]
 
 
+def test_a_changed_test_helper_runs_the_tests_beside_it(tmp_path):
+    """A helper module or conftest holds no tests: pytest given only it
+    collects nothing and fails (exit 5), and the tests using it never run."""
+    (tmp_path / "tests" / "strategy").mkdir(parents=True)
+    for name in ("tests/strategy/helpers.py", "tests/strategy/test_a.py",
+                 "tests/conftest.py"):
+        (tmp_path / name).write_text("", encoding="utf-8")
+    changed = ["tests/strategy/helpers.py", "tests/strategy/test_a.py"]
+    assert gates.default_tests(changed, root=tmp_path) == ["tests/strategy"]
+    assert gates.default_tests(["tests/conftest.py", "tests/strategy/test_a.py"],
+                               root=tmp_path) == ["tests"]
+
+
 def test_lines_say_each_gate_in_plain_words():
     result = {"base": "a" * 40, "head": "b" * 40, "head_dirty": True, "gates": {
         "replay": None,
