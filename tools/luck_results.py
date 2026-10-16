@@ -14,7 +14,12 @@ in big blinds at the hand's own level):
   when every live hand was face up and the whole board read. The hand is
   replayed on the AA table (``aa_solver_input``, from the stacks read, else
   deep) for what each player put in, and only counts when that replay pays
-  you what the table did (within ``SETTLE_MATCH`` of the pot);
+  you what the table did (within ``SETTLE_MATCH`` of the pot). A hand that
+  does not replay, or whose replay pays out otherwise, is worked out from
+  the screen instead when two were left with their cards face up
+  (``screen_runout``): the street one of them went all in, and the pot they
+  played for from the pot read, their stacks and your result, which it
+  must agree with;
 * the result less both: on average the same as the result, whatever was
   decided (only chance is taken out), with less spread.
 
@@ -59,18 +64,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from poker_engine.desktop.aa_solver_input import (  # noqa: E402
-    hand_facts, replay_hand, starting_stacks)
+    PLAYERS, _rules, hand_facts, replay_hand, starting_stacks)
 from poker_engine.desktop.aa_stakes import stakes_label  # noqa: E402
 from poker_engine.scoreboard import luck  # noqa: E402
 from poker_engine.scoreboard.allin_ev import SHOWN, _rake_share  # noqa: E402
 from poker_engine.scoreboard.strength import DECK  # noqa: E402
+from poker_engine.strategy.aa_rules_v2 import estimate_rake  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
-from tools.aa_session_report import HERO, followed, session_report  # noqa: E402
+from tools.aa_session_report import (  # noqa: E402
+    HERO, IN_HAND, followed, number, session_report, stack)
 from tools.aa_strategy_review import decisions as review_decisions  # noqa: E402
 
 SEAT = int(HERO)
 WIDTHS = (100, 20)          # bb/100 an interval of ± this many needs how many hands
 SETTLE_MATCH = 0.05         # share of the pot the replayed result may be off
+ALL_IN_FRAMES = 3           # frames a seat must read all in (or folded) to count
+CALLED = 1.5                # pot growth after an all-in (his last chips) from a call
 
 
 def stable_seed(*parts):
@@ -123,15 +132,28 @@ def _replayed(facts):
     return replay["arena"], "deep"
 
 
-def runout(hand, facts, big_blind):
+def runout(hand, facts, big_blind, rows=()):
     """{"allin", "luck" (big blinds), "why"} for one hand: ``allin`` False
     (luck 0) when nothing was left to come for you, True with ``luck`` None
     and why when an all-in could not be worked out, None when the hand did
-    not replay (whether it was an all-in is not known)."""
+    not replay (whether it was an all-in is not known). A hand that does not
+    replay, or whose replay pays out otherwise or misses the board, is
+    worked out from its frames (``rows``, ``screen_runout``) when they show
+    it."""
     arena, how = _replayed(facts)
     if arena is None or not arena.terminal:
         why = how if arena is None else "not_finished"
-        return {"allin": None, "luck": None, "why": f"replay:{why}"}
+        return (screen_runout(hand, rows, facts, big_blind)
+                or {"allin": None, "luck": None, "why": f"replay:{why}"})
+    found = _replay_runout(hand, facts, big_blind, arena, how)
+    if found["why"] in ("board_unread", "settle_mismatch"):
+        screen = screen_runout(hand, rows, facts, big_blind)
+        if screen and screen["luck"] is not None:
+            return screen
+    return found
+
+
+def _replay_runout(hand, facts, big_blind, arena, how):
     alive = [i for i, seat in enumerate(arena._seats) if seat not in arena._folded]
     street = arena._history[-1]["street"] if arena._history else "preflop"
     if (len(alive) < 2 or SHOWN[street] >= 5 or SEAT not in arena._seats
@@ -170,6 +192,177 @@ def runout(hand, facts, big_blind):
             "settle_matches": True}
 
 
+def screen_runout(hand, rows, facts, big_blind):
+    """``runout`` from the hand's frames alone, for two players still in, or
+    None when they do not show it (your seat never read dealt in).
+
+    A seat is still in when it did not read folded once dealt in: you, and
+    the others that showed their cards. The betting closed in the frame
+    where all of you but one were all in (stack 0, or the seat read all in),
+    on that frame's street. Its luck is your share of the pot the two of you
+    played for, after rake (all, half or none: the board's, else your
+    result's sign), less your chance of winning it then (``_played``)."""
+    rows = [row for row in rows if row.get("fields")]
+    dealt = next((at for at, row in enumerate(rows) if _state(row, SEAT) in IN_HAND),
+                 None)
+    if dealt is None:
+        return None
+    rows = rows[dealt:]
+    nothing = {"allin": False, "luck": 0.0, "why": None, "replay": "screen"}
+    found = {"allin": True, "luck": None, "replay": "screen"}
+    folded = {seat for seat in range(8) if _folded(rows, seat)}
+    if SEAT in folded:
+        return nothing
+    shown = {item["seat"]: list(item["cards"]) for item in hand["shown_cards"]
+             if item["seat"] != SEAT and item["seat"] not in folded}
+    live = [SEAT, *sorted(shown)]
+    if len(live) < 2:
+        # Nobody else showed: an all-in of yours, or one you called, cannot
+        # be worked out.
+        others = [_first([at for at, row in enumerate(rows)
+                          if _state(row, seat) == "all_in"])
+                  for seat in range(8) if seat != SEAT]
+        anyone = [at for at in [_first(_all_in_frames(rows, SEAT)), *others]
+                  if at is not None]
+        if anyone and SHOWN[_street(rows, min(anyone))] < 5:
+            return {**found, "why": "cards_not_shown"}
+        return nothing
+    closed = _closed(rows, live)
+    if closed is None or SHOWN[_street(rows, closed)] >= 5:
+        return nothing
+    if len(live) > 2:
+        return {**found, "why": "multiway"}
+    street = _street(rows, closed)
+    holes = {0: (hand.get("your_cards") or "").split(), 1: shown[live[1]]}
+    if not all(len(cards) == 2 and all(card in DECK for card in cards)
+               for cards in holes.values()):
+        return {**found, "why": "cards_not_shown"}
+    board = list(facts["board"])
+    known = board[:SHOWN[street]]
+    seen = board + [card for cards in holes.values() for card in cards]
+    if len(set(seen)) != len(seen) or not all(card in DECK for card in board):
+        return {**found, "why": "cards_conflict"}
+    if len(known) < SHOWN[street]:
+        return {**found, "why": "board_unread"}
+    if len(board) == 5:
+        share = (luck.runout_result([1.0, 1.0], holes, board)[0] + 1) / 2
+    elif hand["your_chips"]:
+        share = 1.0 if hand["your_chips"] > 0 else 0.0
+    else:
+        return {**found, "why": "board_unread"}
+    # The rake does not change with the table's size (the rules cover 4-8).
+    players = min(max(len(facts["seats"]), min(PLAYERS)), max(PLAYERS))
+    played = _played(rows, closed, live[1], share, hand["your_chips"],
+                     _rules(players, facts.get("stakes")))
+    if played is None:
+        return {**found, "why": "settle_mismatch", "settle_matches": False}
+    outcomes = luck.runout_outcomes([1.0, 1.0], holes, known,
+                                    seed=stable_seed(hand["log"], hand["hand_id"]))
+    chance = (sum(result[0] for _, result in outcomes) / len(outcomes) + 1) / 2
+    return {**found, "why": None, "luck": (share - chance) * played / big_blind,
+            "settle_matches": True}
+
+
+def _played(rows, closed, other, share, yours, rules):
+    """The pot you and ``other`` played for after rake, read off the screen
+    from the frame the betting ``closed``, or None when no reading of it
+    agrees with your result (``yours``, your ``share`` of it).
+
+    The screen's pot holds a bet the all-in could not call until the hand is
+    paid. With both of you all in, that part is the bigger stack's excess
+    over the smaller. With one all in and the pot then growing by more than
+    his last chips again (the other called him), there is none. Either of
+    those counts when your share of it less your stake is your result,
+    within ``SETTLE_MATCH`` of the pot. Else it is what the winner won plus
+    what the loser lost: you by the table's result, the other by his stack
+    before the hand and the last one read in it."""
+    pot = _steady_max(number(row["fields"].get("pot")) for row in rows[closed:])
+    before = _steady_max(number(row["fields"].get("pot")) for row in rows[:closed])
+    stakes = {seat: stack(rows, str(seat)) for seat in (SEAT, other)}
+    all_in = {seat: _first(_all_in_frames(rows, seat)) for seat in (SEAT, other)}
+    whole = None
+    if pot and None not in stakes.values():
+        if None not in all_in.values():
+            whole = pot - abs(stakes[SEAT] - stakes[other])
+        else:
+            short = SEAT if all_in[SEAT] is not None else other
+            last = [number((row["fields"].get("stacks") or {}).get(str(short)))
+                    for row in rows[:all_in[short]]]
+            last = next((value for value in reversed(last) if value), None)
+            if before is not None and last and pot - before >= CALLED * last:
+                whole = pot
+    if whole:
+        net = whole - float(estimate_rake(rules, str(whole), saw_flop=True).amount)
+        if abs(share * net - min(stakes.values()) - yours) <= SETTLE_MATCH * whole:
+            return net
+    after = _last_stack(rows, other)
+    if share == 0.5 or stakes[other] is None or after is None:
+        return None
+    theirs = after - stakes[other]
+    won, lost = (yours, -theirs) if share else (theirs, -yours)
+    played = won + lost
+    cap = float(rules.rake_cap_bb * rules.big_blind)
+    if (won <= 0 or lost <= 0 or (pot and played > pot * (1 + SETTLE_MATCH))
+            or 2 * lost > played + cap + SETTLE_MATCH * played):
+        return None
+    return played
+
+
+def _steady_max(values):
+    """The largest value read in two frames or more, or None."""
+    counts = Counter(value for value in values if value)
+    return max((value for value, count in counts.items() if count >= 2), default=None)
+
+
+def _state(row, seat):
+    return (row["fields"].get("participants") or {}).get(str(seat))
+
+
+def _folded(rows, seat):
+    """Whether the seat read folded once it was in the hand (the last hand's
+    folds can still show as this one is dealt)."""
+    states = [_state(row, seat) for row in rows]
+    dealt = next((at for at, state in enumerate(states) if state in IN_HAND), None)
+    return dealt is not None and states[dealt:].count("folded") >= ALL_IN_FRAMES
+
+
+def _first(frames, count=ALL_IN_FRAMES):
+    """The first of these frame numbers, when there are at least ``count``."""
+    return frames[0] if len(frames) >= count else None
+
+
+def _all_in_frames(rows, seat):
+    """The frames (numbers into ``rows``) where the seat read all in: no
+    chips left, or its seat read all in."""
+    return [at for at, row in enumerate(rows) if _state(row, seat) == "all_in"
+            or number((row["fields"].get("stacks") or {}).get(str(seat))) == 0]
+
+
+def _closed(rows, live):
+    """The frame where all of live but one were all in, or None."""
+    firsts = sorted(at for at in (_first(_all_in_frames(rows, seat)) for seat in live)
+                    if at is not None)
+    return firsts[len(live) - 2] if len(firsts) >= len(live) - 1 else None
+
+
+def _last_stack(rows, seat):
+    """The seat's last stack read in two frames running (after the pot was
+    paid, when the frames go on that long)."""
+    values = [number((row["fields"].get("stacks") or {}).get(str(seat)))
+              for row in rows]
+    values = [value for value in values if value is not None]
+    return next((one for one, two in zip(values[::-1], values[-2::-1]) if one == two),
+                None)
+
+
+def _street(rows, at):
+    """The street read at frame ``at`` (else the last one read before it)."""
+    for row in reversed(rows[:at + 1]):
+        if row["fields"].get("street") in SHOWN:
+            return row["fields"]["street"]
+    return "preflop"
+
+
 def hand_lines(name, rows, code=None):
     """(hand lines, decision lines) of one log."""
     rows = [row for row in rows if row.get("fields")]
@@ -189,7 +382,7 @@ def hand_lines(name, rows, code=None):
         bomb = bool(hand.get("bomb_pot"))
         bb = hand["your_chips"] / big_blind
         cards, cards_why = card_luck(hand, facts, bomb)
-        ran = runout(hand, facts, big_blind)
+        ran = runout(hand, facts, big_blind, grouped[hand["hand_id"]])
         adjusted = bb - (cards or 0.0) - (ran["luck"] or 0.0)
         seat, _ = position(facts)
         line = {"log": name, "hand_id": hand["hand_id"], "code": code,
@@ -204,6 +397,7 @@ def hand_lines(name, rows, code=None):
                 "runout_missing": ran["why"],
                 "allin": ran["allin"],
                 "settle_matches": ran.get("settle_matches"),
+                "runout_from": ran.get("replay"),
                 "adjusted": round(adjusted, 3), "followed": followed(hand),
                 "decisions": len(hand["decisions"])}
         hands.append(line)
@@ -297,7 +491,11 @@ def summarize(lines):
                          "not_replayed": unknown,
                          "missing": dict(missing),
                          "settle_matches": sum(bool(line["settle_matches"])
-                                               for line in applied)},
+                                               for line in applied),
+                         "from_screen": sum(line.get("runout_from") == "screen"
+                                            for line in applied),
+                         "screen_checked": sum(line.get("runout_from") == "screen"
+                                               for line in lines)},
                "by_kind": {"normal": part(normal), "bomb_pot": part(
                    [line for line in lines if line["bomb_pot"]])},
                "by_followed": {key: part([line for line in lines
