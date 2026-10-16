@@ -1,0 +1,142 @@
+"""证据单: session packages read back as one page (made-up packages only)."""
+
+import json
+
+from tools import session_evidence as evidence
+from tools import session_package as package
+
+from tests.tools.test_session_package import rows
+
+
+def decision(hand, rule, *, followed=True, bb=-10.0, adjusted=-4.0, iron5=False,
+             missing=None, seconds=0.5, reason=None):
+    return {"log": "s", "hand_id": hand, "street": "flop", "position": "late",
+            "advice": {"kind": "plain", "action": "call", "rule": rule,
+                       "rule_label": rule},
+            "followed": followed, "you_did": "call" if followed else "fold",
+            "hand_bb": bb, "hand_bb_luck_adjusted": adjusted, "iron5": iron5,
+            "missing": missing, "unspecified": None, "seconds_to_advice": seconds,
+            "advice_before_action": True, "deviation_reason": reason}
+
+
+def shown(hand, cls, *, how="showdown", inside=True, corrected=False):
+    calibrates = how in ("showdown", "allin_showdown") and not corrected
+    return {"log": "s", "hand_id": hand, "seat": 3, "preflop_class": cls,
+            "how": how, "corrected": corrected, "calibrates": calibrates,
+            "range": {"class": cls, "preflop_in": True, "in": inside,
+                      "percentile": 0.3}}
+
+
+def made(root, machine, label, *, hands=10, misread_hands=0, decisions=(),
+         shows=(), rule_hash="aaaa", version="v3.1"):
+    """A package as session_package writes it, with only what the page reads."""
+    folder = root / machine / label / "flywheel"
+    folder.mkdir(parents=True)
+    items = [{"type": "skipped_seats", "log": "s", "hand_id": f"h{index}"}
+             for index in range(misread_hands)]
+    data = {
+        "schema": "pokersense.session_package", "format": 1,
+        "session": {"label": label, "machine": machine, "hands": hands,
+                    "decisions": len(decisions), "fully_advised": [hands, hands],
+                    "results": {"all": {"hands": hands, "bb": -10.0}},
+                    "luck_adjusted": {"hands": hands, "adjusted_bb_per_100": 5.0}},
+        "identity": {"player": machine},
+        "decisions": list(decisions), "shown": list(shows),
+        "shown_denominators": {"raise": {"seats": 4, "showdown": len(shows),
+                                         "folded": 4 - len(shows)}},
+        "misreads": {"counts": {"hands": hands, "decisions": len(decisions),
+                                "actions": 50, "skipped_seats": misread_hands,
+                                "actions_inferred_from_chips": 2,
+                                "actions_filled_in_by_replay": 0},
+                     "items": items},
+        "timing": {"changes_of_mind": 0, "decisions_changed": 0},
+        "versions": {"page": {"version": version, "rules": {
+            "F.C": {"text": "面对下注·C 档", "sha256": rule_hash}}}},
+        "nulls": {}}
+    (folder / "package.json").write_text(json.dumps(data, ensure_ascii=False),
+                                         encoding="utf-8")
+    return folder / "package.json"
+
+
+def test_one_package_reads_as_one_page(tmp_path, capsys):
+    folder = tmp_path / "20261016-200000-live"
+    folder.mkdir()
+    (folder / "frames.jsonl").write_text(
+        "\n".join(json.dumps(item) for item in rows()) + "\n", encoding="utf-8")
+    path = package.make(folder, settings={"machine": "peng", "player": "peng"})
+    assert evidence.main(["--package", str(path)]) == 0
+    page = capsys.readouterr().out.splitlines()
+    assert page[0].startswith("证据单 20261016-200000-live · 机器 peng · 打牌人 peng")
+    assert "一页纸 v3.1" in page[0] and "1/2/4(2) 1 手" in page[0]
+    text = "\n".join(page)
+    assert "铁律 5：1/4（25%）" in text and "缺 pot 1" in text
+    assert "  T2.call 表 2·跟注（不限筹码） [v3.1 " in text
+    assert "加注：校准用 1 个，翻前范围里 1/1（100%），缩窄后范围里 1/1（100%）" in text
+    assert "分母 1 个座位（普通摊牌 1）" in text
+    assert "改口 0 次" in text and "动作靠筹码推断：1/12" in text
+    assert "identity.opponents" in text
+
+
+def test_rules_are_ranked_and_each_wording_kept_apart(tmp_path):
+    first = made(tmp_path, "peng", "20261016-200000-live", decisions=[
+        decision("h1", "F.C"), decision("h2", "F.C", followed=False, bb=20.0,
+                                        adjusted=8.0, reason="读到他偷鸡")])
+    second = made(tmp_path, "peng", "20261017-200000-live", rule_hash="bbbb",
+                  decisions=[decision("h1", "F.C")])
+    page = evidence.one(evidence.load(first))
+    line = next(line for line in page if line.startswith("  F.C"))
+    assert "命中 2，照做 1/2，这些手 2 手 实际 +10.0 大盲，扣运气 +4.0" in line
+    assert any("理由：读到他偷鸡" in line for line in page)
+    lines = evidence.rule_lines([evidence.load(first), evidence.load(second)])
+    assert len(lines) == 2                     # same number, another wording
+    assert "[v3.1 aaaa]" in lines[0] and "[v3.1 bbbb]" in lines[1]
+
+
+def test_iron_rule_5_counts_its_causes():
+    decisions = [decision("h1", "I5", iron5=True, missing=["pot"]),
+                 decision("h2", "I5", iron5=True, missing=["pot"]),
+                 decision("h3", "F.C"), {"iron5": None}]
+    assert evidence.iron5_lines(decisions) == ["铁律 5：2/3（67%） 个一页纸决策",
+                                               "  主因：缺 pot 2"]
+
+
+def test_only_whole_showdowns_calibrate_the_ranges(tmp_path):
+    path = made(tmp_path, "du", "20261016-100000-live", shows=[
+        shown("h1", "raise"), shown("h2", "raise", inside=False),
+        shown("h3", "raise", corrected=True), shown("h4", "raise", how="voluntary")])
+    page = evidence.range_lines([evidence.load(path)])
+    line = next(line for line in page if line.startswith("  加注"))
+    assert "校准用 2 个，翻前范围里 2/2（100%），缩窄后范围里 1/2（50%）" in line
+    assert "分母 4 个座位（普通摊牌 4）" in line
+
+
+def test_all_takes_each_machine_then_only_the_ones_that_read_alike(tmp_path, capsys):
+    made(tmp_path, "peng", "20261016-200000-live", misread_hands=1,
+         decisions=[decision("h1", "F.C")])
+    made(tmp_path, "du", "20261016-100000-live", misread_hands=1,
+         decisions=[decision("h1", "F.C")])
+    made(tmp_path, "du", "20261016-110000-live", misread_hands=5,  # 50%: out
+         decisions=[decision("h1", "F.C")])
+    made(tmp_path, "mini", "20261016-120000-live", misread_hands=2,  # 20% vs 10%
+         decisions=[decision("h1", "F.C")])
+    (tmp_path / "du" / "notes").mkdir()                              # not a package
+    copy = tmp_path / "pulled" / "du" / "20261016-100000-live" / "flywheel"
+    copy.mkdir(parents=True)                                         # found twice
+    (copy / "package.json").write_bytes(
+        (tmp_path / "du" / "20261016-100000-live" / "flywheel" / "package.json")
+        .read_bytes())
+    assert evidence.main(["--all", str(tmp_path)]) == 0
+    page = capsys.readouterr().out.splitlines()
+    assert page[0].startswith("证据单（全部）：4 场，3 台机器")
+    assert any(line.startswith("[du] 2 场、20 手") and "达标 1 场" in line
+               for line in page)
+    merged = next(line for line in page if line.startswith("合并："))
+    assert merged.startswith("合并：2 场（不合并 2 场）")
+    assert "mini（识别错率 20.0%，比最好的 10.0% 高出 10.0%）" in merged
+    rule = next(line for line in page if line.startswith("  F.C"))
+    assert "命中 2" in rule
+
+
+def test_all_says_so_when_there_is_nothing(tmp_path, capsys):
+    assert evidence.main(["--all", str(tmp_path)]) == 2
+    assert "没有场次包" in capsys.readouterr().out
