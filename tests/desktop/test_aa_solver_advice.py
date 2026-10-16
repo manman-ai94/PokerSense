@@ -1187,12 +1187,15 @@ def _rough_seats(participants, hero, button="call", price="10"):
 def test_the_rough_rule_counts_seats_not_read_as_maybe_in():
     # Audit 10/14 (P-02): one opponent known and five seats unknown was
     # answered as heads-up. The answer stands only when it is the same with
-    # the unknown seats in the hand.
+    # the unknown seats in the hand; else the answer with them in does (it
+    # was none, and your turn went without advice).
     known = {"2": "active", "3": "folded", "4": "active"}
     unread = {**known, **{seat: "unknown" for seat in "01567"}}
     queens = _rough_seats(known, ("Qs", "Qh"))
     assert queens["advice"][0]["action"] == "call" and "unknown_seats" not in queens
-    assert _rough_seats(unread, ("Qs", "Qh")) is None     # fold against six
+    six = _rough_seats(unread, ("Qs", "Qh"))
+    assert (six["advice"][0]["action"], six["unknown_seats"]) == ("fold", 5)
+    assert six["unknown_in"] and six["range_equity"]["opponents"] == 6
     weak = _rough_seats(unread, ("Js", "Ts"))              # a fold either way
     assert (weak["advice"][0]["action"], weak["unknown_seats"]) == ("fold", 5)
     assert weak["range_equity"]["opponents"] == 1

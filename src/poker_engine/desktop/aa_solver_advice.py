@@ -519,12 +519,14 @@ def rough_advice(fields, cards, street, pot=None, stakes=None, bomb=False):
         return advice
     # A seat not read may still be in the hand (audit 10/14, P-02: one
     # opponent known and six seats unknown was answered as heads-up): the
-    # advice stands only when it is the same with them all in, else none.
+    # advice stands when it is the same with them all in, else the answer
+    # with them all in does (until 2026-10-16 there was none, and your turn
+    # went without advice: a hard rule of the window says it never may).
     every = _rough_for(fields, cards, street, board, sorted(opponents + unknown),
                        pot, read, stakes, bomb)
-    if every is None or _rough_action(every) != _rough_action(advice):
-        return None
-    return {**advice, "unknown_seats": len(unknown)}
+    if every is None or _rough_action(every) == _rough_action(advice):
+        return {**advice, "unknown_seats": len(unknown)}
+    return {**every, "unknown_seats": len(unknown), "unknown_in": True}
 
 
 def _rough_action(advice):
