@@ -212,12 +212,17 @@ def changed_files(base_commit):
 def default_tests(changed, root=ROOT):
     """The changed test files and the test folders of the changed packages
     (the window's page: ``tests/desktop``, which runs its JavaScript tests),
-    as they are in the checkout ``root``."""
+    as they are in the checkout ``root``. A changed helper or conftest under
+    ``tests/`` runs the tests in its folder: it holds no tests itself."""
     paths = set()
     for name in changed:
         parts = Path(name).parts
-        if parts[0] == "tests" and name.endswith(".py") and (root / name).exists():
-            paths.add(name)
+        if parts[0] == "tests" and name.endswith(".py"):
+            if not Path(name).name.startswith("test_"):
+                if (root / Path(name).parent).is_dir():
+                    paths.add(Path(name).parent.as_posix())
+            elif (root / name).exists():
+                paths.add(name)
         elif parts[:2] == ("src", "poker_engine") and len(parts) > 3:
             if (root / "tests" / parts[2]).is_dir():
                 paths.add(f"tests/{parts[2]}")
