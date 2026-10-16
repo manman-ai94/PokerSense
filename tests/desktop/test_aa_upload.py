@@ -272,7 +272,7 @@ def test_without_rclone_or_its_remote_the_window_only_says_so(tmp_path):
     status = up.status()
     assert status["configured"] is False and status["message"].startswith("未配置上传")
     none = aa_upload.Uploader(tmp_path / "recordings", base=tmp_path / "upload",
-                              run=rclone, which=lambda name: None,
+                              run=rclone, which=lambda name: None, places=[],
                               cloud=tmp_path / "no-cloud-app")
     assert none.status()["configured"] is False and none.upload_all() is True
 
