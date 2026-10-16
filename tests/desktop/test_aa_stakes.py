@@ -77,6 +77,42 @@ def test_a_bomb_pot_shows_no_blinds():
     assert detect_stakes(bomb, range(8)) is None
 
 
+def checked_down_bomb_then_a_hand():
+    """A 1/2/4(2) table, six players: a bomb pot of 14 each that nobody bet
+    in, so its frames run on into the next hand's (one hand in the action
+    history), whose antes went in unseen; seat 3 opens to 18."""
+    history = {"hand_id": "hand_1", "complete": True, "start": "pot_went_down",
+               "dealer": 5}
+    actions = [(30, "preflop", 3, "raise", "18")]
+    result = []
+    for frame in range(32):
+        wagers, pot, board = {}, "0", [None] * 5
+        if frame < 3:                                   # the bomb's posts
+            wagers = {str(seat): "14" for seat in range(6)}
+        elif frame < 20:                                # checked down
+            pot, board = "84", ["Td", "7c", "6s", "2c", "5d"]
+        elif 22 <= frame < 26:                          # the next deal
+            wagers = {"0": "1", "1": "2", "2": "4"}
+        elif frame >= 26:
+            wagers, pot = {"0": "1", "1": "2", "2": "4"}, "19"
+        result.append({"processed": frame, "fields": {
+            "pot": pot, "participants": {str(seat): "active" for seat in range(6)},
+            "street_wagers": wagers, "board": board, "stacks": {"3": "300"},
+            "actions_v1": {**history, "actions": [
+                list(a) + ["pot_rise"] for a in actions if a[0] <= frame]}}})
+    return result
+
+
+def test_a_checked_down_bomb_pot_is_not_the_next_hands_ante():
+    # 10/16 on 杜's computer: 1/2/4(14) was read, the advice counted 60 chips
+    # that were not in the pot and said all in with 3-8.
+    facts = hand_facts(checked_down_bomb_then_a_hand())
+    assert stakes_label(facts["stakes"]) == "1/2/4(2)"
+    assert facts["stakes"]["source"] == "table"
+    assert facts["opening_pot"] == 19
+    assert facts["blind_dealer"] == 5
+
+
 def test_the_hand_settles_on_what_it_showed_or_what_came_before():
     two_four = {"small_blind": Decimal(2), "big_blind": Decimal(4),
                 "straddle_amount": Decimal(8), "ante": Decimal(4)}
