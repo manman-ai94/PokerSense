@@ -469,10 +469,16 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         return {"ok": True}
 
     @app.get("/api/status")
-    def status():
+    def status(view: str | None = None):
+        """``view=signal``: the payload carries only what the signal window
+        reads (``aa_session.SIGNAL_KEYS``)."""
+        if view not in (None, "signal"):
+            raise HTTPException(400, f"unknown status view: {view}")
         touched()
         with controls_lock:
-            result = getattr(service, "status_snapshot", service.snapshot)()
+            encoded = getattr(service, "status_snapshot", None)
+            result = (service.snapshot() if encoded is None
+                      else encoded(view=view) if view else encoded())
             table_rules = rules.get()
             analysis_status = analysis.status()
             binding = analysis_status.get("binding", {})

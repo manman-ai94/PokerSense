@@ -110,22 +110,33 @@ def test_profile_with_the_window_asking_for_its_state(tmp_path, monkeypatch):
                           load="status")
     assert result["profiled_ms"] is None
     assert result["status"]["answers"] > 0
-    assert result["status"]["path"] == "published-json"
-    assert result["status"]["kilobytes"]["p50"] > 0
+    assert result["status"]["path"] == "signal-json"
+    # Only the signal window's keys (here scene_supported): a few bytes.
+    assert result["status"]["kilobytes"]["n"] == result["status"]["answers"]
+    assert result["status"]["kilobytes"]["max"] < result["payload_kilobytes"]["p50"]
     assert result["payload_kilobytes"]["n"] == 60
 
 
 def test_the_status_is_answered_as_this_checkout_does_it(monkeypatch):
-    payload = {"a": [1, None, "七"], "b": {"c": 1.5}}
+    from poker_engine.desktop import aa_session
+
+    payload = {"pot": {"value": "七"}, "cards": None, "evidence": [1, 2.5]}
     text = json.dumps(payload, allow_nan=False)
-    path, answer = tool.status_answer()
-    assert path == "published-json"
-    # Code from before the window kept the published JSON text.
+    answers = {}
+    path, keep, answer = tool.status_answer()
+    answers[path] = answer(keep(text, payload))
+    # Code from before the signal window asked for its part only.
+    monkeypatch.delattr(aa_session, "signal_json")
+    path, keep, answer = tool.status_answer()
+    answers[path] = answer(keep(text, payload))
+    # And from before the window kept the published JSON text.
     monkeypatch.setitem(sys.modules, "poker_engine.desktop.aa_server", None)
-    old, before = tool.status_answer()
-    assert old == "copy-and-encode"
-    assert json.loads(answer(text, payload)) == {"payload": payload}
-    assert json.loads(before(text, payload)) == {"payload": payload}
+    path, keep, answer = tool.status_answer()
+    answers[path] = answer(keep(text, payload))
+    assert {path: json.loads(body) for path, body in answers.items()} == {
+        "signal-json": {"payload": {"pot": {"value": "七"}, "cards": None}},
+        "published-json": {"payload": payload},
+        "copy-and-encode": {"payload": payload}}
 
 
 def test_two_runs_compare_field_by_field(tmp_path):
@@ -180,6 +191,28 @@ def test_log_totals(tmp_path):
     assert log["loop_ms"]["p50"] == 400
     assert log["after_publish_ms"]["p50"] == 40
     assert log["recognition_ms_table"]["n"] == 11
+    assert log["solves"] is None
+
+
+def test_log_counts_how_your_turn_and_river_solves_ended():
+    def frame(**advice):
+        return {"timing": {}, "fields": {"solver_advice": {
+            "status": "ready", "decision": 9, "hand_id": 1, **advice}}}
+
+    rows = [
+        # Turn: the range rule first, then the solve 4.2 s after your turn.
+        frame(street="turn", kind="multiway", heads_up=True, seconds=0.3),
+        frame(street="turn", seconds=4.2),
+        # River: still the range rule when you acted.
+        frame(street="river", kind="multiway", heads_up=True, seconds=0.2),
+        # Not counted: a multiway pot, the flop, a decision still computing.
+        frame(street="turn", decision=12, kind="multiway", heads_up=False),
+        frame(street="flop", decision=5, kind="multiway", heads_up=True),
+        frame(street="river", decision=14, status="computing")]
+    assert tool.solve_summary(rows) == {
+        "solver": 1, "range_rule": 1, "solver_seconds": {
+            "n": 1, "p10": 4.2, "p50": 4.2, "p90": 4.2, "mean": 4.2, "max": 4.2}}
+    assert tool.solve_summary(rows[3:]) is None
 
 
 def test_computer_describes_itself():

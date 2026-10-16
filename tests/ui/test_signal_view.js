@@ -2,7 +2,20 @@
 // The signal window's view model (ui/aa-live/signal_view.js) for each state it shows.
 const assert = require("node:assert/strict");
 const path = require("node:path");
-const {signalView, positions, gradeView, sessionView} = require(path.resolve(__dirname, "../../ui/aa-live/signal_view.js"));
+const {signalView: viewOf, positions, gradeView, sessionView, PAYLOAD_KEYS} =
+  require(path.resolve(__dirname, "../../ui/aa-live/signal_view.js"));
+
+// Every payload key the view reads over all the cases below: the signal
+// window asks for the status with only PAYLOAD_KEYS (/api/status?view=signal).
+const read = new Set();
+const watched = payload => new Proxy(payload, {
+  get(target, key, receiver) {
+    if (typeof key === "string") read.add(key);
+    return Reflect.get(target, key, receiver);
+  },
+});
+const signalView = (state, ...rest) => viewOf(
+  state?.payload && typeof state.payload === "object" ? {...state, payload: watched(state.payload)} : state, ...rest);
 
 const seats = states => ({seats: Object.fromEntries(states.map((state, seat) => [seat, {state}]))});
 const full_ = () => seats(["active", "active", "active", "active", "active", "empty", "active", "active"]);
@@ -546,4 +559,8 @@ assert.equal(atStakes({label: "2/4/8(4)", source: "carried"}), "级别 2/4/8(4)"
 assert.equal(atStakes({label: "1/2/4(2)", source: "unsure"}), "级别未定 · 按 1/2/4(2) 算");
 assert.equal(atStakes(undefined), "");
 assert.equal(signalView({status: "STOPPED"}, 0, {}).stakes, "");
+// The view reads no payload key the signal status leaves out, and the list
+// names none it never reads.
+assert.deepEqual([...read].filter(key => !PAYLOAD_KEYS.includes(key)).sort(), []);
+assert.deepEqual(PAYLOAD_KEYS.filter(key => !read.has(key)), []);
 console.log("signal view cases passed");

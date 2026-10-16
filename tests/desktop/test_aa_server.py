@@ -393,6 +393,46 @@ def test_recording_does_not_start_with_little_room_left(tmp_path, monkeypatch):
                            headers=HEADERS).status_code == 200
 
 
+def test_the_signal_window_asks_for_its_part_of_the_status(tmp_path):
+    import json
+
+    from poker_engine.desktop.aa_session import EncodedJSON, SIGNAL_KEYS
+
+    payload = {"scene_supported": True, "pot": {"value": "12"},
+               "critical_perception_v1": {"actions": [1, 2, 3]}}
+    asked = []
+
+    class Published(Session):
+        def snapshot(self):
+            return {"status": "RUNNING", "generation": 0, "sequence": 3,
+                    "payload": payload, "timing": None}
+
+        def status_snapshot(self, view=None):
+            asked.append(view)
+            part = payload if view is None else {
+                key: value for key, value in payload.items() if key in SIGNAL_KEYS}
+            return {**self.snapshot(), "payload": EncodedJSON(json.dumps(part))}
+
+    app = aa_server.create_app(tmp_path / "missing.json", session=Published())
+    with TestClient(app) as client:
+        signal = client.get("/api/status?view=signal")
+        whole = client.get("/api/status")
+        unknown = client.get("/api/status?view=everything")
+    assert signal.json()["payload"] == {"scene_supported": True, "pot": {"value": "12"}}
+    assert whole.json()["payload"] == payload
+    assert unknown.status_code == 400 and asked == ["signal", None]
+
+    # A session that only gives the whole snapshot: the whole payload.
+    class Plain(Session):
+        def snapshot(self):
+            return {"status": "RUNNING", "generation": 0, "sequence": 3,
+                    "payload": payload, "timing": None}
+
+    app = aa_server.create_app(tmp_path / "missing.json", session=Plain())
+    with TestClient(app) as client:
+        assert client.get("/api/status?view=signal").json()["payload"] == payload
+
+
 def test_the_status_is_answered_as_plain_json_with_fastapis_bytes(tmp_path):
     import json
     from decimal import Decimal
