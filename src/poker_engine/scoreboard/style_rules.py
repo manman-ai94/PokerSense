@@ -35,6 +35,8 @@ show what it is worth.
 
 from __future__ import annotations
 
+from phevaluator import evaluate_cards
+
 from .multiway_bot import _board_kind, hand_kind, weak_hand
 from .reads import MODEL, aggression_factor
 from .side_pots import price
@@ -47,8 +49,13 @@ AGGRESSIVE_ACTIONS = ("BET", "RAISE")
 
 
 def nothing(hole, board):
-    """No pair or better of your own: what you have, the board has."""
-    return hand_kind(list(hole) + list(board)) == _board_kind(board)
+    """No pair or better of your own: what you have, the board has (its
+    repeated ranks, or a straight or flush it makes by itself, as
+    ``multiway_bot.weak_hand`` counts it)."""
+    hole, board = list(hole), list(board)
+    if hand_kind(hole + board) == _board_kind(board):
+        return True
+    return len(board) == 5 and evaluate_cards(*board) == evaluate_cards(*hole, *board)
 
 
 def villain(observation):

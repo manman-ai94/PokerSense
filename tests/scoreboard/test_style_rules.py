@@ -79,3 +79,13 @@ def test_counts_include_the_wrapped_policys():
 
     outer = Kept({"decided": 3}, Kept({"solved": 2, "style_nobluff": 1}, Kept({})))
     assert _counts(outer) == {"decided": 3, "solved": 2, "style_nobluff": 1}
+
+
+def test_a_straight_or_flush_the_board_makes_is_nothing_of_your_own():
+    # Code check 10/16: two blanks on a straight board play the board, and a
+    # solver bet there is a bluff that nobluff should take away.
+    from poker_engine.scoreboard.style_rules import nothing
+    assert nothing(["Kc", "2d"], ["5h", "6d", "7c", "8s", "9h"])
+    assert nothing(["Kc", "3d"], ["Ah", "Jh", "7h", "4h", "2h"])
+    assert not nothing(["Th", "2d"], ["5h", "6d", "7c", "8s", "9h"])   # higher
+    assert not nothing(["Kh", "3d"], ["Ah", "Jh", "7h", "4h", "2h"])   # bigger flush
