@@ -254,20 +254,25 @@ def total(hands, params, version, stats):
 _JOB = {}
 
 
+def _set_job(hands, version, stats):
+    _JOB.update(hands=(hands,), version=(version, stats))
+
+
 def _total(params):
     return total(*_JOB["hands"], params, *_JOB["version"])
 
 
 def fit(hands, version, stats, names, start=None, workers=1):
     """Coordinate search over ``GRIDS`` for the parameters in ``names``; the
-    values of one parameter are tried in parallel (forked workers share
-    ``hands``)."""
+    values of one parameter are tried in parallel. Each worker gets ``hands``
+    once when it starts: on macOS and Windows workers are spawned fresh and
+    inherit nothing from this process."""
     params = deepcopy(start or zero_params())
-    _JOB.update(hands=(hands,), version=(version, stats))
     best = total(hands, params, version, stats)
     if not names:
         return params, best
-    with ProcessPoolExecutor(workers) as executor:
+    with ProcessPoolExecutor(workers, initializer=_set_job,
+                             initargs=(hands, version, stats)) as executor:
         for _ in range(ROUNDS):
             moved = False
             for name in names:
