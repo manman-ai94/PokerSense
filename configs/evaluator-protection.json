@@ -11,7 +11,9 @@
     "src/poker_engine/scoreboard/reads.py",
     "src/poker_engine/scoreboard/solver_bot.py",
     "src/poker_engine/scoreboard/side_pots.py",
+    "src/poker_engine/scoreboard/plain_policy.py",
     "src/poker_engine/desktop/aa_solver_advice.py",
+    "src/poker_engine/desktop/aa_plain_advice.py",
     "src/poker_engine/desktop/aa_reads.py",
     "src/poker_engine/strategy/aa_insurance.py",
     "src/poker_engine/solver/*"
@@ -47,6 +49,7 @@
     "tools/refit_aa_cal.py",
     "tools/sim_real_rank.py",
     "tools/aa_compare_advice.py",
+    "tools/plain_live_report.py",
     "tools/flywheel_gates.py",
     "tools/release_check.py",
     "tools/p30_acceptance.py",

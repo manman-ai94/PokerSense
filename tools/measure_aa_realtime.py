@@ -7,7 +7,13 @@ labels. Agreement on development checkpoints is not independent acceptance.
 
     PYTHONPATH=src:. .venv/bin/python tools/measure_aa_realtime.py \\
         --video <recording file or segment folder> --out <dir> \\
-        [--exclude 300-820] [--gold <checkpoint json>] [--max-seconds 1800]
+        [--exclude 300-820] [--gold <checkpoint json>] [--max-seconds 1800] \\
+        [--advice [--strategy plain]]
+
+``--strategy plain`` gives the advice by the one page of 《一页纸打法 v3.1》
+(the window's switch), worked out on the frame thread with no solver: run
+the same recording with ``--advice`` and with ``--advice --strategy plain``
+to see what each does to the frame rate.
 """
 
 from __future__ import annotations
@@ -22,7 +28,7 @@ import time
 from poker_engine.desktop.aa_math import KNOWN_STATES, AATableMath
 from poker_engine.desktop.aa_reader import AA8Reader
 from poker_engine.desktop.aa_session import AARecognitionSession
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice
+from poker_engine.desktop.aa_solver_advice import STRATEGIES, AASolverAdvice
 from poker_engine.desktop.aa_sources import source_factory
 from poker_engine.desktop.aa_video_source import parse_windows
 
@@ -31,11 +37,12 @@ SLOTS = tuple(str(slot) for slot in range(8))
 
 
 def run(profile, video, frame_log, *, start=0.0, exclude=(), speed=1.0,
-        max_seconds=None, poll=1.0, advice=False):
+        max_seconds=None, poll=1.0, advice=False, strategy="classic"):
     """Play the recording through a real session until it ends or times out.
 
     With ``advice`` the solver works out your heads-up turn and river
-    decisions in the background, as it would live (needs TexasSolver).
+    decisions in the background, as it would live (needs TexasSolver);
+    with ``strategy`` ``plain`` the window's one-page rules do instead.
     """
     session = AARecognitionSession(
         source_factory(profile, replay_video=video, replay_video_start=start,
@@ -43,7 +50,8 @@ def run(profile, video, frame_log, *, start=0.0, exclude=(), speed=1.0,
                        replay_video_speed=speed),
         lambda: AA8Reader(profile), interval_seconds=0.03,
         table_math=AATableMath().compute,
-        solver_advice=AASolverAdvice() if advice else None, frame_log=frame_log)
+        solver_advice=AASolverAdvice(strategy=strategy) if advice else None,
+        frame_log=frame_log)
     began = time.monotonic()
     session.start({"mode": "video-replay"})
     try:
@@ -260,15 +268,19 @@ def main(argv=None):
     parser.add_argument("--gold", type=Path)
     parser.add_argument("--advice", action="store_true",
                         help="work out solver advice on your turn (needs TexasSolver)")
+    parser.add_argument("--strategy", choices=STRATEGIES, default=STRATEGIES[0],
+                        help="with --advice: the window's switch (plain: no solver)")
     args = parser.parse_args(argv)
 
     args.out.mkdir(parents=True, exist_ok=False)
     frame_log = args.out / "frames.jsonl"
     outcome = run(args.profile, args.video, frame_log, start=args.start,
                   exclude=args.exclude, speed=args.speed,
-                  max_seconds=args.max_seconds, advice=args.advice)
+                  max_seconds=args.max_seconds, advice=args.advice,
+                  strategy=args.strategy)
     rows = read_log(frame_log) if frame_log.exists() else []
     report = {"video": str(args.video), "start": args.start,
+              "advice": args.strategy if args.advice else None,
               "exclude": args.exclude, "speed": args.speed, "run": outcome,
               "summary": summarize(rows)}
     if args.gold is not None:
