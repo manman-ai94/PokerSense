@@ -87,15 +87,20 @@ and the clock counts a stall the frames do not (10/08 and 10/07 measured at
 real pace: four of your turns, most over a second long, got nothing). The
 frame that asks waits up to ``ROUGH_WAIT`` for it (it takes under 0.1 s):
 two of those turns ended on the frame after a stall that made it due. Each
-opponent still in holds the top ``CALLER_SHARE`` of starting hands, the one
-with the most chips in on this street the top ``BETTOR_SHARE`` when that is
-a bet or raise to you, and so does one who bet or raised on an earlier
-street after the flop (``aggressors``; a bet on the flop was forgotten on
-the turn). In a bomb pot no one chose to play, so both shares are taken
-over all hands instead of the top ``CALLER_SHARE`` (any two cards, and half
-of them for a bettor). A bet or raise is sized as the range rule's is on
-the scoreboard table (``rough_size``): half the pot, the pot or all in,
-whichever is closest, so one that would leave little behind is all in, and
+opponent still in holds the top ``CALLER_SHARE`` of starting hands (before
+the flop the one who raised to you the top ``BETTOR_SHARE``), and after the
+flop each bet or raise of theirs in this hand weighs it by the hand each
+makes with the board of its street (``rough_ranges``, ``ranges.narrowed``:
+a raise over a bet, a check-raise too, or a bet of ``BIG_BET`` of the pot
+or more, all in too, far more than a bet). Until 2026-10-16 the ranges were
+the fixed preflop shares whatever the board and the betting: one pair
+called check-raises and shoves at 0.6-0.8 against hands it had 0-0.25
+against, the largest loss of the real hands of 10/07-10/16 (14 hands, -550
+big blinds after luck). In a bomb pot no one chose to play, so the shares
+are taken over all hands instead of the top ``CALLER_SHARE``. A bet or
+raise is sized as the range rule's is on the scoreboard table
+(``rough_size``): half the pot, the pot or all in, whichever is closest,
+so one that would leave little behind is all in, and
 the size does not change when the range rule's answer replaces it (on the
 recordings of 10/07-10/10 it matched the range rule's size at 27 of 56 of
 its bets and raises, 44 after). Your share of the pot against them (worked out
@@ -165,7 +170,8 @@ from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_hand
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy, rake
 from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
-from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity
+from poker_engine.scoreboard.ranges import (BET_SCALE, BIG_BET, RAISE_SCALE, narrowed,
+                                            opponent_ranges, ranges_equity)
 from poker_engine.scoreboard.side_pots import pots as side_pots
 from poker_engine.scoreboard.solver_bot import Fallback, SolverBot
 from poker_engine.scoreboard.strength import DECK, combo_percentile, range_equity
@@ -225,12 +231,14 @@ HOLD_SECONDS = 1.5              # while the proper advice is being worked out
 HOLD_FRAMES = 15
 ROUGH_WAIT = 0.15               # the frame that asks waits this long for it
 CALLER_SHARE = 0.4              # rough rule: each opponent's top 40% of hands
-BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised to you
+BETTOR_SHARE = 0.2              # and the top 20% for the one who raised to you preflop
 PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position realize
 ROUGH_TRIALS = 1500              # under 0.1 s with seven opponents
-ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 40% of "
-               "starting hands, the top 20% for one who bet or raised in this hand "
-               "after the flop or to you; any two cards in a bomb pot) "
+ROUGH_BASIS = ("your share of the pot against simple ranges (each opponent's top "
+               "40% of starting hands, the top 20% for one who raised to you before "
+               "the flop; any two cards in a bomb pot; after the flop each bet keeps "
+               "the strongest half on its board, each raise or big bet the "
+               "strongest fifth, draws and some bluffs kept) "
                "against the price on your button, and after the flop against the "
                "range rule's lines for a bet or a raise, from the screen alone: a "
                "rough rule for when the hand cannot be worked out; for study only")
@@ -435,14 +443,54 @@ def put_in(fields, street):
     return put
 
 
-def aggressors(fields, street):
-    """The seats that bet, raised or went all in after the flop on a street
-    before ``street``, from the action history."""
+def aggression(fields, street, pot):
+    """[(seat, street, big)] for each bet or raise after the flop up to
+    ``street``, from the action history: ``big`` when it raised a bet (a
+    check-raise too) or put in ``BIG_BET`` of the pot before it or more (the
+    pot then: ``pot`` less the chips of the actions from it on, when all of
+    them are read). An all in for no more than the chips in front of another
+    player is a call (one whose chips are not read is not)."""
     if street not in POSTFLOP:
-        return set()
-    before = POSTFLOP[:POSTFLOP.index(street)]
-    return {str(action[2]) for action in (fields.get("actions_v1") or {}).get("actions")
-            or () if action[1] in before and action[3] in ("raise", "all_in")}
+        return []
+    upto = POSTFLOP[:POSTFLOP.index(street) + 1]
+    history = (fields.get("actions_v1") or {}).get("actions") or ()
+    actions = [action for action in history if action[1] in upto]
+    chips = [None if action[4] is None else _decimal(action[4]) for action in actions]
+    found, put, current = [], {}, None
+    for index, action in enumerate(actions):
+        if action[1] != current:
+            current, put = action[1], {}
+        seat, amount = str(action[2]), chips[index]
+        top = max(put.values(), default=Decimal(0))
+        mine = put.get(seat, Decimal(0)) + (amount or Decimal(0))
+        shove = action[3] == "all_in" and (amount is None or mine > top)
+        if action[3] == "raise" or shove:
+            later = chips[index:]
+            before = (None if pot is None or None in later
+                      else pot - sum(later, Decimal(0)))
+            big = top > 0 or (amount is not None and before is not None and before > 0
+                              and amount >= Decimal(str(BIG_BET)) * before)
+            found.append((seat, action[1], big))
+        put[seat] = mine
+    return found
+
+
+def rough_ranges(fields, street, board, opponents, preflop_share, pot, facing=None):
+    """{seat: weights} for the rough rule: ``preflop_share`` (``{seat:
+    share}``) of the starting hands, then each bet or raise of the seat
+    after the flop (``aggression``, and ``facing``: (seat, big) for a bet to
+    you the history has not got yet) narrows it on the board of its street
+    (``narrowed``: ``RAISE_SCALE`` for a raise or a big bet, else
+    ``BET_SCALE``)."""
+    base = {seat: top_range(share) for seat, share in preflop_share.items()}
+    ranges = dict(base)
+    bets = aggression(fields, street, pot) + ([(facing[0], street, facing[1])]
+                                              if facing else [])
+    for seat, when, big in bets:
+        if seat in ranges:
+            ranges[seat] = narrowed(ranges[seat], base[seat], board[:BOARD_CARDS[when]],
+                                    RAISE_SCALE if big else BET_SCALE)
+    return {seat: ranges[seat] for seat in opponents}
 
 
 def rough_advice(fields, cards, street, pot=None, stakes=None, bomb=False):
@@ -509,11 +557,21 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes, bomb=
         to_call = stack
     raised = to_call > 0 and top > mine and (
         street != "preflop" or top > open_level(stakes))
-    earlier = aggressors(fields, street)
     widen = 1 / CALLER_SHARE if bomb else 1     # a bomb pot: no one chose to play
-    ranges = {seat: top_range(widen * (
-        BETTOR_SHARE if (raised and wagers.get(seat) == top) or seat in earlier
-        else CALLER_SHARE)) for seat in opponents}
+    preflop = street == "preflop"
+    facing = None
+    if raised and not preflop:
+        # The bet or raise to you, when the history has not got it yet.
+        bettor = next((seat for seat in opponents if wagers.get(seat) == top), None)
+        if bettor is not None and not any(
+                seat == bettor and when == street
+                for seat, when, _ in aggression(fields, street, pot)):
+            before = pot - sum(wagers.values(), Decimal(0))
+            facing = (bettor, mine > 0 or (
+                before > 0 and top >= Decimal(str(BIG_BET)) * before))
+    ranges = rough_ranges(fields, street, board, opponents, {
+        seat: widen * (BETTOR_SHARE if preflop and raised and wagers.get(seat) == top
+                       else CALLER_SHARE) for seat in opponents}, pot, facing)
     value, counts = ranges_equity(cards, board, ranges, trials=ROUGH_TRIALS)
     if value is None:
         return None

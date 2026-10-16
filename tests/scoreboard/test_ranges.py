@@ -1,12 +1,17 @@
 """Every opponent's range from the public actions, and equity against them."""
 
 import json
+import math
 from pathlib import Path
 import random
 
+import pytest
+
 from poker_engine.scoreboard.bots import _rng, make_policy, opponents_in_hand
 from poker_engine.scoreboard.population import PopulationBot
-from poker_engine.scoreboard.ranges import opponent_ranges, ranges_equity, read_floors
+from poker_engine.scoreboard.ranges import (BET_SCALE, DRAW_WEIGHT, RAISE_SCALE,
+                                            narrowed, opponent_ranges, ranges_equity,
+                                            read_floors, strong_draw)
 from poker_engine.scoreboard.replay import replay_deck
 from poker_engine.scoreboard.strength import equity
 from poker_engine.solver.texassolver import all_combos
@@ -213,3 +218,27 @@ def test_two_readings_of_the_same_line_do_not_share_a_kept_range(monkeypatch):
     after_wide = opponent_ranges(observation, narrow)
     monkeypatch.setattr(ranges, "_KEPT", {})
     assert after_wide == opponent_ranges(observation, narrow)
+
+
+def test_a_bet_weighs_a_range_by_the_hand_each_makes_with_the_board():
+    base = {key: 1.0 for key in ("AsAd", "QhQd", "7c6c", "5h4d", "2s2d", "KhJh")}
+    board = ("Ac", "Qs", "2c")
+    weights = narrowed(base, base, board, BET_SCALE)
+    # The strongest (the set of aces, a sixth of the range: p = 1/12) keeps
+    # exp(-1/12 / 0.33); the weakest (5-high, no draw) exp(-11/12 / 0.33).
+    assert weights["AsAd"] == pytest.approx(math.exp(-1 / 12 / BET_SCALE))
+    assert weights["5h4d"] == pytest.approx(math.exp(-11 / 12 / BET_SCALE))
+    assert weights["AsAd"] > weights["QhQd"] > weights["2s2d"] > weights["5h4d"]
+    # A flush draw keeps at least DRAW_WEIGHT.
+    assert weights["7c6c"] >= DRAW_WEIGHT
+    # A raise weighs the same hands far more steeply.
+    raised = narrowed(base, base, board, RAISE_SCALE)
+    assert raised["2s2d"] / raised["AsAd"] < weights["2s2d"] / weights["AsAd"]
+
+
+def test_strong_draws():
+    assert strong_draw(("Ah", "2h"), ("Kh", "7h", "3c"))           # flush draw
+    assert strong_draw(("9c", "8d"), ("7h", "6s", "2c"))           # open ended
+    assert not strong_draw(("Ac", "Kd"), ("Qh", "Js", "2c"))       # gutshot
+    assert not strong_draw(("Ac", "Kd"), ("Qh", "Js", "Tc"))       # made
+    assert not strong_draw(("Ah", "2h"), ("Kh", "7h", "3c", "4d", "9s"))   # river
