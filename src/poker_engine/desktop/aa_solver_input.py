@@ -126,9 +126,11 @@ def hand_facts(rows, stakes=None):
             if value not in (None, ""):
                 stacks[int(seat)] = Decimal(value)
     latest = fields[-1] if fields else {}
-    before = [f for row, f in zip(rows, fields)
+    # The table before the first action, from this hand's deal on.
+    start = _deal_start(rows, fields, first)
+    before = [f for row, f in zip(rows[start:], fields[start:])
               if first is None or row["processed"] <= first]
-    opening = [f for row, f in zip(rows, fields)
+    opening = [f for row, f in zip(rows[start:], fields[start:])
                if first is None or row["processed"] < first]
     opening_pot = _opening_pot(rows, fields, first)
     stakes = settle_stakes(detect_stakes(opening, seats, opening_pot), stakes)
@@ -239,6 +241,31 @@ def _board(fields):
                 and all(a == b for a, b in zip(board, latest) if a and b)):
             boards.append(cards)
     return max(boards, key=len, default=[])
+
+
+def _deal_start(rows, fields, first):
+    """Where this hand's deal begins among its frames before the first action:
+    the first empty pot of the last run of them (an unread pot does not end
+    a run); 0 when no empty pot was read.
+
+    A hand nobody acted in, such as a bomb pot checked down, does not start a
+    hand of its own (``aa_action_history``): its frames run on into the next
+    hand's. 10/16 on 杜's computer: a bomb pot's posts of 14 in front of every
+    seat were read as that hand's ante, 1/2/4(14) instead of 1/2/4(2), so the
+    advice counted 60 chips that were not in the pot and said all in with 3-8.
+    """
+    pots = [f.get("pot") for row, f in zip(rows, fields)
+            if first is None or row["processed"] < first]
+    empty = [at for at, pot in enumerate(pots) if pot == "0"]
+    if not empty:
+        return 0
+    start = empty[-1]
+    for at in range(empty[-1] - 1, -1, -1):
+        if pots[at] not in ("0", None, ""):
+            break
+        if pots[at] == "0":
+            start = at
+    return start
 
 
 def _opening_pot(rows, fields, first):
