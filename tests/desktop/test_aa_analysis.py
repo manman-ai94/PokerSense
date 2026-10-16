@@ -151,6 +151,11 @@ def test_timeout_terminates_without_status_polling_and_allows_new_job():
         expired = service.status()
         assert expired["status"] == "TIMED_OUT"
         assert expired["result"] is None
+        # The second job only shows that a new one starts and finishes after a
+        # timeout; its own deadline is not under test. It gets the service's
+        # normal 10 s: with 1 s, a Windows spawn under parallel load ran out
+        # of time before the job began (CI 2026-10-16, #87).
+        service._timeout = 10.0
         second = service.start("terminal", document(), binding=BINDING)
         assert second["job_id"] != first["job_id"]
         assert finish(service)["status"] == "COMPLETE"
