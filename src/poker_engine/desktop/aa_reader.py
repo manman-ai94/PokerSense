@@ -19,6 +19,7 @@ import numpy as np
 from ..data_paths import resolve_legacy_path
 from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
 from .aa_action_history import AAActionHistory
+from .aa_card_check import AACardCheck
 from .aa_shown_cards import AAShownCards
 from .aa_street import AAStreet
 from .aa_semantics import AAObservationSemantics
@@ -335,6 +336,7 @@ class AA8Reader:
         self._seat_states = AASeatStates()
         self._street = AAStreet()
         self._actions = AAActionHistory()
+        self._card_check = AACardCheck()
         # Opponents' shown cards, read with the board's card model.
         model = getattr(getattr(state, "cards", None), "_native_model", None)
         slots = (getattr(state, "profile", None) or {}).get("slots", ())
@@ -377,6 +379,7 @@ class AA8Reader:
             elif reset:
                 self._street.reset()
                 self._actions.reset()
+                self._card_check.reset()
                 self._shown.reset()
                 self._gaps = 0.0
             self._state.audit = source
@@ -418,6 +421,7 @@ class AA8Reader:
                 getattr(self._state.adapter, "actions", [])[-256:]) if hasattr(
                     self._state, "adapter") else []
             row["action_history_v1"] = self._actions.observe(row, frame)
+            self._check_cards(row, pts)
             cards = row.get("cards") or {}
             known = [*(cards.get("hero") or ()), *(cards.get("board_slots") or ())]
             row["shown_cards_v1"] = self._shown.observe(
@@ -448,3 +452,19 @@ class AA8Reader:
             # A rejected/read-failed frame must never bridge temporal evidence.
             self._invalidated = True
             raise
+
+    def _check_cards(self, row, pts):
+        """One reading per card in a hand (``aa_card_check``): a hero or board
+        card read as something else than before is shown as unknown. The
+        layers before this one (street, seats, history) keep the cards as
+        read; so do ``hero_as_read`` and ``board_slots_as_read``."""
+        cards = row.get("cards")
+        if not isinstance(cards, dict):
+            return
+        hero, board = cards.get("hero"), cards.get("board_slots")
+        checked_hero, checked_board, report = self._card_check.observe(
+            hero, board, (row.get("action_history_v1") or {}).get("hand_id"), pts)
+        row["cards"] = {**cards, "hero_as_read": hero, "board_slots_as_read": board,
+                        "hero": checked_hero if hero is not None else None,
+                        "board_slots": checked_board if board is not None else None}
+        row["card_check_v1"] = report
