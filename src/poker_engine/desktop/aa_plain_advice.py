@@ -63,7 +63,8 @@ BASIS = "一页纸打法 v3.1（plain）：只按这一页的规则；只显示�
 MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没稳",
            "hero_cards": "你的手牌", "card_conflict": "牌读出过两种",
            "board": "公共牌", "opponents": "在局对手没稳", "pot": "底池",
-           "stack": "你的筹码", "dealer": "庄位", "seat": "你的座位"}
+           "stack": "你的筹码", "dealer": "庄位", "seat": "你的座位",
+           "actions": "这手的动作对不上"}
 # 按默认补上的缺项（窗口上的小标签）。
 DEFAULTS = {"opponent_stack": "缺对手筹码→按最深已读",
             "carried_stack": "对手筹码按上次读数往前带",
@@ -287,9 +288,11 @@ class HandState:
         return None if found is None else found[0]
 
     def seats(self):
-        """这手发了牌的座位：现在的状态是在局、弃牌或全下的，加上这手投过钱的。"""
+        """这手发了牌的座位：现在的状态是在局、弃牌或全下的，加上这手投过钱的、
+        弃过牌的（弃了牌就离座的人也是这手发了牌的）。"""
         seats = {seat for seat, state in self.states.items() if state in IN_HAND}
         seats |= {seat for _, _, seat, _ in self.events}
+        seats |= {seat for _, _, seat in self.folds}
         return sorted(seats)
 
     def stakes(self, earlier=None):
@@ -774,7 +777,11 @@ class AAPlainAdvice:
             observation, defaults, missing = table_observation(state, fields, stakes)
         if observation is None:
             return self._iron5(fields, street, now, missing, waited, history, stakes)
-        advice = plain_policy.decide(observation)
+        try:
+            advice = plain_policy.decide(observation)
+        except Exception:                   # 拼出来的这手自相矛盾：不猜，铁律 5
+            return self._iron5(fields, street, now, ["actions"], waited, history,
+                               stakes)
         row = advice.row()
         row.update(tag=f"就绪 {waited:.1f}s", waited=round(waited, 1),
                    defaults=[DEFAULTS[key] for key in defaults])

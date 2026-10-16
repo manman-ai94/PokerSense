@@ -301,6 +301,28 @@ def test_actions_come_from_the_bets_without_any_badge():
     assert report["inferred_actions"] == 0
 
 
+def test_a_player_who_folds_and_leaves_was_still_dealt_in():
+    """10/09 实录：3 号弃牌后座位变空，他那一下弃牌还在动作里，这手照样是 8 个人
+    （以前这样会算出错，那一步没有建议）。"""
+    screen = Screen(AAPlainAdvice(), badges=False)
+    screen.deal()
+    screen.fold(3)
+    screen.show(3, participants={**screen.fields["participants"], "3": "empty"})
+    report = ready(screen, call=4)
+    same(report, spot({4: "QsQh"}, "", "3f"))
+    assert report["plain"]["rule"] == "T1.raise"
+
+
+def test_hand_actions_that_contradict_themselves_are_iron_law_5(monkeypatch):
+    def broken(observation):
+        raise KeyError(2)
+    monkeypatch.setattr(plain_policy, "decide", broken)
+    screen = opened()
+    report = ready(screen, call=12)
+    assert report["advice"] == [{"action": "fold", "frequency": 1.0}]
+    assert report["plain"]["tag"] == "铁律 5：缺这手的动作对不上"
+
+
 def test_a_raise_nobody_read_is_filled_in_from_your_price():
     screen = Screen(AAPlainAdvice(), badges=False)
     screen.deal()
