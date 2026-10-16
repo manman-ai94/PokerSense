@@ -88,6 +88,14 @@ const feedback = () => el("hand-status").textContent;
 const gaps = () => el("hand-gaps").textContent;
 const results = () => el("analysis-results").textContent;
 const analysisStatus = () => el("analysis-status").textContent;
+// An import voids the shown result at once with HAND_VOIDED; 350 ms later the
+// debounced cancel it scheduled replaces that line with CANCELLED_LINE. Which
+// one is showing depends on how long the import's fetch took (a slow Windows
+// runner sees the second), so accept exactly those two void lines and nothing
+// else: any other status means the result was not voided by the import.
+const CANCELLED_LINE = "输入已变更或分析已取消，请重新计算。";
+const voidedStatus = () => exposed("HAND_VOIDED")
+  && [run("HAND_VOIDED"), CANCELLED_LINE].includes(analysisStatus());
 const exportEnabled = () => el("analysis-export").disabled === false;
 const analysisPosts = () => calls.filter(call => call.path === "/api/analysis"
                                           && call.method === "POST").length;
@@ -228,7 +236,7 @@ check("the_import_voids_the_verified_receipt",
       `built=${run("handBuilt")}`);
 check("the_import_voids_the_shown_result",
       results() === "" && exportEnabled() === false
-      && analysisStatus().includes("失效"), analysisStatus().slice(0, 50));
+      && voidedStatus(), analysisStatus().slice(0, 50));
 check("the_import_reports_the_unknowns_it_could_not_fill",
       gaps().includes("需要人工补录") && gaps().includes("没有可用候选"),
       gaps().replace(/\s+/g, " ").slice(0, 100));
@@ -377,7 +385,7 @@ check("a_failed_import_leaves_nothing_of_the_previous_hand",
       failedImport === null && feedback().includes("带入失败")
       && run("handBuilt") === null && results() === ""
       && exportEnabled() === false && fieldValue("hand-hero") === ""
-      && rowCount("seats") === 0 && analysisStatus().includes("失效"),
+      && rowCount("seats") === 0 && voidedStatus(),
       feedback().slice(0, 60));
 
 // --- 12. changing the selected record voids the setup ------------------
