@@ -618,6 +618,29 @@ view = signalView(running(classic({advice: [{action: "fold", frequency: 1.0}], f
 assert.equal(view.tags.at(-1), "对手加注到 36，重新算");
 assert.equal(view.basis[1], "刚才（要跟 12）是“跟注 12”；价格变了，重新算");
 assert.equal(view.changed, null);
+// Its one sentence (with the opponents' range, your equity and the price) and
+// where the answer flips, from the old strategy's own numbers.
+const why = {reason: "下注的那位范围约 18% 的牌；你能赢 41%，跟注要 25%；够价格就跟——跟注 28。",
+  range: "下注的那位范围约 18% 的牌", equity: 0.41, need: 0.25, need_for: "call",
+  flip: "要跟的超过 52 就弃；胜率到 70% 就加注"};
+view = signalView(running(classic({why})), 0, {});
+assert.equal(view.verdict.note, why.reason);
+assert.equal(view.basis[1], "翻转条件：要跟的超过 52 就弃；胜率到 70% 就加注");
+view = signalView(running(classic({why, guard: {pot_big_blinds: 45, street: "turn",
+  was: {action: "raise", to: "90"}}})), 0, {});
+assert.equal(view.verdict.note, why.reason);
+assert.ok(view.verdict.guard && view.tags.includes("护栏"));
+view = signalView(running(base({solver_advice_v1: {status: "ready", kind: "preflop",
+  advice: [{action: "raise", to: "19", chips: "19", frequency: 1.0}], to_call: "4",
+  options: [{action: "raise", to: "19", chips_in: "19", chips: 37.6, big_blinds: 9.4},
+    {action: "call", chips_in: "4", chips: 2.8, big_blinds: 0.7},
+    {action: "fold", chips: 0, big_blinds: 0}],
+  why: {reason: "平跟的那位范围约 36% 的牌；你 QQ，对他胜率 74%，跟注要 13%；……——加注到 19。",
+    flip: "加注到 19 比跟注 4 多赢 8.7 大盲；有人再加注就按新的价格和他的范围重算"},
+  contract: {tag: "就绪 0.3s", waited: 0.3, defaults: []}}})), 0, {});
+assert.equal(view.verdict.kind, "preflop");
+assert.ok(view.verdict.note.startsWith("平跟的那位范围约 36% 的牌"));
+assert.equal(view.basis[1], "翻转条件：加注到 19 比跟注 4 多赢 8.7 大盲；有人再加注就按新的价格和他的范围重算");
 // Two seconds without a steady screen: the iron rule 5, saying what is missing.
 view = signalView(running(base({solver_advice_v1: {status: "ready", kind: "unread",
   advice: [{action: "fold", frequency: 1.0}], to_call: "28",

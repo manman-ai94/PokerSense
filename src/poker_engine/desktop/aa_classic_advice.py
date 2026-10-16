@@ -60,6 +60,7 @@ from poker_engine.scoreboard.replay import replay_deck
 from poker_engine.strategy.aa_full_hand_arena import AAFullHandArena
 from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
+from .aa_classic_why import postflop_why, preflop_why
 from .aa_plain_advice import DEFAULTS as DEFAULT_WORDS
 from .aa_plain_advice import (EPSILON, HERO, MISSING, STREETS, AAPlainAdvice,
                               _money, blind_unraised, table_observation)
@@ -265,7 +266,8 @@ class ClassicPolicy:
             advice["action"] = "check"
         return {"kind": "preflop", "advice": [advice], "options": options,
                 "mushroom_pool": counted, "reads_hands": _read_hands(observation),
-                "basis": PREFLOP_BASIS}
+                "basis": PREFLOP_BASIS,
+                "why": preflop_why(observation, self.preflop_policy(), options)}
 
     def postflop(self, observation):
         live = [seat for seat in observation["occupied_seats"]
@@ -297,6 +299,8 @@ class ClassicPolicy:
             report["guard"] = guard_report(guarded(observation),
                                            multiway_row(bold, observation),
                                            observation["street"])
+        report["why"] = postflop_why(observation, ranges, value, line,
+                                     report["advice"][0], report.get("guard"))
         return report
 
 

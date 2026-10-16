@@ -251,7 +251,7 @@
     if (!row) return null;
     const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
     return {...label, kind: "multiway",
-      note: multiwayReason(row.action, advice.range_equity?.value, advice.cuts)};
+      note: advice.why?.reason || multiwayReason(row.action, advice.range_equity?.value, advice.cuts)};
   }
 
   // The rough rule: your share against fixed ranges, against the price on your button.
@@ -282,6 +282,9 @@
   function readyVerdict(advice, controls, stack) {
     const verdict = plainVerdict(advice, controls, stack);
     if (!verdict || !advice.guard) return verdict;
+    // The default strategy's own sentence already says what the guard did.
+    if (advice.why?.reason) return {...verdict, guard: true,
+      ...(verdict.mix ? {mix: verdict.mix.slice(0, 1)} : {})};
     return {...verdict, note: guardNote(advice.guard), guard: true,
       ...(verdict.mix ? {mix: verdict.mix.slice(0, 1)} : {})};
   }
@@ -367,7 +370,7 @@
         return gap < 0.05 ? `和${name}差不多` : `比${name}多赢 ${one(gap)} 大盲`;
       });
       return {...best.label, kind: "preflop",
-        note: rest.length ? rest.join("，") : "只有这一个选择",
+        note: advice.why?.reason || (rest.length ? rest.join("，") : "只有这一个选择"),
         options: options.map((item, i) => ({text: short(item.label), tone: item.label.tone,
           value: `${signed(item.big_blinds)} 大盲`, best: i === 0,
           width: top > 0 && item.big_blinds > 0 ? Math.round(item.big_blinds / top * 100) : 0}))};
@@ -807,6 +810,8 @@
             : ["单挑求解器", "对手范围按 AA 真人打法推算"];
         if (isNumber(advice.seconds))
           basis[0] += Number(advice.seconds) < 0.01 ? " · 不到 0.01 秒算完" : ` · ${advice.seconds} 秒算完`;
+        // The default strategy: where its answer flips, from its own numbers.
+        if (advice.why?.flip && verdict.kind !== "plain") basis.splice(1, 0, `翻转条件：${advice.why.flip}`);
         if (isNumber(advice.bomb_pot) && Number(advice.bomb_pot) > 0)
           basis.push(`暴击局：每人先投 ${chips(advice.bomb_pot)}，直接发翻牌`);
         if (isNumber(advice.pot_offset) && Number(advice.pot_offset) > 0)
