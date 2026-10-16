@@ -15,6 +15,7 @@ On a computer that uploads (once; the window does the rest by itself):
         --player peng --since 20261016
     PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py status
     PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py push   # upload now
+    PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py push --recording <录像文件夹>
 
 ``pull`` reads ``<source>/<机器名>/<录像文件夹名>/`` and copies each recording
 whose ``upload.json`` is there (written last by the uploader), except this
@@ -294,7 +295,9 @@ def main(argv=None):
     setup.add_argument("--drive")
     setup.add_argument("--since")
     commands.add_parser("status")
-    commands.add_parser("push")
+    send = commands.add_parser("push")
+    send.add_argument("--recording", type=Path, action="append",
+                      help="只传这个录像文件夹（不管 since）")
     for command in (setup, commands.choices["status"], commands.choices["push"]):
         command.add_argument("--root", type=Path)
     args = parser.parse_args(argv)
@@ -339,7 +342,8 @@ def main(argv=None):
                   "也没有 Google Drive 桌面版的云盘文件夹。")
             return 2
         settings["enabled"] = True        # asked for by hand: the switch aside
-        ok = all(uploader.upload(folder, settings) for folder in uploader.pending())
+        folders = args.recording or uploader.pending()
+        ok = all(uploader.upload(folder, settings) for folder in folders)
         print("都传好了。" if ok else f"没传完：{uploader.last_error}")
     status = uploader.status()
     status["waiting"] = len(uploader.pending())

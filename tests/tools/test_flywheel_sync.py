@@ -1,5 +1,6 @@
 """Pulling recordings other computers uploaded, and the ledger by machine."""
 
+from functools import partial
 import json
 import os
 from pathlib import Path
@@ -78,6 +79,31 @@ def test_setup_keeps_the_player_the_synced_folder_and_since(tmp_path, monkeypatc
     settings = json.loads((tmp_path / "private" / "upload" / "settings.json")
                           .read_text(encoding="utf-8"))
     assert settings == {"machine": "peng", "player": "peng", "since": "20261016"}
+
+
+def test_push_sends_a_named_recording_into_the_synced_folder(tmp_path, monkeypatch,
+                                                             capsys):
+    """By hand, one old recording (before ``since``) into the Mac's synced
+    cloud folder."""
+    root = tmp_path / "rec"
+    old = recording(root, "20261010-012911-live")
+    synced = tmp_path / "Drive" / "PokerSense 同事数据"
+    synced.mkdir(parents=True)
+    private = tmp_path / "private" / "upload"
+    private.mkdir(parents=True)
+    (private / "settings.json").write_text(json.dumps(
+        {"machine": "peng", "drive": str(synced), "since": "20261016",
+         "bwlimit": "0"}), encoding="utf-8")
+    monkeypatch.setattr(sync, "private_root", lambda: tmp_path / "private")
+    monkeypatch.setattr(aa_upload, "Uploader", partial(      # no rclone here
+        aa_upload.Uploader, which=lambda name: None, places=[]))
+    assert sync.main(["push", "--root", str(root)]) == 0          # since: nothing
+    assert not (synced / "peng").exists()
+    assert sync.main(["push", "--root", str(root), "--recording", str(old)]) == 0
+    there = synced / "peng" / old.name
+    assert (there / "flywheel" / "package.json").is_file()
+    assert (there / aa_upload.MARKER).is_file()
+    assert "都传好了" in capsys.readouterr().out
 
 
 def test_a_recording_still_on_its_way_is_left_for_the_next_pull(tmp_path):
