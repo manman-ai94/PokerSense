@@ -57,6 +57,42 @@ def test_same_day_the_entry_git_added_last_comes_first(tmp_path):
         "2026-10-15-z-merged-first.md"]
 
 
+def test_an_entry_written_in_a_merge_commit_keeps_its_place(tmp_path):
+    """Moving an entry into docs/worklog/ while resolving a merge with main
+    adds the file in the merge commit itself (#60 and #67 did this on
+    2026-10-15); it must not count as "not added yet" and jump to the top."""
+    tree(tmp_path, {})
+    git(tmp_path, "init", "-q", "-b", "main")
+    folder = tmp_path / "docs" / "worklog"
+
+    def commit(name, when):
+        (folder / name).write_text(entry(name), encoding="utf-8")
+        git(tmp_path, "add", ".")
+        git(tmp_path, "commit", "-q", "-m", name, when=when)
+
+    commit("2026-10-15-z-first.md", "2026-10-15T10:00:00")
+    git(tmp_path, "checkout", "-q", "-b", "branch")
+    (tmp_path / "branch.txt").write_text("b\n", encoding="utf-8")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-q", "-m", "branch work", when="2026-10-15T10:10:00")
+    git(tmp_path, "checkout", "-q", "main")
+    (tmp_path / "main.txt").write_text("m\n", encoding="utf-8")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-q", "-m", "main work", when="2026-10-15T10:20:00")
+    git(tmp_path, "checkout", "-q", "branch")
+    git(tmp_path, "merge", "-q", "--no-ff", "--no-commit", "main")
+    (folder / "2026-10-15-m-in-merge.md").write_text(entry("m"), encoding="utf-8")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-q", "-m", "merge main", when="2026-10-15T10:30:00")
+    git(tmp_path, "checkout", "-q", "main")
+    commit("2026-10-15-a-last.md", "2026-10-15T11:00:00")
+    git(tmp_path, "merge", "-q", "--no-ff", "-m", "merge branch", "branch",
+        when="2026-10-15T11:30:00")
+    paths = worklog_rollup.entries(folder)
+    assert [p.name for p in worklog_rollup.newest_first(tmp_path, paths)] == [
+        "2026-10-15-a-last.md", "2026-10-15-m-in-merge.md", "2026-10-15-z-first.md"]
+
+
 def test_dry_run_and_nothing_to_fold_change_nothing(tmp_path, capsys):
     tree(tmp_path, {"2026-10-15-claude-a.md": entry("A")})
     assert worklog_rollup.main(["--root", str(tmp_path), "--dry-run"]) == 0

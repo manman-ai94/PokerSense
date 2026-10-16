@@ -9,6 +9,8 @@ PR.
 
 Order: by the date in the file name, newest first; on the same date, the file
 git added last comes first (files git does not know yet count as newest).
+"Added" is the first commit that has the file, merge commits included: an
+entry moved into docs/worklog/ while resolving a merge is added by that merge.
 
 Usage: python tools/worklog_rollup.py [--root DIR] [--dry-run]
 """
@@ -29,15 +31,19 @@ def entries(folder):
 
 
 def added_at(root, path):
-    """Seconds since the epoch when git first added ``path``; None if unknown."""
+    """Seconds since the epoch when git first added ``path``; None if unknown.
+
+    ``-m`` makes merge commits show what they add; a later merge that brings
+    the file over from the other side also shows it as added, so the earliest
+    time is the one that counts."""
     try:
         out = subprocess.run(
-            ["git", "log", "--diff-filter=A", "--format=%ct", "-1", "--",
+            ["git", "log", "-m", "--diff-filter=A", "--format=%ct", "--",
              path.relative_to(root).as_posix()],
-            cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+            cwd=root, check=True, capture_output=True, text=True).stdout.split()
     except (OSError, subprocess.CalledProcessError):
         return None
-    return int(out) if out else None
+    return min(map(int, out)) if out else None
 
 
 def newest_first(root, paths):
