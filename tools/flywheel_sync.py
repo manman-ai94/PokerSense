@@ -18,7 +18,10 @@ whose ``upload.json`` is there (written last by the uploader) into
 ``<root>/<机器名>-<录像文件夹名>/`` (default root
 ``PokerSense_private/aa-mac-recordings``), only the files that are missing or
 of another size, and checks every file's size against ``upload.json``. A
-recording that is not all there yet is left for the next pull. A finished
+recording that is not all there yet is left for the next pull. A first pull
+is copied into ``<root>/.pulling/`` and takes its place only when complete
+(half there, with no ``pulled.json`` to say whose it is, the owner's own
+review would take it for one of his recordings). A finished
 copy gets ``pulled.json`` (machine, its own folder name, sizes) and its line
 in the ledger with the machine's name (``flywheel_session.py ledger`` adds
 them up by machine; ``rank`` counts them in). A recording that came without
@@ -50,6 +53,7 @@ from poker_engine.desktop import aa_upload  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
 
 NAME = re.compile(r"[\w\-. ]+")
+PULLING = ".pulling"            # under the root: first pulls until complete
 CLOUD = Path("~/Library/CloudStorage")
 
 
@@ -190,17 +194,27 @@ def pull_one(source, machine, name, root, ledger, *, report=True):
         done = {}
     if done.get("digest") == digest:
         return "same", f"{machine}/{name}：已经拉过"
-    dest.mkdir(parents=True, exist_ok=True)
-    problem = source.fetch([machine, name], files, dest)
+    # A recording pulled before keeps its pulled.json while it is topped up;
+    # a first pull (or one an older version left half done) is copied apart.
+    into = dest if done else Path(root) / PULLING / dest.name
+    if into != dest and dest.is_dir() and not into.exists():
+        into.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(dest, into)
+    into.mkdir(parents=True, exist_ok=True)
+    problem = source.fetch([machine, name], files, into)
     wrong = [rel for rel, size in files
-             if not (dest / rel).is_file() or (dest / rel).stat().st_size != size]
+             if not (into / rel).is_file() or (into / rel).stat().st_size != size]
     if problem or wrong:
         detail = problem or f"{len(wrong)} 个文件大小不对（如 {wrong[0]}）"
         return "failed", f"{machine}/{name}：没拉全，{detail}；下次再拉"
-    aa_upload.write_json(dest / aa_upload.PULLED, {
+    aa_upload.write_json(into / aa_upload.PULLED, {
         "machine": machine, "folder": name, "files": len(files),
         "bytes": sum(size for _, size in files), "digest": digest,
         "uploaded": marker.get("uploaded")})
+    if into != dest:
+        if dest.is_dir():
+            shutil.rmtree(dest)     # what an older version left half done
+        os.replace(into, dest)
     note = ledger_line(dest, machine, ledger, report=report)
     return "pulled", f"{machine}/{name} → {dest.name}（{note}）"
 

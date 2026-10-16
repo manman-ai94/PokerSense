@@ -41,7 +41,10 @@ and ``upload.json``) it says what went wrong, against the Samsung baseline of
 A recording folder is the cloud copy (with ``upload.json``) or one pulled to
 this computer (``pulled.json``); its machine and own name come from there.
 ``run`` skips recordings already in ``<复盘目录>/reviewed.jsonl`` with the
-same files (``--again`` reviews them again), writes ``<机器>-<录像>.json``
+same files (``--again`` reviews them again), a second copy of one recording
+given in the same run, and a tester's recording whose pull to this computer
+has not finished (``<机器>-<录像>`` without ``pulled.json``); it writes
+``<机器>-<录像>.json``
 for each, ``复盘单.md`` (totals only, with the change since that machine's
 last review), ``三行.txt`` and, when the owner's own recordings (``--machine``)
 were among them, ``给主人.txt`` (two lines to him: hands and result, what to
@@ -178,6 +181,16 @@ def identify(folder, machine=None):
     frames = folder / "frames.jsonl"
     size = frames.stat().st_size if frames.exists() else 0
     return machine or fly.LOCAL, folder.name, f"frames.jsonl:{size}"
+
+
+def unfinished_pull(folder):
+    """A tester's recording pulled to this computer whose pull has not
+    finished (``<机器>-<录像>`` with no ``pulled.json`` yet): reviewed now it
+    would count as the owner's own, and again as the tester's once pulled."""
+    folder = Path(folder)
+    return (folder.name.split("-")[0] in SHOWN
+            and not any((folder / marker).exists()
+                        for marker in (aa_upload.MARKER, aa_upload.PULLED)))
 
 
 def read_json(path):
@@ -734,12 +747,19 @@ def run(args):
     stored = read_lines(state / HANDS)
     kept = read_lines(state / RESULTS)
     ledger_lines = read_lines(state / DECISIONS)
-    results = []
+    results, this_run = [], set()
     for folder in sorted(args.recording, key=lambda path: Path(path).name):
+        if unfinished_pull(folder):
+            print(f"{Path(folder).name}：还没拉完，下次再复盘")
+            continue
         machine, name, digest = identify(folder, args.machine)
+        if f"{machine}-{name}" in this_run:
+            print(f"{machine}/{name}：这次已经复盘过（同一场录像给了两份）")
+            continue
         if (f"{machine}-{name}", digest) in done and not args.again:
             print(f"{machine}/{name}：已经复盘过")
             continue
+        this_run.add(f"{machine}-{name}")
         result, lines, hands, decisions = review(folder, baseline, args.machine)
         entry = {"machine": machine, "folder": name, "log": result["log"],
                  "digest": digest, "started": result["recording"]["started"],
