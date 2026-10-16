@@ -110,7 +110,10 @@ MIX = 0.6                       # before the flop: decisions not by the cards
 SLOW = 0.3                      # strong hands that check or call
 BLUFF = {"flop": 0.10, "turn": 0.08, "river": 0.05}     # bets without one
 STICKY = {"flop": 0.15, "turn": 0.10, "river": 0.05}    # calls without one
-RAISE_FLOOR = 0.03              # raises without one (river raises: 3% air)
+# Raises without one: the AA calibrated table fitted no bluff raises at all
+# (aa_cal_stats_v1.json); this little only keeps a misread raise from
+# throwing a hand out.
+RAISE_FLOOR = 0.01
 
 # -- your play -----------------------------------------------------------------
 MARGIN = 0.05                   # a bet or raise needs fair share + this

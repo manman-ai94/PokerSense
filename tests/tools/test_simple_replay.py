@@ -4,7 +4,8 @@ synthetic frames."""
 from decimal import Decimal
 
 from tests.tools.test_aa_compare_advice import rows
-from tools.simple_replay import fold_value, posted, replay_log, screen_moves, summarize
+from tools.simple_replay import (fold_value, missed_raise, posted, replay_log,
+                                 screen_moves, summarize)
 
 
 def test_both_answer_every_turn_and_are_priced_against_the_cards_shown():
@@ -38,11 +39,12 @@ def test_the_screen_reads_raises_calls_and_checks():
             {"slot": 6, "street": "preflop", "kind": "fold", "amount": None},
             {"slot": 7, "street": "preflop", "kind": "fold", "amount": None},
             {"slot": 0, "street": "flop", "kind": "raise", "amount": "20"}]}
-    moves, preflop_actions = screen_moves(facts)
+    moves, preflop_actions, last = screen_moves(facts)
     assert [(move.seat, move.street, move.kind) for move in moves] == [
         (0, "preflop", "r"), (5, "preflop", "f"), (6, "preflop", "f"),
         (7, "preflop", "f"), (0, "flop", "r")]
     assert preflop_actions[:2] == [(0, "r"), (4, "c")]
+    assert last == {"preflop": 0, "flop": 0}
     bet = moves[-1]
     # Seat 0 raised before the flop, so he bets the flop as the raiser, into 30.
     assert bet.spot == "checked_to" and bet.role == "pfa"
@@ -81,3 +83,30 @@ def test_a_fold_is_worth_what_you_had_against_how_the_hand_ended():
                                            "saved": 1, "cost": 1}
     assert fold_value(items, "window") == {"hands": 1, "kept_bb": -25.0,
                                            "saved": 0, "cost": 1}
+
+
+def test_a_bet_the_actions_missed_is_still_read():
+    facts = {"seats": [0, 4], "stakes": {
+        "small_blind": Decimal(1), "big_blind": Decimal(2),
+        "straddle_amount": Decimal(4), "ante": Decimal(2)},
+        "street_pots": {"flop": (Decimal(40), None)}, "opening_wagers": {},
+        "board": ["Ks", "9c", "5d"],
+        "actions": [
+            {"slot": 4, "street": "flop", "kind": "check", "amount": None},
+            # Seat 0's bet of 30 was not read; you called it.
+            {"slot": 4, "street": "flop", "kind": "call", "amount": "30"}]}
+    moves, _, last = screen_moves(facts)
+    (bet,) = moves
+    assert (bet.seat, bet.kind, bet.spot) == (0, "r", "checked_to")
+    assert abs(bet.size - 30 / 40) < 1e-9 and last["flop"] is None
+    # A call that matches the bet read adds nothing.
+    facts["actions"][0] = {"slot": 0, "street": "flop", "kind": "raise", "amount": "30"}
+    moves, _, last = screen_moves(facts)
+    assert [(move.seat, move.kind) for move in moves] == [(0, "r")]
+    assert last["flop"] == 0
+    # Facing a raise nobody was read making: the opponents whose bet is not
+    # on screen made it, sized from your price.
+    (raised,) = missed_raise([], (0,), {"4": Decimal(61)}, Decimal(61),
+                             Decimal(145), Decimal(388), ("Th", "7s", "2d"), "flop")
+    assert (raised.seat, raised.kind, raised.spot) == (0, "r", "facing_bet")
+    assert abs(raised.size - 206 / 182) < 1e-9

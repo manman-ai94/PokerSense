@@ -74,13 +74,14 @@ class GiveUp:
 
 def screen_moves(facts, hero=HERO):
     """(``simple.Move`` for every action read but yours, [(seat, kind)] before
-    the flop with yours) from the action history alone."""
+    the flop with yours, {street: the seat that bet or raised last}) from the
+    action history alone."""
     stakes = facts.get("stakes") or {}
     pots = facts.get("street_pots") or {}
     seats = list(facts.get("seats") or ())
     folded, moves, preflop_actions = set(), [], []
     raiser, street, pot = None, None, Decimal(0)
-    bets, top, raises = {}, Decimal(0), 0
+    bets, top, raises, last = {}, Decimal(0), 0, {}
     board = list(facts.get("board") or ())
     for action in facts.get("actions") or ():
         seat, kind = action["slot"], str(action["kind"]).lower()
@@ -99,6 +100,23 @@ def screen_moves(facts, hero=HERO):
         amount = _decimal(action.get("amount"))
         mine = bets.get(seat, Decimal(0))
         to_call = max(Decimal(0), top - mine)
+        live = len([s for s in seats if s not in folded]) - 1
+        if (seat == hero and street != "preflop" and kind not in AGGRESSIVE
+                and kind != "fold" and amount is not None and amount > to_call
+                and (to_call == 0 or amount >= 2 * to_call)):
+            # You called a bet or raise that was not read: read it the way
+            # it would be, by every opponent still in (the careful side).
+            facing = ("checked_to", "facing_bet", "facing_raise")[min(raises, 2)]
+            size = float(mine + amount) / max(float(pot), 1e-9)
+            moves += [simple.Move(other, street, "r", facing,
+                                  "hu" if live == 1 else "multi", "other", size,
+                                  board=tuple(board[:BOARD_CARDS.get(street, 0)]))
+                      for other in seats if other != hero and other not in folded]
+            raises += 1
+            last[street] = None
+            pot += mine + amount
+            top = mine + amount
+            to_call = amount
         if kind == "fold":
             letter = "f"
         elif kind in AGGRESSIVE and amount is not None and mine + amount > top:
@@ -106,7 +124,6 @@ def screen_moves(facts, hero=HERO):
         else:
             letter = "c"
         cards = BOARD_CARDS.get(street, 0)
-        live = len([s for s in seats if s not in folded]) - 1
         if street == "preflop":
             spot = preflop_spot(preflop_actions, seat)
             preflop_actions.append((seat, letter))
@@ -127,6 +144,7 @@ def screen_moves(facts, hero=HERO):
                                      tuple(board[:cards])))
         if letter == "r":
             raises += 1
+            last[street] = seat
             if street == "preflop":
                 raiser = seat
         if letter == "f":
@@ -135,7 +153,26 @@ def screen_moves(facts, hero=HERO):
             bets[seat] = mine + amount
             top = max(top, bets[seat])
             pot += amount
-    return moves, preflop_actions
+    return moves, preflop_actions, last
+
+
+def missed_raise(moves, opponents, wagers, mine, to_call, pot, board, street):
+    """The bet or raise you face when it was not read (a slow machine misses
+    actions): read the way it would be, by the opponents whose bet matches
+    it on screen, else by every opponent whose bet was not read (the
+    careful side). Its size from your price: it put in your bet and the
+    call over the pot before it."""
+    top = mine + to_call
+    seen = [seat for seat in opponents if wagers.get(str(seat)) == top]
+    if not seen:
+        seen = [seat for seat in opponents if not wagers.get(str(seat))]
+    raised = any(move.street == street and move.kind == "r" for move in moves)
+    facing = ("facing_raise" if raised else "facing_bet" if mine > 0
+              else "checked_to")
+    size = float(top) / max(float(pot - top), 1e-9)
+    return [simple.Move(seat, street, "r", facing,
+                        "hu" if len(opponents) == 1 else "multi", "other", size,
+                        board=board) for seat in seen]
 
 
 def _order(seats, dealer, seat):
@@ -191,8 +228,11 @@ def screen_spot(fields, rows, facts, cards, street, stakes):
     price = 0.0
     if to_call > 0:
         price = float(to_call / rough_winnable(wagers, mine, pot, to_call, stakes))
-    moves, preflop_actions = screen_moves(facts)
+    moves, preflop_actions, last = screen_moves(facts)
     moves = [move for move in moves if move.seat in opponents or move.kind == "f"]
+    if to_call > 0 and street != "preflop" and last.get(street) in (None, HERO):
+        moves += missed_raise(moves, opponents, wagers, mine, to_call, pot, board,
+                              street)
     acted = {seat for seat, _ in preflop_actions}
     big_blind = float(Decimal((stakes or {}).get("big_blind") or 2))
     stacks = {int(seat): _decimal(value) for seat, value in
@@ -331,8 +371,11 @@ def priced(item, observation, share):
     return chips({**item, "action": action}, observation, share)
 
 
-def replay_log(name, rows, solver=False):
-    """Every one of your turns in one log: the window's and the rule's answers."""
+def replay_log(name, rows, solver=False, cached=None):
+    """Every one of your turns in one log: the window's and the rule's answers.
+    ``cached``: the window's answers from an earlier run of this log
+    ({(hand id, street, video seconds): answer}), used instead of its own
+    (the window still follows the log, without solving)."""
     rows = [row for row in rows if row.get("fields")]
     found = turns(rows)
     finals = final_stacks(rows)
@@ -366,6 +409,9 @@ def replay_log(name, rows, solver=False):
         ready = [answer(reports[i], street) for i in indexes
                  if reports[i].get("status") == "ready"]
         item["window"] = ready[-1] if ready else None
+        key = (hand_id, street, item["video_seconds"])
+        if cached is not None and key in cached:
+            item["window"] = cached[key]
         if hero and street in STREETS:
             try:
                 advice, source, why = simple_answer(
@@ -519,6 +565,9 @@ def main(argv=None):
                         help="solve heads-up turns and rivers with TexasSolver")
     parser.add_argument("--lines", type=Path,
                         help="private folder for every decision")
+    parser.add_argument("--window", type=Path,
+                        help="a folder of earlier --lines: the window's answers "
+                             "from there where the log is in it (no solving)")
     parser.add_argument("--out", type=Path, help="summary (totals only)")
     args = parser.parse_args(argv)
     if not args.frames:
@@ -526,7 +575,14 @@ def main(argv=None):
     items = []
     for path in args.frames:
         name = path.parent.name
-        found = replay_log(name, load(path), solver=args.solver)
+        cached = None
+        earlier = args.window / f"{name}.jsonl" if args.window else None
+        if earlier is not None and earlier.exists():
+            cached = {(item["hand_id"], item["street"], item["video_seconds"]):
+                      item["window"] for item in map(json.loads, earlier.open(
+                          encoding="utf-8")) if item.get("window") is not None}
+        found = replay_log(name, load(path), solver=args.solver and cached is None,
+                           cached=cached)
         items += found
         print(f"{name}: {len(found)} turns", flush=True)
         if args.lines:
