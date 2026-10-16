@@ -43,6 +43,14 @@ This layer keeps the reader's actions and rebuilds the rest:
   showed no hand in progress. A hand already running when observation
   started (or restarted after a gap of more than a few seconds, see
   ``aa_reader``) is marked incomplete: actions before it are unknown.
+  Your two cards are a boundary of their own: once this hand's cards were
+  read, two other cards (neither the same, other ranks) read on
+  ``NEW_CARDS_FRAMES`` frames in a row are a new deal. At 2.7 frames a
+  second (杜's PC, 10/16) hands that ended before the flop often showed none
+  of the others: the pot was not read going down, the button was not read
+  and no action was read, so up to three deals ran on as one hand. That new
+  hand is marked incomplete too: its start was missed. The last hand's
+  cards still on screen at the start of the next are not its cards.
 """
 
 from __future__ import annotations
@@ -60,6 +68,7 @@ PRICED = frozenset({"call", "raise", "all_in"})
 BEFORE, AFTER = 10, 15          # reader frames searched around an action's frame
 WAIT = 120                      # longest wait for an unreadable pot to come back
 HISTORY = 400                   # reader frames of pot and street kept
+NEW_CARDS_FRAMES = 3            # frames in a row of two other cards of yours
 # One action in the compact form the measurement log keeps (``frame_summary``).
 COMPACT_FIELDS = ("frame", "street", "slot", "kind", "amount", "source")
 
@@ -110,6 +119,10 @@ class AAActionHistory:
         self._drops = []                         # stack drops not placed yet
         self._seat_drops = []                    # [seat, frame, chips, used]
         self._opened = None                      # first frame of the hand's pot
+        self._hero = None                        # your cards in this hand
+        self._hero_frames = 0                    # frames they were read
+        self._hero_last = None                   # your cards in the last hand
+        self._hero_new = (None, 0)               # other cards, frames in a row
 
     # -- hands -----------------------------------------------------------------
 
@@ -119,12 +132,41 @@ class AAActionHistory:
                       "actions": [], "streets": set()}
         self._hand_over = False
         self._seat_drops = []
+        if self._hero is not None:
+            self._hero_last = self._hero
+        self._hero, self._hero_frames, self._hero_new = None, 0, (None, 0)
 
-    def _boundary(self, payload, frame, street, dropped, dealer):
+    def _hole_cards(self, payload):
+        """Your two cards read on this frame are a new deal (see the module
+        notes); also keeps the hand's own cards."""
+        hero = (payload.get("cards") or {}).get("hero")
+        pair = (tuple(sorted(hero)) if isinstance(hero, (list, tuple))
+                and len(hero) == 2 and all(hero) else None)
+        if pair is None:
+            return None
+        if self._hero is None:
+            if pair != self._hero_last:
+                self._hero, self._hero_frames = pair, 1
+            return None
+        if pair == self._hero:
+            self._hero_frames += 1
+            self._hero_new = (None, 0)
+            return None
+        other = (not set(pair) & set(self._hero)
+                 and sorted(c[0] for c in pair) != sorted(c[0] for c in self._hero)
+                 and self._hero_frames >= NEW_CARDS_FRAMES)
+        seen, frames = self._hero_new if other else (None, 0)
+        frames = frames + 1 if seen == pair else 1
+        self._hero_new = (pair, frames) if other else (None, 0)
+        return pair if other and frames >= NEW_CARDS_FRAMES else None
+
+    def _boundary(self, payload, frame, street, dropped, dealer, new_cards):
         """Why a new hand starts at this frame, or None."""
         hand = self._hand
         if hand is None:
             return "first_hand_seen"
+        if new_cards is not None:
+            return "new_hole_cards"
         if self._hand_over and street in STREETS:
             return "after_hand_over"
         last = next((s for f, s in reversed(self._streets) if f < frame), None)
@@ -453,11 +495,17 @@ class AAActionHistory:
         self._dealers.append(reading if isinstance(reading, int) else None)
         dealer = (self._dealers[0] if len(self._dealers) == 2
                   and self._dealers[0] == self._dealers[1] else None)
-        reason = self._boundary(payload, frame, street, dropped, dealer)
+        new_cards = self._hole_cards(payload) if self._hand is not None else None
+        reason = self._boundary(payload, frame, street, dropped, dealer, new_cards)
         if reason is not None:
             self._opened = None           # the new hand's pot is read after this
         hand = self._hand
-        if (reason is not None and hand is not None and hand["complete"]
+        if reason == "new_hole_cards":
+            # A deal of its own, even with no action read in the last one.
+            self._start(frame, dealer, reason, complete=False)
+            self._shares.clear()
+            self._hero, self._hero_frames = new_cards, NEW_CARDS_FRAMES
+        elif (reason is not None and hand is not None and hand["complete"]
                 and not hand["actions"]):
             # Between hands the board clears, the pot resets and the button moves
             # one after another: while the new hand has no action yet they all

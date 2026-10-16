@@ -26,6 +26,10 @@ while it was being dealt), and both readings have been shown.
   other ranks (a dimmed card keeps its rank), or three or more board slots
   read as other cards while none reads as before, on ``NEW_DEAL_FRAMES``
   frames in a row, is a new deal and starts again.
+- Once you folded, your cards no longer change: no later reading takes over.
+  On 杜's P30 (10/16) your dimmed cards after a fold were read with another
+  suit for the rest of the hand, much longer than the cards were read before
+  you folded in a hurry, and so took over.
 """
 
 from __future__ import annotations
@@ -59,8 +63,9 @@ class _Slot:
         return (value is not None and value != self.stale
                 and self.shown is not None and value != self.shown)
 
-    def observe(self, value, step):
-        """The reading to show: ``value`` or None (held back)."""
+    def observe(self, value, step, locked=False):
+        """The reading to show: ``value`` or None (held back). ``locked``:
+        no other reading takes over."""
         if self.stale is not None:
             if value == self.stale:
                 self._empty = 0
@@ -74,7 +79,8 @@ class _Slot:
         if value is None:
             return None
         self.seconds[value] = self.seconds.get(value, 0.) + step
-        if self.shown is None or (value != self.shown and self.seconds[value]
+        if self.shown is None or (not locked and value != self.shown
+                                  and self.seconds[value]
                                   > self.seconds[self.shown] + MARGIN_SECONDS):
             self.shown = value
         return value if value == self.shown else None
@@ -96,12 +102,14 @@ class AACardCheck:
         self._hero = _Slot()
         self._board = [_Slot() for _ in range(SLOTS)]
         self._new_deal = (None, 0)
+        self._folded = False
 
     def _new_hand(self):
         self._hero.new_hand()
         for slot in self._board:
             slot.new_hand()
         self._new_deal = (None, 0)
+        self._folded = False
 
     def _whole_new_deal(self, pair, board):
         shown = self._hero.shown
@@ -121,11 +129,12 @@ class AACardCheck:
         self._new_deal = (key, frames)
         return frames >= NEW_DEAL_FRAMES
 
-    def observe(self, hero, board, hand_id, pts):
+    def observe(self, hero, board, hand_id, pts, folded=False):
         """(your cards, the five board slots, a report) as they may be shown.
 
         ``hero``: the reader's two cards or None; ``board``: five slots, each
-        a card or None; ``pts``: the frame's time in seconds."""
+        a card or None; ``pts``: the frame's time in seconds; ``folded``: your
+        seat shows folded on this frame."""
         hero = list(hero) if hero and len(hero) == 2 and all(hero) else None
         pair = tuple(sorted(hero)) if hero else None
         board = (list(board or ()) + [None] * SLOTS)[:SLOTS]
@@ -139,7 +148,11 @@ class AACardCheck:
         new_deal = self._whole_new_deal(pair, board)
         if new_deal:
             self._new_hand()
-        hero_out = hero if self._hero.observe(pair, step) is not None else None
+        # Your seat can still show the last hand's fold before this hand's
+        # cards were read: a fold counts once they have been.
+        self._folded |= folded and self._hero.shown is not None
+        hero_out = (hero if self._hero.observe(pair, step, self._folded) is not None
+                    else None)
         board_out = [slot.observe(value, step)
                      for slot, value in zip(self._board, board)]
         held = {"hero": hero if hero is not None and hero_out is None else None,
@@ -148,5 +161,5 @@ class AACardCheck:
                           if value is not None and shown is None}}
         return hero_out, board_out, {
             "schema_version": SCHEMA_VERSION, "hand_id": hand_id,
-            "new_deal": new_deal,
+            "new_deal": new_deal, "folded": self._folded,
             "held_back": held if held["hero"] or held["board"] else None}

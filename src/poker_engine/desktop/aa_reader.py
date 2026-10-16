@@ -17,7 +17,7 @@ import uuid
 import numpy as np
 
 from ..data_paths import resolve_legacy_path
-from .aa_seat_states import AASeatStates, SeatCueRecorder, icon_template
+from .aa_seat_states import HERO_SLOT, AASeatStates, SeatCueRecorder, icon_template
 from .aa_action_history import AAActionHistory
 from .aa_card_check import AACardCheck
 from .aa_shown_cards import AAShownCards
@@ -455,15 +455,18 @@ class AA8Reader:
 
     def _check_cards(self, row, pts):
         """One reading per card in a hand (``aa_card_check``): a hero or board
-        card read as something else than before is shown as unknown. The
-        layers before this one (street, seats, history) keep the cards as
-        read; so do ``hero_as_read`` and ``board_slots_as_read``."""
+        card read as something else than before is shown as unknown, and your
+        cards no longer change once your seat shows folded. The layers before
+        this one (street, seats, history) keep the cards as read; so do
+        ``hero_as_read`` and ``board_slots_as_read``."""
         cards = row.get("cards")
         if not isinstance(cards, dict):
             return
         hero, board = cards.get("hero"), cards.get("board_slots")
+        seat = ((row.get("seat_states_v1") or {}).get("seats") or {}).get(HERO_SLOT)
         checked_hero, checked_board, report = self._card_check.observe(
-            hero, board, (row.get("action_history_v1") or {}).get("hand_id"), pts)
+            hero, board, (row.get("action_history_v1") or {}).get("hand_id"), pts,
+            folded=(seat or {}).get("state") == "folded")
         row["cards"] = {**cards, "hero_as_read": hero, "board_slots_as_read": board,
                         "hero": checked_hero if hero is not None else None,
                         "board_slots": checked_board if board is not None else None}
