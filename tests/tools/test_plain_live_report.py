@@ -2,8 +2,11 @@
 你的轮次怎么切、你做了什么、覆盖和改口、规则命中、遵从率怎么算。"""
 
 import gzip
+import itertools
 import json
+from types import SimpleNamespace
 
+from poker_engine.desktop import aa_plain_advice
 from tests.desktop.test_aa_plain_live import Clock, Screen
 from tools import plain_live_report as report
 
@@ -40,7 +43,12 @@ def facing_an_open(you="raise", to=36):
     return table, recorder
 
 
-def test_a_turn_is_counted_once_with_what_you_did_and_the_page():
+def test_a_turn_is_counted_once_with_what_you_did_and_the_page(monkeypatch):
+    # How long the page takes is its own wall clock (perf_counter), which a
+    # busy runner stretches; here each reading moves 0.05 s, the same anywhere.
+    ticks = itertools.count()
+    monkeypatch.setattr(aa_plain_advice, "time", SimpleNamespace(
+        perf_counter=lambda: next(ticks) * 0.05))
     _, recorder = facing_an_open()
     found = report.log_report("synthetic", recorder.rows, luck=False)
     (turn,) = found["turns"]
@@ -51,7 +59,7 @@ def test_a_turn_is_counted_once_with_what_you_did_and_the_page():
     plain = summary["coverage"]["plain"]
     assert summary["coverage"]["turns"] == 1 and plain["with_advice"] == 1
     assert plain["changed_within_decision"] == 0 and plain["rough"] == 0
-    assert plain["iron5_unread"] == 0 and plain["ready_to_advice_median"] < 0.2
+    assert plain["iron5_unread"] == 0 and plain["ready_to_advice_median"] == 0.05
     assert summary["rules"]["hits"]["T2.3bet"] == {"hits": 1, "you_did_it": 1}
     assert summary["abilities"]["compliance"]["rate"] == 1.0
     assert summary["abilities"]["compliance"]["sample"] == "不够"
