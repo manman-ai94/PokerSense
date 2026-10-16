@@ -1217,3 +1217,31 @@ def test_the_rough_rule_counts_a_draws_implied_odds_as_the_range_rule_does(monke
                                            abs=0.001)
     dry = aa_solver_advice.rough_advice(fields, ["Ah", "Kd"], "flop")
     assert dry["required"] == off["required"]
+
+
+def test_a_shove_read_only_from_the_history_is_in_the_pot_worked_out():
+    # Code check 10/16: on the turn a shove of 500 was read only from the
+    # stack drop, the pot (100 before it) and the chips in front unread, and
+    # you all in for 50: 100 + 50 - 450 made what a call can win negative and
+    # the rough rule called with any two cards.
+    fields = {"street": "turn", "pot": None, "board": ["Ks", "Qd", "9h", "4c", None],
+              "participants": {"2": "all_in", "4": "active"}, "street_wagers": {},
+              "stacks": {"4": "50", "2": "0"},
+              "hero_controls": {"visible": True, "button": "all_in",
+                                "call_amount": None},
+              "actions_v1": {"hand_id": "h1", "actions": [
+                  [10, "flop", 2, "check", None, "read"],
+                  [11, "flop", 4, "check", None, "read"],
+                  [20, "turn", 2, "all_in", "500", "stack_drop"]]}}
+    rows = [{"processed": 15, "fields": {"street": "turn", "pot": "100",
+                                         "street_wagers": {}}}]
+    pot = aa_solver_advice.pot_on_screen(fields, rows)
+    rough = aa_solver_advice.rough_advice(fields, ["7c", "2d"], "turn", pot)
+    assert rough["to_call"] == "50"
+    # 50 to win 100 + 50 + 50 of the shove, less rake.
+    assert 0.25 < rough["required"] < 0.3
+    assert rough["advice"][0]["action"] == "fold"
+    # What a call can win is never below the call (nor 0 to divide by).
+    assert aa_solver_advice.rough_winnable(
+        {"2": Decimal(500), "4": Decimal(0)}, Decimal(0), Decimal(100),
+        Decimal(50)) == Decimal(50)
