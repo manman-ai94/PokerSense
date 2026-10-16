@@ -485,3 +485,15 @@ def test_your_action_is_graded_against_the_page():
     assert graded["decisions"] == 1 and graded["advised"] == 1
     assert graded["last"]["action"]["kind"] == "call"
     assert graded["last"]["grade"] != "best"
+
+
+def test_a_price_misread_for_a_frame_does_not_start_the_two_seconds():
+    clock = Clock()
+    screen = opened(clock)
+    screen.clock = clock
+    ready(screen, call=12)
+    screen.turn(call=72, frames=1)                        # 一帧读错
+    screen.turn(call=12, frames=30)                       # 3 秒过去
+    screen.put(5, 36, frames=0)
+    report = screen.turn(call=36, frames=1)               # 真的加注了：从现在开始等
+    assert report["status"] == "reading"

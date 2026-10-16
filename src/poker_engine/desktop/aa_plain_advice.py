@@ -708,6 +708,8 @@ class AAPlainAdvice:
         now = price(controls, state.stack_read(HERO))
         done = self._decisions.get((street, now))
         if done is not None:
+            # 等待从价格第一次变成新的那一帧算起，不从一闪而过的误读算起。
+            self._wait = None
             return self._with_previous(done)
         if self._wait is None or self._wait[0] != street:
             self._wait = (street, frame, self._clock())
