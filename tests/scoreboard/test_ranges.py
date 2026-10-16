@@ -1,5 +1,6 @@
 """Every opponent's range from the public actions, and equity against them."""
 
+from decimal import Decimal
 import json
 import math
 from pathlib import Path
@@ -242,3 +243,57 @@ def test_strong_draws():
     assert not strong_draw(("Ac", "Kd"), ("Qh", "Js", "2c"))       # gutshot
     assert not strong_draw(("Ac", "Kd"), ("Qh", "Js", "Tc"))       # made
     assert not strong_draw(("Ah", "2h"), ("Kh", "7h", "3c", "4d", "9s"))   # river
+
+
+def _river_lead(size):
+    """Heads-up after a limp: the first player bets half the pot on the flop
+    and the turn, the second checks and calls both and leads the river with
+    the bet closest to ``size`` of the pot; the first player's turn to
+    answer."""
+    rules = AARuleProfileV2.from_dict(json.loads(RULES.read_text(encoding="utf-8")))
+    seats = AAFullHandArena(rules).occupied_seats
+    arena = AAFullHandArena(rules, starting_stacks=dict.fromkeys(seats, Decimal(4000)))
+    arena.reset(0, deck=replay_deck([{"cards": ["7d", "3h", "Ts"]}, {"cards": ["7s"]},
+                                     {"cards": ["5h"]}], len(arena.occupied_seats)))
+
+    def raise_to(fraction):
+        seen = arena.observe(arena.actor)
+        current = max(float(value) for value in seen["bets"].values())
+        target = current + fraction * float(seen["pot"])
+        raises = [a for a in seen["legal_actions"] if a["kind"] == "raise_to"]
+        return min(raises, key=lambda a: abs(float(a["raise_to"]) - target))["id"]
+
+    raiser = arena.actor             # limps; the rest fold but the one who may check
+    arena.step("check_call")
+    while arena.street == "preflop":
+        free = float(arena.observe(arena.actor)["to_call"] or 0) == 0
+        arena.step("check_call" if free else "fold")
+    folded = arena.observe(arena.actor)["folded"]
+    caller = next(seat for seat in arena.occupied_seats
+                  if seat != raiser and seat not in folded)
+    for _ in ("flop", "turn"):
+        if arena.actor == caller:
+            arena.step("check_call")             # the caller checks
+        arena.step(raise_to(0.5))                # the raiser bets half the pot
+        arena.step("check_call")                 # the caller calls
+    if arena.actor == raiser:
+        arena.step("check_call")
+    arena.step(raise_to(size))
+    observation = arena.observe(arena.actor)
+    assert observation["observing_seat"] == raiser and observation["street"] == "river"
+    return observation, caller
+
+
+def test_a_big_river_lead_brings_back_slow_played_hands():
+    # A caller who leads the river for the pot: read by the model alone the
+    # range was what checks and calls twice (slow play weighed down), and two
+    # pair with a good kicker came out well ahead of it.
+    model = PopulationBot(adjusted=True)
+    hero = ("Kh", "Tc")
+    shares = {}
+    for size in (0.33, 1.0):
+        observation, caller = _river_lead(size)
+        ranges = opponent_ranges(observation, model, cache={})
+        shares[size], _ = ranges_equity(hero, observation["board"], ranges, trials=4000)
+    assert shares[1.0] < shares[0.33] - 0.2
+    assert shares[1.0] < 0.35

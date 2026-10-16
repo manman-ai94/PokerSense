@@ -65,6 +65,17 @@ ranges were such draws) and 2 of the 13 raises before the river (6%), so a
 draw weighs about the average hand of the range. Shown hands lean strong (a
 bluff that is not called is not shown), so these read a bettor a little
 stronger than he is.
+
+The model alone reads a big bet after the flop (``big_bet``: ``BIG_BET`` of
+the pot or more) far too weak: it says nothing of bet size, and a player who
+checked and called with a strong hand had that hand weighed down by slow
+play at each call, so a player who called twice and then led the river for
+the pot came out holding mostly what checks and calls. In the recordings the
+biggest losses were calls against such bets (two pair against a pot-sized
+river lead read at 0.67, behind every time). At a big bet the hands the
+model plays that way from the range the player had when the flop began come
+back at their weight then, and every hand is weighed by its strength with
+``RAISE_SCALE`` (``big_bet_read``), as a raise is.
 """
 
 from __future__ import annotations
@@ -81,7 +92,7 @@ from phevaluator import evaluate_cards
 from poker_engine.solver.texassolver import all_combos
 
 from .bots import _rng
-from .postflop_reading import key_of, soft_kept, weights_of
+from .postflop_reading import VETO, key_of, soft_kept, weights_of
 from .reads import MODEL, aggression_factor, factors
 from .replay import public_replay
 from .solver_bot import MODEL_SALT, kept
@@ -185,6 +196,27 @@ def narrowed(weights, base, board, scale):
     return result
 
 
+def big_bet(decision):
+    """Whether ``decision`` is a bet or raise after the flop of ``BIG_BET``
+    of the pot before it or more. An all in for less than that is not: a
+    short stack's shove says little about its hand."""
+    if decision.street == "preflop" or decision.kind != "r":
+        return False
+    paid = float(decision.action.get("paid") or 0)
+    return paid >= BIG_BET * float(decision.observation["pot"])
+
+
+def big_bet_read(after, started, decision, decide):
+    """``after`` (the range read at a big bet) with the hands the model plays
+    that way from ``started`` (the range when the flop began) back at their
+    weight then, and every hand weighed by its strength (``narrowed`` with
+    ``RAISE_SCALE``) in ``started``."""
+    again = soft_kept(started, decision, decide, VETO)
+    merged = {**after, **{combo: max(after.get(combo, 0.0), weight)
+                          for combo, weight in again.items()}}
+    return narrowed(merged, started, tuple(decision.observation["board"]), RAISE_SCALE)
+
+
 def _decide(model, observation):
     return model.decide(observation, _rng(MODEL_SALT, observation))
 
@@ -218,9 +250,12 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
              observation.get("rules_fingerprint"), tuple(observation["occupied_seats"]),
              observation["dealer_seat"], observation.get("bomb_pot"),
              tuple(sorted(observation["starting_stacks"].items())))
+    started = {}
     for index, decision in enumerate(public_replay(observation)):
         if decision.seat not in ranges:
             continue
+        if decision.street != "preflop":
+            started.setdefault(decision.seat, ranges[decision.seat])
         read = reads[decision.seat]
         board = tuple(decision.observation["board"])
         key = (table, read, floors[decision.seat], board,
@@ -243,6 +278,9 @@ def opponent_ranges(observation, model, *, cache=None, trace=None):
             if kept_share:
                 after = {combo: max(after.get(combo, 0.0), kept_share * weight)
                          for combo, weight in before.items()}
+            if big_bet(decision):
+                after = big_bet_read(after, _without(started[decision.seat], board),
+                                     decision, partial(_decide, model))
             if len(kept_ranges) >= CACHE_SIZE:
                 kept_ranges.clear()
             kept_ranges[key] = after
