@@ -240,6 +240,7 @@ def result(**more):
                        "past_preflop_advised": [5, 5], "stalls_over_2s": 0,
                        "hand_problems": {}},
             "recognition": {"rows": []}, "stakes_read": [20, 20],
+            "stakes_kept": {}, "blind_badges": {},
             "opponents_usable": [17, 20]}
     for key, value in more.items():
         base[key] = {**base[key], **value} if isinstance(value, dict) else value
@@ -282,6 +283,53 @@ def test_problems_are_measured_against_the_mac():
         "卡顿超过 2 秒 1 次",
         "录像丢了 5% 的帧",
         "录像每小时 26000 MB（编码 avc1），上传会很慢"]
+
+
+def test_unread_seats_and_how_the_level_was_kept_are_said():
+    # 10/16 on 杜's computer: seats 1 and 7 showed none of their blinds, so
+    # 28 of 40 hands had no level read; it was carried, and right.
+    found = review.problems(result(
+        blind_badges={"0": [9, 9], "1": [0, 17], "2": [15, 15], "6": [1, 3],
+                      "7": [0, 16]},
+        stakes_read=[12, 40],
+        stakes_kept={"carried": 25, "unsure": 3, "levels": ["1/2/4(2)"]}))
+    assert found == [
+        "座位 1、7 下盲注时金额几乎读不到（0/17、0/16 次读出，其他座位 25/27）",
+        "28/40 手没从牌桌读出级别（盲注）：25 手沿用前面读到的，3 手级别没定下来；"
+        "读出的都是 1/2/4(2)"]
+    # Few blinds at a seat say nothing yet; two levels on the table are named.
+    found = review.problems(result(
+        blind_badges={"1": [0, 4], "2": [5, 5]}, stakes_read=[2, 20],
+        stakes_kept={"carried": 18, "unsure": 0,
+                     "levels": ["1/2/4(2)", "2/4/8(4)"]}))
+    assert found == ["18/20 手没从牌桌读出级别（盲注）：18 手沿用前面读到的；"
+                     "读出的有 1/2/4(2)、2/4/8(4)"]
+
+
+def blinds_posted(hand, first, wagers):
+    """A hand at four players with the dealer on 5: the small blind on 6, the
+    big blind on 7 and the straddle on 4 (1/2/4(2)); ``wagers`` in front of
+    the seats until seat 5 acts first, on frame ``first + 3``."""
+    folded = [(first + 3, "preflop", 5, "fold", "0", "fold")]
+    rows = []
+    for frame in range(first, first + 5):
+        item = row(frame, hand=hand, actions=folded if frame >= first + 3 else ())
+        item["fields"]["participants"]["7"] = "active"
+        item["fields"]["street_wagers"] = dict(wagers)
+        rows.append(item)
+    return rows
+
+
+def test_a_seat_whose_bets_go_unread_is_found():
+    rows = (blinds_posted("hand_0", 0, {"6": "1", "7": "2", "4": "4"})
+            + blinds_posted("hand_5", 5, {"6": "1", "7": "2"})
+            + blinds_posted("hand_10", 10, {"6": "1", "7": "2", "4": "2"}))
+    hands = review.fly.by_hand(rows)
+    stakes = review.fly.hand_stakes(hands)
+    assert review.blind_badges(hands, stakes) == {
+        "4": [1, 3], "6": [3, 3], "7": [3, 3]}
+    assert review.stakes_read(stakes) == [0, 3]
+    assert review.stakes_kept(stakes) == {"carried": 0, "unsure": 3, "levels": []}
 
 
 def answered(advice, answer):
