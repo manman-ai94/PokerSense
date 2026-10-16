@@ -192,6 +192,12 @@ def test_each_hand_pays_its_own_blinds_antes_and_mushroom_post():
     first, second, third = session_report([("log", rows)])["hands"]
     assert (first["your_chips"], second["your_chips"]) == (-3.0, -8.0)
     assert third["your_chips"] is None
+    # The small blind wins and takes the mushroom pool: more than the pot (10)
+    # with the posts back, still counted.
+    won = [{**item, "fields": {**item["fields"], "stacks": {"4": "106"}}}
+           for item in rows[6:12]]
+    first = session_report([("log", rows[:6] + won + rows[12:])])["hands"][0]
+    assert first["your_chips"] == 14.0
     # The dealer not read: the hand counts as before.
     for item in rows[6:12]:
         item["fields"]["actions_v1"]["dealer"] = None

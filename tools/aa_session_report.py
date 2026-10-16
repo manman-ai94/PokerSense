@@ -370,7 +370,8 @@ def chips(hands):
     recording, before either hand's posts (``posted``). A hand that goes on
     with your same two cards was split in two (a new hand was started in the
     middle of it): both parts count as one, on the first. A rise larger than
-    the hand's biggest pot is a rebuy or a misread and is left out.
+    the hand's biggest pot (as read, after the posts) is a rebuy or a
+    misread and is left out.
 
     A hand you finished all in with nothing left (``busted``) costs your
     whole start. Until 10/16 those were left out (no stack read after it)
@@ -389,6 +390,11 @@ def chips(hands):
         first = whole[0]
         one = first["start_stack"]
         two = after[0]["start_stack"] if after else None
+        # The rebuy check stays on the rise as read, both ends after the
+        # posts, as before 10/17: with the posts added back a small blind's
+        # win can pass the pot, as it takes the mushroom pool too (10/10 on
+        # 2/4/8(8): raised, all folded, 110 chips won with the pot at 102).
+        read = None if one is None or two is None else two - one
         if one is not None:
             one += first["posted"] or 0
         if two is not None:
@@ -405,7 +411,7 @@ def chips(hands):
         if two is None:
             continue
         change = two - one
-        if change > 0 and (most is None or change > most):
+        if read > 0 and (most is None or read > most):
             continue
         first["your_chips"] = round(change, 2)
     for hand in hands:
