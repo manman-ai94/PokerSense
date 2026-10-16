@@ -1,378 +1,407 @@
 {
  "schema_version": 1,
- "source": "tools/aa_population_stats.py, version 1: 420 hands, 394.1 minutes of AA recordings",
+ "source": "tools/aa_population_stats.py, version 1: 533 hands, 528.7 minutes of AA recordings",
  "method": "aggregate shares of AA players' decisions (all table sizes); rows with fewer than 10 decisions left out",
  "preflop": {
-  "ALL|call_vs_3bet": {
-   "n": 25,
-   "grade": "rough",
-   "raise": 0.04,
-   "call": 0.2,
-   "fold": 0.76
-  },
-  "ALL|limp_vs_raise": {
-   "n": 289,
-   "grade": "usable",
-   "raise": 0.066,
-   "call": 0.439,
-   "fold": 0.495
-  },
-  "ALL|open_vs_3bet": {
-   "n": 32,
-   "grade": "usable",
-   "raise": 0.062,
-   "call": 0.375,
-   "fold": 0.562
-  },
-  "ALL|rfi": {
-   "n": 674,
-   "grade": "usable",
-   "raise": 0.101,
-   "call": 0.421,
-   "fold": 0.478
-  },
-  "ALL|vs_3bet_cold": {
-   "n": 41,
-   "grade": "usable",
-   "call": 0.049,
-   "fold": 0.951
-  },
-  "ALL|vs_limp": {
-   "n": 922,
-   "grade": "usable",
-   "raise": 0.125,
-   "call": 0.493,
-   "fold": 0.382
-  },
-  "ALL|vs_open": {
-   "n": 613,
-   "grade": "usable",
-   "raise": 0.052,
-   "call": 0.281,
-   "fold": 0.667
-  },
-  "BB|limp_vs_raise": {
-   "n": 29,
-   "grade": "rough",
-   "raise": 0.138,
-   "call": 0.241,
-   "fold": 0.621
-  },
-  "BB|rfi": {
-   "n": 13,
-   "grade": "rough",
-   "raise": 0.385,
-   "call": 0.385,
-   "fold": 0.231
-  },
-  "BB|vs_limp": {
-   "n": 179,
-   "grade": "usable",
-   "raise": 0.117,
-   "call": 0.52,
-   "fold": 0.363
-  },
-  "BB|vs_open": {
-   "n": 160,
-   "grade": "usable",
-   "raise": 0.069,
-   "call": 0.287,
-   "fold": 0.644
-  },
-  "BTN|limp_vs_raise": {
-   "n": 50,
-   "grade": "usable",
-   "raise": 0.04,
-   "call": 0.42,
-   "fold": 0.54
-  },
-  "BTN|rfi": {
-   "n": 99,
-   "grade": "usable",
-   "raise": 0.091,
-   "call": 0.475,
-   "fold": 0.434
-  },
-  "BTN|vs_limp": {
-   "n": 179,
-   "grade": "usable",
-   "raise": 0.123,
-   "call": 0.358,
-   "fold": 0.52
-  },
-  "BTN|vs_open": {
-   "n": 80,
-   "grade": "usable",
-   "raise": 0.025,
-   "call": 0.3,
-   "fold": 0.675
-  },
-  "CO|limp_vs_raise": {
-   "n": 64,
-   "grade": "usable",
-   "raise": 0.094,
-   "call": 0.406,
-   "fold": 0.5
-  },
-  "CO|rfi": {
-   "n": 176,
-   "grade": "usable",
-   "raise": 0.074,
-   "call": 0.472,
-   "fold": 0.455
-  },
-  "CO|vs_limp": {
-   "n": 114,
-   "grade": "usable",
-   "raise": 0.132,
-   "call": 0.316,
-   "fold": 0.553
-  },
-  "CO|vs_open": {
-   "n": 43,
-   "grade": "usable",
-   "raise": 0.023,
-   "call": 0.163,
-   "fold": 0.814
-  },
-  "HJ|limp_vs_raise": {
-   "n": 37,
-   "grade": "usable",
-   "raise": 0.054,
-   "call": 0.514,
-   "fold": 0.432
-  },
-  "HJ|rfi": {
-   "n": 119,
-   "grade": "usable",
-   "raise": 0.109,
-   "call": 0.378,
-   "fold": 0.513
-  },
-  "HJ|vs_limp": {
-   "n": 76,
-   "grade": "usable",
-   "raise": 0.066,
-   "call": 0.395,
-   "fold": 0.539
-  },
-  "HJ|vs_open": {
-   "n": 23,
-   "grade": "rough",
-   "call": 0.261,
-   "fold": 0.739
-  },
-  "LJ|limp_vs_raise": {
-   "n": 33,
-   "grade": "usable",
-   "call": 0.576,
-   "fold": 0.424
-  },
-  "LJ|rfi": {
-   "n": 153,
-   "grade": "usable",
-   "raise": 0.124,
-   "call": 0.346,
-   "fold": 0.529
-  },
-  "LJ|vs_limp": {
-   "n": 32,
-   "grade": "usable",
-   "raise": 0.094,
-   "call": 0.281,
-   "fold": 0.625
-  },
-  "SB|call_vs_3bet": {
+  "ALL|3bet_vs_4bet": {
    "n": 11,
    "grade": "rough",
+   "raise": 0.182,
+   "call": 0.364,
+   "fold": 0.455
+  },
+  "ALL|call_vs_3bet": {
+   "n": 30,
+   "grade": "usable",
+   "raise": 0.033,
+   "call": 0.2,
+   "fold": 0.767
+  },
+  "ALL|limp_vs_raise": {
+   "n": 372,
+   "grade": "usable",
+   "raise": 0.067,
+   "call": 0.425,
+   "fold": 0.508
+  },
+  "ALL|open_vs_3bet": {
+   "n": 55,
+   "grade": "usable",
    "raise": 0.091,
-   "call": 0.091,
-   "fold": 0.818
+   "call": 0.4,
+   "fold": 0.509
+  },
+  "ALL|rfi": {
+   "n": 918,
+   "grade": "usable",
+   "raise": 0.113,
+   "call": 0.376,
+   "fold": 0.511
+  },
+  "ALL|vs_3bet_cold": {
+   "n": 68,
+   "grade": "usable",
+   "raise": 0.015,
+   "call": 0.029,
+   "fold": 0.956
+  },
+  "ALL|vs_limp": {
+   "n": 1066,
+   "grade": "usable",
+   "raise": 0.151,
+   "call": 0.471,
+   "fold": 0.378
+  },
+  "ALL|vs_open": {
+   "n": 847,
+   "grade": "usable",
+   "raise": 0.063,
+   "call": 0.253,
+   "fold": 0.685
+  },
+  "BB|limp_vs_raise": {
+   "n": 34,
+   "grade": "usable",
+   "raise": 0.118,
+   "call": 0.206,
+   "fold": 0.676
+  },
+  "BB|rfi": {
+   "n": 20,
+   "grade": "rough",
+   "raise": 0.55,
+   "call": 0.25,
+   "fold": 0.2
+  },
+  "BB|vs_3bet_cold": {
+   "n": 15,
+   "grade": "rough",
+   "fold": 1.0
+  },
+  "BB|vs_limp": {
+   "n": 203,
+   "grade": "usable",
+   "raise": 0.138,
+   "call": 0.502,
+   "fold": 0.36
+  },
+  "BB|vs_open": {
+   "n": 221,
+   "grade": "usable",
+   "raise": 0.081,
+   "call": 0.253,
+   "fold": 0.665
+  },
+  "BTN|limp_vs_raise": {
+   "n": 68,
+   "grade": "usable",
+   "raise": 0.059,
+   "call": 0.397,
+   "fold": 0.544
+  },
+  "BTN|open_vs_3bet": {
+   "n": 10,
+   "grade": "rough",
+   "raise": 0.2,
+   "call": 0.5,
+   "fold": 0.3
+  },
+  "BTN|rfi": {
+   "n": 124,
+   "grade": "usable",
+   "raise": 0.113,
+   "call": 0.444,
+   "fold": 0.444
+  },
+  "BTN|vs_limp": {
+   "n": 216,
+   "grade": "usable",
+   "raise": 0.153,
+   "call": 0.361,
+   "fold": 0.486
+  },
+  "BTN|vs_open": {
+   "n": 112,
+   "grade": "usable",
+   "raise": 0.054,
+   "call": 0.241,
+   "fold": 0.705
+  },
+  "CO|limp_vs_raise": {
+   "n": 87,
+   "grade": "usable",
+   "raise": 0.092,
+   "call": 0.425,
+   "fold": 0.483
+  },
+  "CO|rfi": {
+   "n": 238,
+   "grade": "usable",
+   "raise": 0.088,
+   "call": 0.454,
+   "fold": 0.458
+  },
+  "CO|vs_limp": {
+   "n": 130,
+   "grade": "usable",
+   "raise": 0.154,
+   "call": 0.292,
+   "fold": 0.554
+  },
+  "CO|vs_open": {
+   "n": 64,
+   "grade": "usable",
+   "raise": 0.031,
+   "call": 0.172,
+   "fold": 0.797
+  },
+  "HJ|limp_vs_raise": {
+   "n": 48,
+   "grade": "usable",
+   "raise": 0.062,
+   "call": 0.5,
+   "fold": 0.438
+  },
+  "HJ|rfi": {
+   "n": 172,
+   "grade": "usable",
+   "raise": 0.116,
+   "call": 0.337,
+   "fold": 0.547
+  },
+  "HJ|vs_limp": {
+   "n": 88,
+   "grade": "usable",
+   "raise": 0.102,
+   "call": 0.352,
+   "fold": 0.545
+  },
+  "HJ|vs_open": {
+   "n": 32,
+   "grade": "usable",
+   "call": 0.188,
+   "fold": 0.812
+  },
+  "LJ|limp_vs_raise": {
+   "n": 38,
+   "grade": "usable",
+   "call": 0.579,
+   "fold": 0.421
+  },
+  "LJ|rfi": {
+   "n": 201,
+   "grade": "usable",
+   "raise": 0.124,
+   "call": 0.289,
+   "fold": 0.587
+  },
+  "LJ|vs_limp": {
+   "n": 39,
+   "grade": "usable",
+   "raise": 0.128,
+   "call": 0.231,
+   "fold": 0.641
+  },
+  "SB|call_vs_3bet": {
+   "n": 12,
+   "grade": "rough",
+   "raise": 0.083,
+   "call": 0.083,
+   "fold": 0.833
   },
   "SB|limp_vs_raise": {
-   "n": 52,
+   "n": 63,
    "grade": "usable",
-   "raise": 0.096,
-   "call": 0.404,
-   "fold": 0.5
-  },
-  "SB|rfi": {
-   "n": 42,
-   "grade": "usable",
-   "raise": 0.119,
-   "call": 0.357,
+   "raise": 0.079,
+   "call": 0.397,
    "fold": 0.524
   },
-  "SB|vs_limp": {
-   "n": 189,
+  "SB|rfi": {
+   "n": 54,
    "grade": "usable",
-   "raise": 0.101,
-   "call": 0.529,
-   "fold": 0.37
+   "raise": 0.167,
+   "call": 0.278,
+   "fold": 0.556
+  },
+  "SB|vs_limp": {
+   "n": 223,
+   "grade": "usable",
+   "raise": 0.13,
+   "call": 0.511,
+   "fold": 0.359
   },
   "SB|vs_open": {
-   "n": 123,
+   "n": 171,
    "grade": "usable",
-   "raise": 0.041,
-   "call": 0.325,
-   "fold": 0.634
+   "raise": 0.047,
+   "call": 0.263,
+   "fold": 0.69
+  },
+  "STR|open_vs_3bet": {
+   "n": 10,
+   "grade": "rough",
+   "call": 0.5,
+   "fold": 0.5
   },
   "STR|vs_3bet_cold": {
-   "n": 23,
-   "grade": "rough",
-   "call": 0.043,
-   "fold": 0.957
+   "n": 39,
+   "grade": "usable",
+   "raise": 0.026,
+   "call": 0.026,
+   "fold": 0.949
   },
   "STR|vs_limp": {
-   "n": 153,
+   "n": 167,
    "grade": "usable",
-   "raise": 0.196,
-   "call": 0.804
+   "raise": 0.222,
+   "call": 0.778
   },
   "STR|vs_open": {
-   "n": 182,
+   "n": 245,
    "grade": "usable",
-   "raise": 0.071,
-   "call": 0.269,
-   "fold": 0.659
+   "raise": 0.078,
+   "call": 0.282,
+   "fold": 0.641
   },
   "UTG1|limp_vs_raise": {
-   "n": 24,
-   "grade": "rough",
-   "call": 0.583,
-   "fold": 0.417
+   "n": 34,
+   "grade": "usable",
+   "raise": 0.029,
+   "call": 0.471,
+   "fold": 0.5
   },
   "UTG1|rfi": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "raise": 0.056,
-   "call": 0.507,
-   "fold": 0.437
+   "raise": 0.037,
+   "call": 0.426,
+   "fold": 0.537
   }
  },
  "postflop": {
   "flop|ALL": {
-   "n": 1060,
+   "n": 1151,
    "grade": "usable",
    "raise": 0.028,
-   "call": 0.107,
-   "fold": 0.277,
-   "bet": 0.167,
-   "check": 0.421
+   "call": 0.11,
+   "fold": 0.28,
+   "bet": 0.175,
+   "check": 0.407
   },
   "flop|hu|other|checked_to": {
-   "n": 86,
+   "n": 92,
    "grade": "usable",
-   "bet": 0.244,
-   "check": 0.756
+   "bet": 0.239,
+   "check": 0.761
   },
   "flop|hu|other|facing_bet": {
-   "n": 122,
-   "grade": "usable",
-   "raise": 0.066,
-   "call": 0.303,
-   "fold": 0.631
-  },
-  "flop|hu|other|facing_raise": {
-   "n": 12,
-   "grade": "rough",
-   "raise": 0.25,
-   "call": 0.5,
-   "fold": 0.25
-  },
-  "flop|hu|pfa|checked_to": {
-   "n": 65,
-   "grade": "usable",
-   "bet": 0.8,
-   "check": 0.2
-  },
-  "flop|hu|pfa|facing_bet": {
-   "n": 15,
-   "grade": "rough",
-   "raise": 0.067,
-   "call": 0.4,
-   "fold": 0.533
-  },
-  "flop|hu|pfa|facing_raise": {
-   "n": 11,
-   "grade": "rough",
-   "raise": 0.091,
-   "call": 0.364,
-   "fold": 0.545
-  },
-  "flop|multi|other|checked_to": {
-   "n": 426,
-   "grade": "usable",
-   "bet": 0.185,
-   "check": 0.815
-  },
-  "flop|multi|other|facing_bet": {
-   "n": 242,
-   "grade": "usable",
-   "raise": 0.066,
-   "call": 0.223,
-   "fold": 0.711
-  },
-  "flop|multi|other|facing_raise": {
-   "n": 24,
-   "grade": "rough",
-   "call": 0.25,
-   "fold": 0.75
-  },
-  "flop|multi|pfa|checked_to": {
-   "n": 46,
-   "grade": "usable",
-   "bet": 0.543,
-   "check": 0.457
-  },
-  "flop|multi|pfa|facing_bet": {
-   "n": 11,
-   "grade": "rough",
-   "raise": 0.091,
-   "fold": 0.909
-  },
-  "flop|vs_cbet": {
-   "n": 128,
-   "grade": "usable",
-   "raise": 0.094,
-   "call": 0.242,
-   "fold": 0.664
-  },
-  "river|ALL": {
-   "n": 187,
+   "n": 136,
    "grade": "usable",
    "raise": 0.059,
-   "call": 0.059,
-   "fold": 0.246,
-   "bet": 0.273,
-   "check": 0.364
+   "call": 0.324,
+   "fold": 0.618
+  },
+  "flop|hu|other|facing_raise": {
+   "n": 13,
+   "grade": "rough",
+   "raise": 0.231,
+   "call": 0.462,
+   "fold": 0.308
+  },
+  "flop|hu|pfa|checked_to": {
+   "n": 82,
+   "grade": "usable",
+   "bet": 0.805,
+   "check": 0.195
+  },
+  "flop|hu|pfa|facing_bet": {
+   "n": 18,
+   "grade": "rough",
+   "raise": 0.056,
+   "call": 0.389,
+   "fold": 0.556
+  },
+  "flop|hu|pfa|facing_raise": {
+   "n": 12,
+   "grade": "rough",
+   "raise": 0.083,
+   "call": 0.417,
+   "fold": 0.5
+  },
+  "flop|multi|other|checked_to": {
+   "n": 445,
+   "grade": "usable",
+   "bet": 0.191,
+   "check": 0.809
+  },
+  "flop|multi|other|facing_bet": {
+   "n": 261,
+   "grade": "usable",
+   "raise": 0.069,
+   "call": 0.222,
+   "fold": 0.709
+  },
+  "flop|multi|other|facing_raise": {
+   "n": 27,
+   "grade": "rough",
+   "call": 0.222,
+   "fold": 0.778
+  },
+  "flop|multi|pfa|checked_to": {
+   "n": 51,
+   "grade": "usable",
+   "bet": 0.549,
+   "check": 0.451
+  },
+  "flop|multi|pfa|facing_bet": {
+   "n": 13,
+   "grade": "rough",
+   "raise": 0.077,
+   "call": 0.077,
+   "fold": 0.846
+  },
+  "flop|vs_cbet": {
+   "n": 147,
+   "grade": "usable",
+   "raise": 0.088,
+   "call": 0.265,
+   "fold": 0.646
+  },
+  "river|ALL": {
+   "n": 196,
+   "grade": "usable",
+   "raise": 0.056,
+   "call": 0.061,
+   "fold": 0.25,
+   "bet": 0.265,
+   "check": 0.367
   },
   "river|hu|other|checked_to": {
-   "n": 70,
-   "grade": "usable",
-   "fold": 0.014,
-   "bet": 0.5,
-   "check": 0.486
-  },
-  "river|hu|other|facing_bet": {
-   "n": 33,
-   "grade": "usable",
-   "raise": 0.212,
-   "call": 0.242,
-   "fold": 0.545
-  },
-  "river|hu|pfa|checked_to": {
-   "n": 11,
-   "grade": "rough",
-   "bet": 0.455,
-   "check": 0.545
-  },
-  "river|multi|other|checked_to": {
-   "n": 37,
+   "n": 73,
    "grade": "usable",
    "fold": 0.027,
-   "bet": 0.27,
-   "check": 0.703
+   "bet": 0.493,
+   "check": 0.479
+  },
+  "river|hu|other|facing_bet": {
+   "n": 35,
+   "grade": "usable",
+   "raise": 0.2,
+   "call": 0.257,
+   "fold": 0.543
+  },
+  "river|hu|pfa|checked_to": {
+   "n": 13,
+   "grade": "rough",
+   "bet": 0.385,
+   "check": 0.615
+  },
+  "river|multi|other|checked_to": {
+   "n": 38,
+   "grade": "usable",
+   "fold": 0.026,
+   "bet": 0.263,
+   "check": 0.711
   },
   "river|multi|other|facing_bet": {
    "n": 12,
@@ -382,101 +411,101 @@
    "fold": 0.833
   },
   "turn|ALL": {
-   "n": 466,
+   "n": 495,
    "grade": "usable",
-   "raise": 0.043,
-   "call": 0.112,
-   "fold": 0.21,
-   "bet": 0.227,
-   "check": 0.408
+   "raise": 0.042,
+   "call": 0.111,
+   "fold": 0.214,
+   "bet": 0.228,
+   "check": 0.404
   },
   "turn|hu|other|checked_to": {
-   "n": 112,
+   "n": 122,
    "grade": "usable",
    "bet": 0.393,
    "check": 0.607
   },
   "turn|hu|other|facing_bet": {
-   "n": 78,
+   "n": 83,
    "grade": "usable",
-   "raise": 0.128,
-   "call": 0.436,
-   "fold": 0.436
+   "raise": 0.133,
+   "call": 0.434,
+   "fold": 0.434
   },
   "turn|hu|pfa|checked_to": {
-   "n": 36,
+   "n": 40,
    "grade": "usable",
-   "bet": 0.611,
-   "check": 0.389
+   "bet": 0.625,
+   "check": 0.375
   },
   "turn|multi|other|checked_to": {
-   "n": 137,
+   "n": 139,
    "grade": "usable",
-   "bet": 0.255,
-   "check": 0.745
+   "bet": 0.252,
+   "check": 0.748
   },
   "turn|multi|other|facing_bet": {
-   "n": 59,
+   "n": 65,
    "grade": "usable",
-   "raise": 0.085,
-   "call": 0.153,
-   "fold": 0.763
+   "raise": 0.077,
+   "call": 0.154,
+   "fold": 0.769
   },
   "turn|multi|pfa|checked_to": {
-   "n": 11,
+   "n": 12,
    "grade": "rough",
-   "bet": 0.455,
-   "check": 0.545
+   "bet": 0.417,
+   "check": 0.583
   }
  },
  "sizes": {
   "flop_bet": {
-   "n": 177,
+   "n": 201,
    "grade": "usable",
    "median": 0.5
   },
   "flop_raise": {
-   "n": 30,
+   "n": 32,
    "grade": "usable",
-   "median": 1.2
+   "median": 1.19
   },
   "postflop_bet_hu": {
-   "n": 179,
+   "n": 202,
    "grade": "usable",
    "median": 0.5
   },
   "postflop_bet_multi": {
-   "n": 155,
+   "n": 164,
    "grade": "usable",
    "median": 0.6
   },
   "postflop_raise_hu": {
-   "n": 37,
+   "n": 38,
    "grade": "usable",
    "median": 1.09
   },
   "postflop_raise_multi": {
-   "n": 24,
+   "n": 26,
    "grade": "rough",
-   "median": 1.11
+   "median": 1.14
   },
   "preflop_iso_raise": {
-   "n": 114,
+   "n": 160,
    "grade": "usable",
-   "median": 0.96
+   "median": 0.97
   },
   "preflop_open": {
-   "n": 68,
+   "n": 104,
    "grade": "usable",
    "median": 0.96
   },
   "preflop_reraise": {
-   "n": 56,
+   "n": 86,
    "grade": "usable",
-   "median": 1.64
+   "median": 1.68
   },
   "river_bet": {
-   "n": 51,
+   "n": 52,
    "grade": "usable",
    "median": 0.52
   },
@@ -486,276 +515,276 @@
    "median": 1.1
   },
   "turn_bet": {
-   "n": 106,
+   "n": 113,
    "grade": "usable",
    "median": 0.6
   },
   "turn_raise": {
-   "n": 20,
+   "n": 21,
    "grade": "rough",
    "median": 0.96
   }
  },
  "player": {
   "ALL|pfr": {
-   "n": 2250,
+   "n": 2899,
    "grade": "usable",
-   "share": 0.104
+   "share": 0.119
   },
   "ALL|rfi_limp": {
-   "n": 674,
+   "n": 918,
    "grade": "usable",
-   "share": 0.421
+   "share": 0.376
   },
   "ALL|rfi_raise": {
-   "n": 674,
+   "n": 918,
    "grade": "usable",
-   "share": 0.101
+   "share": 0.113
   },
   "ALL|saw_flop": {
-   "n": 2250,
+   "n": 2899,
    "grade": "usable",
-   "share": 0.399
+   "share": 0.365
   },
   "ALL|three_bet": {
-   "n": 902,
+   "n": 1219,
    "grade": "usable",
-   "share": 0.057
+   "share": 0.064
   },
   "ALL|vpip": {
-   "n": 2250,
+   "n": 2899,
    "grade": "usable",
-   "share": 0.447
+   "share": 0.433
   },
   "BB|pfr": {
-   "n": 360,
+   "n": 459,
    "grade": "usable",
-   "share": 0.114
+   "share": 0.133
   },
   "BB|rfi_limp": {
-   "n": 13,
+   "n": 20,
    "grade": "rough",
-   "share": 0.385
+   "share": 0.25
   },
   "BB|rfi_raise": {
-   "n": 13,
+   "n": 20,
    "grade": "rough",
-   "share": 0.385
+   "share": 0.55
   },
   "BB|saw_flop": {
-   "n": 360,
+   "n": 459,
    "grade": "usable",
-   "share": 0.411
+   "share": 0.373
   },
   "BB|three_bet": {
-   "n": 189,
+   "n": 255,
    "grade": "usable",
-   "share": 0.079
+   "share": 0.086
   },
   "BB|vpip": {
-   "n": 360,
+   "n": 459,
    "grade": "usable",
-   "share": 0.503
+   "share": 0.479
   },
   "BTN|pfr": {
-   "n": 361,
+   "n": 456,
    "grade": "usable",
-   "share": 0.097
+   "share": 0.125
   },
   "BTN|rfi_limp": {
-   "n": 99,
+   "n": 124,
    "grade": "usable",
-   "share": 0.475
+   "share": 0.444
   },
   "BTN|rfi_raise": {
-   "n": 99,
+   "n": 124,
    "grade": "usable",
-   "share": 0.091
+   "share": 0.113
   },
   "BTN|saw_flop": {
-   "n": 361,
+   "n": 456,
    "grade": "usable",
-   "share": 0.36
+   "share": 0.34
   },
   "BTN|three_bet": {
-   "n": 130,
+   "n": 180,
    "grade": "usable",
-   "share": 0.031
+   "share": 0.056
   },
   "BTN|vpip": {
-   "n": 361,
+   "n": 456,
    "grade": "usable",
-   "share": 0.465
+   "share": 0.467
   },
   "CO|pfr": {
-   "n": 334,
-   "grade": "usable",
-   "share": 0.105
-  },
-  "CO|rfi_limp": {
-   "n": 176,
-   "grade": "usable",
-   "share": 0.472
-  },
-  "CO|rfi_raise": {
-   "n": 176,
-   "grade": "usable",
-   "share": 0.074
-  },
-  "CO|saw_flop": {
-   "n": 334,
-   "grade": "usable",
-   "share": 0.335
-  },
-  "CO|three_bet": {
-   "n": 107,
-   "grade": "usable",
-   "share": 0.065
-  },
-  "CO|vpip": {
-   "n": 334,
-   "grade": "usable",
-   "share": 0.464
-  },
-  "HJ|pfr": {
-   "n": 218,
-   "grade": "usable",
-   "share": 0.092
-  },
-  "HJ|rfi_limp": {
-   "n": 119,
-   "grade": "usable",
-   "share": 0.378
-  },
-  "HJ|rfi_raise": {
-   "n": 119,
-   "grade": "usable",
-   "share": 0.109
-  },
-  "HJ|saw_flop": {
-   "n": 218,
-   "grade": "usable",
-   "share": 0.349
-  },
-  "HJ|three_bet": {
-   "n": 60,
-   "grade": "usable",
-   "share": 0.033
-  },
-  "HJ|vpip": {
-   "n": 218,
-   "grade": "usable",
-   "share": 0.454
-  },
-  "LJ|pfr": {
-   "n": 187,
+   "n": 433,
    "grade": "usable",
    "share": 0.118
   },
-  "LJ|rfi_limp": {
-   "n": 153,
+  "CO|rfi_limp": {
+   "n": 238,
    "grade": "usable",
-   "share": 0.346
+   "share": 0.454
+  },
+  "CO|rfi_raise": {
+   "n": 238,
+   "grade": "usable",
+   "share": 0.088
+  },
+  "CO|saw_flop": {
+   "n": 433,
+   "grade": "usable",
+   "share": 0.326
+  },
+  "CO|three_bet": {
+   "n": 151,
+   "grade": "usable",
+   "share": 0.066
+  },
+  "CO|vpip": {
+   "n": 433,
+   "grade": "usable",
+   "share": 0.462
+  },
+  "HJ|pfr": {
+   "n": 292,
+   "grade": "usable",
+   "share": 0.11
+  },
+  "HJ|rfi_limp": {
+   "n": 172,
+   "grade": "usable",
+   "share": 0.337
+  },
+  "HJ|rfi_raise": {
+   "n": 172,
+   "grade": "usable",
+   "share": 0.116
+  },
+  "HJ|saw_flop": {
+   "n": 292,
+   "grade": "usable",
+   "share": 0.308
+  },
+  "HJ|three_bet": {
+   "n": 80,
+   "grade": "usable",
+   "share": 0.037
+  },
+  "HJ|vpip": {
+   "n": 292,
+   "grade": "usable",
+   "share": 0.425
+  },
+  "LJ|pfr": {
+   "n": 242,
+   "grade": "usable",
+   "share": 0.124
+  },
+  "LJ|rfi_limp": {
+   "n": 201,
+   "grade": "usable",
+   "share": 0.289
   },
   "LJ|rfi_raise": {
-   "n": 153,
+   "n": 201,
    "grade": "usable",
    "share": 0.124
   },
   "LJ|saw_flop": {
-   "n": 187,
+   "n": 242,
    "grade": "usable",
-   "share": 0.342
+   "share": 0.298
   },
   "LJ|three_bet": {
-   "n": 35,
+   "n": 40,
    "grade": "usable",
    "share": 0.0
   },
   "LJ|vpip": {
-   "n": 187,
+   "n": 242,
    "grade": "usable",
-   "share": 0.449
+   "share": 0.401
   },
   "SB|pfr": {
-   "n": 360,
+   "n": 457,
    "grade": "usable",
-   "share": 0.097
+   "share": 0.114
   },
   "SB|rfi_limp": {
-   "n": 42,
+   "n": 54,
    "grade": "usable",
-   "share": 0.357
+   "share": 0.278
   },
   "SB|rfi_raise": {
-   "n": 42,
+   "n": 54,
    "grade": "usable",
-   "share": 0.119
+   "share": 0.167
   },
   "SB|saw_flop": {
-   "n": 360,
+   "n": 457,
    "grade": "usable",
-   "share": 0.389
+   "share": 0.359
   },
   "SB|three_bet": {
-   "n": 175,
+   "n": 234,
    "grade": "usable",
-   "share": 0.057
+   "share": 0.056
   },
   "SB|vpip": {
-   "n": 360,
+   "n": 457,
    "grade": "usable",
-   "share": 0.514
+   "share": 0.484
   },
   "STR|pfr": {
-   "n": 359,
+   "n": 452,
    "grade": "usable",
-   "share": 0.12
+   "share": 0.126
   },
   "STR|saw_flop": {
-   "n": 359,
+   "n": 452,
    "grade": "usable",
-   "share": 0.554
+   "share": 0.513
   },
   "STR|three_bet": {
-   "n": 182,
+   "n": 245,
    "grade": "usable",
-   "share": 0.071
+   "share": 0.078
   },
   "STR|vpip": {
-   "n": 359,
+   "n": 452,
    "grade": "usable",
-   "share": 0.262
+   "share": 0.288
   },
   "UTG1|pfr": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "share": 0.056
+   "share": 0.046
   },
   "UTG1|rfi_limp": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "share": 0.507
+   "share": 0.426
   },
   "UTG1|rfi_raise": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "share": 0.056
+   "share": 0.037
   },
   "UTG1|saw_flop": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "share": 0.408
+   "share": 0.296
   },
   "UTG1|three_bet": {
-   "n": 24,
-   "grade": "rough",
-   "share": 0.0
+   "n": 34,
+   "grade": "usable",
+   "share": 0.029
   },
   "UTG1|vpip": {
-   "n": 71,
+   "n": 108,
    "grade": "usable",
-   "share": 0.563
+   "share": 0.463
   }
  },
  "fitted": {
@@ -763,18 +792,18 @@
   "price_slope": 0.0,
   "flop": {
    "slow": 0.4,
-   "bluff": 0.06,
+   "bluff": 0.1,
    "sticky": 0.2
   },
   "turn": {
    "slow": 0.5,
    "bluff": 0.1,
-   "sticky": 0.15
+   "sticky": 0.1
   },
   "river": {
    "slow": 0.7,
    "bluff": 0.0,
-   "sticky": 0.03
+   "sticky": 0.06
   }
  },
  "logs": {
@@ -792,6 +821,11 @@
   "20261010-012911-live": 12.63,
   "20261010-015331-live": 34.86,
   "20261010-043940-live": 41.54,
-  "du-20261015-102047-live": 18.17
+  "aa-live-20260917-0430": 15.16,
+  "aa-live-observer-development-20260914-001": 10.0,
+  "du-20261015-102047-live": 18.17,
+  "du-20261016-093212-live": 66.35,
+  "du-20261016-112654-live": 8.78,
+  "du-20261016-114835-live": 34.25
  }
 }
