@@ -447,6 +447,61 @@ def test_only_a_flop_start_with_every_seat_posting_seven_big_blinds_is_a_bomb_po
     assert (stopped["status"], stopped["reason"]) == ("stopped", "starts_after_preflop")
 
 
+def test_a_bomb_pot_checked_with_no_check_badge_read_is_followed():
+    # 10/16 on 杜's computer, which never reads the check badge: a bomb pot
+    # checked through, the dealer button still the last hand's (seat 4 read,
+    # dealer 5), seat 0 first to act; seat 5 holds a flush on the turn.
+    from poker_engine.desktop.aa_solver_input import solver_observation
+    hand = {**bomb_hand(actions=[]), "dealer": 4, "first_actor": 0,
+            "board": BOARD + ["2h"], "states": {seat: "active" for seat in range(6)},
+            "price": Decimal(0),
+            "street_pots": {"flop": (Decimal(84), Decimal(84)),
+                            "turn": (Decimal(84), Decimal(84))}}
+    result = replay_hand(hand)
+    assert (result["status"], result["dealer"], result["dealer_source"]) == (
+        "ok", 5, "actor")
+    assert [a["slot"] for a in result["inferred"]] == [0, 1, 2, 3, 4, 5]
+    observation, reason = solver_observation(hand, 5, ["Ah", "Qh"])
+    assert reason is None
+    assert (observation["street"], observation["bomb_pot"], observation["to_call"],
+            observation["actor"]) == ("turn", "14", "0", 5)
+    # On the flop: the five checks before yours, more than three missed actions.
+    flop = {**hand, "board": BOARD, "street_pots": {"flop": (Decimal(84), None)}}
+    observation, reason = solver_observation(flop, 5, ["Ah", "Qh"])
+    assert reason is None and observation["street"] == "flop"
+    # Chips went in on the flop (a bet and calls not read): the replay stays
+    # on the flop, and the advice gives no answer from it (street mismatch).
+    bet = {**hand, "street_pots": {"flop": (Decimal(84), Decimal(84)),
+                                   "turn": (Decimal(124), None)}}
+    assert solver_observation(bet, 5, ["Ah", "Qh"])[0]["street"] == "flop"
+
+
+def test_an_option_checked_before_the_flop_with_no_badge_read_is_filled_in():
+    # Seat 2's checks before the flop (its straddle's option) and on the flop
+    # are not read; seat 5 bets 10 on the flop and seat 2 calls.
+    seen = ACTIONS[:5] + [ACTIONS[7], (40, "flop", 2, "call", "10")]
+    hand = {**facts(seen), "states": {seat: "active" for seat in range(6)},
+            "street_pots": {"preflop": (Decimal(0), Decimal(23)),
+                            "flop": (Decimal(23), None)}}
+    result = replay_hand(hand)
+    assert (result["status"], result["replayed"]) == ("ok", len(ACTIONS))
+    assert [(a["slot"], a["street"], a["kind"]) for a in result["inferred"]] == [
+        (2, "preflop", "check"), (2, "flop", "check")]
+    # Without the pots read, nothing tells that no chips went in.
+    assert replay_hand({**hand, "street_pots": {}})["status"] == "stopped"
+
+
+def test_the_pots_of_each_street_and_the_first_seat_to_act_come_from_the_log():
+    found = rows()
+    for row in found:
+        row["fields"]["actor"] = None if row["processed"] < 5 else "3"
+    facts_read = hand_facts(found)
+    # Before the flop: 0 as the hand began, 23 after its last action (frame 20).
+    assert facts_read["street_pots"] == {
+        "preflop": (Decimal(0), Decimal(23)), "flop": (Decimal(23), Decimal(23))}
+    assert facts_read["first_actor"] == 3
+
+
 def with_sources(actions, sources):
     hand = facts(actions)
     for action, source in zip(hand["actions"], sources):
