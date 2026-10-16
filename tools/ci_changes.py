@@ -29,10 +29,12 @@ import sys
 GUARD = Path(__file__).resolve().parents[1] / "configs" / "evaluator-protection.json"
 
 
-# tests/strategy/test_mock_fixture_dataset.py reads these.
+# Markdown files tests read: tests/strategy/test_mock_fixture_dataset.py the
+# two matrices, tests/tools/test_setup_texassolver.py the second-seat guide.
 TEST_READ = {
     "docs/strategy-requirements-matrix.md",
     "docs/strategy-regression-test-matrix.md",
+    "docs/second-seat-windows.md",
 }
 
 
