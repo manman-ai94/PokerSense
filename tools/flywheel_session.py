@@ -33,7 +33,9 @@ review of ``tools/aa_strategy_review.py`` and writes into
   the recording's folder name is the label, a session reported again replaces
   its line; ``machine`` is the computer that recorded it: "本机" here, or the
   name a recording pulled from another computer carries in ``pulled.json``,
-  see ``tools/flywheel_sync.py``).
+  see ``tools/flywheel_sync.py``; ``rules`` is the rule hits by rule key,
+  编号#条文哈希, which the window adds up as each rule's record so far,
+  ``aa_rule_record``).
 
 ``rank`` adds up ``hands.json`` of every recording under ``--root`` (default
 ``PokerSense_private/aa-mac-recordings``) by spot and lists the spots that
@@ -240,8 +242,8 @@ def rule_hit(turn):
     last = turn["answers"][-1] if turn["answers"] else None
     if last is None or not last.get("rule"):
         return None
-    return {"rule": last["rule"], "followed": turn.get("followed"),
-            "unspecified": last.get("unspecified")}
+    return {"rule": last["rule"], "key": last.get("rule_key"),
+            "followed": turn.get("followed"), "unspecified": last.get("unspecified")}
 
 
 def rule_stats(hands):
@@ -265,6 +267,21 @@ def rule_stats(hands):
                 unspecified[hit["unspecified"]] += 1
     ordered = dict(sorted(rules.items(), key=lambda pair: (-pair[1]["hits"], pair[0])))
     return ordered, dict(unspecified.most_common())
+
+
+def rule_record(hands):
+    """The ledger's ``rules``: {rule key (编号#条文哈希, ``aa_rule_record``):
+    hits, hands it decided a step of, their big blinds}; hits logged without
+    a key (older code) are left out, so no two wordings are added up."""
+    record = {}
+    for hand in hands:
+        keys = [hit["key"] for hit in hand.get("rules") or () if hit.get("key")]
+        for key in keys:
+            record.setdefault(key, {"hits": 0, "hands": 0, "bb": 0.0})["hits"] += 1
+        for key in set(keys):
+            record[key]["hands"] += 1
+            record[key]["bb"] = round(record[key]["bb"] + hand["bb"], 2)
+    return dict(sorted(record.items()))
 
 
 MISREADS = (("your_cards_readings", lambda n: n > 1, "你的牌认成两种"),
@@ -399,7 +416,7 @@ def rule_lines(rules, unspecified):
                     f"{item['followed']}/{item['followed_of']}，这些手 {item['hands']} 手共 "
                     f"{item['bb']:+} 个大盲")
     if unspecified:
-        text.append("v3.1 没写的情形（按铁律 5）：" + "、".join(
+        text.append("本页没写的情形（按铁律 5）：" + "、".join(
             f"{UNSPECIFIED.get(case, case)} {count} 次"
             for case, count in unspecified.items()))
     return text
@@ -535,6 +552,7 @@ def ledger_row(item, hands):
         values = [hand["bb"] for hand in hands if hand["bomb_pot"] is bomb]
         row[key] = {"hands": len(values), "bb": round(sum(values), 2),
                     "bb_squared": round(sum(v * v for v in values), 2)}
+    row["rules"] = rule_record(hands)
     return row
 
 

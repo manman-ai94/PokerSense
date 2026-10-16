@@ -286,7 +286,7 @@
       ...(verdict.mix ? {mix: verdict.mix.slice(0, 1)} : {})};
   }
 
-  // 《一页纸打法 v3.1》 (plain): one action, the one-sentence reason under it.
+  // 《一页纸打法》 (plain): one action, the one-sentence reason under it.
   function pageVerdict(advice, controls, stack) {
     const row = (advice.advice || [])[0];
     if (!row) return null;
@@ -294,15 +294,28 @@
     return {...label, kind: "plain", note: advice.plain?.reason || ""};
   }
 
-  // What decided a plain answer: the rule with its number, where the answer
-  // flips, and why it is the iron law 5 fold or check when it is one.
+  // The deciding rule's record so far (aa_rule_record): its hits, this
+  // session's among them, and the hands it decided in the sessions before.
+  function recordText(record) {
+    if (!record || !isNumber(record.hits)) return null;
+    const hits = `这一条至今命中 ${record.hits} 次（本场 ${num(record.session) ?? 0} 次）`;
+    const hands = num(record.hands) ?? 0;
+    return hands > 0
+      ? `${hits}；战绩：之前 ${num(record.sessions) ?? 0} 场它定过的 ${hands} 手共 ${signed(Number(record.bb))} 个大盲`
+      : `${hits}；战绩：之前的场次还没有`;
+  }
+
+  // What decided a plain answer: the rule with its number, its record so far,
+  // where the answer flips, and why it is the iron law 5 fold or check when it is one.
   function pageBasis(advice) {
     const page = advice.plain || {};
     const basis = [`定生死的那一条：${page.rule || "?"} ${page.rule_label || ""}`.trim()];
+    const record = recordText(page.record);
+    if (record) basis.push(record);
     if (Array.isArray(page.hits) && page.hits.length > 1)
       basis.push(`一路命中：${page.hits.join(" → ")}`);
     if (page.flip) basis.push(`翻转条件：${page.flip}`);
-    if (page.unspecified) basis.push("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
+    if (page.unspecified) basis.push("本页没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
     if (Array.isArray(page.missing) && page.missing.length)
       basis.push("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
     const before = advice.previous;

@@ -57,7 +57,7 @@ class AARecognitionSession:
 
     def __init__(self, source_factory, reader_factory, *, stale_after=2.0,
                  interval_seconds=0.1, table_math=None, solver_advice=None,
-                 grades=None, frame_log=None):
+                 grades=None, frame_log=None, rule_record=None):
         if not callable(source_factory) or not callable(reader_factory):
             raise TypeError("source_factory and reader_factory must be callable")
         for name, value in (("stale_after", stale_after),
@@ -73,11 +73,13 @@ class AARecognitionSession:
         self._interval = interval_seconds
         # Optional payload -> dict enrichments (table math; solver advice and
         # the grades of your decisions, which also take the frame number and
-        # are reset when a source starts) and a JSONL file receiving one
+        # are reset when a source starts; the one-page rules' record of the
+        # rule that decided, advice -> advice) and a JSONL file receiving one
         # timing/field record per processed frame.
         self._table_math = table_math
         self._solver_advice = solver_advice
         self._grades = grades
+        self._rule_record = rule_record
         self._frame_log = frame_log
         self._lock = threading.RLock()
         self._worker = None
@@ -251,7 +253,7 @@ class AARecognitionSession:
             if cancel.is_set():
                 return
             # Frames, and so hand ids, count from 0 again for each source.
-            for enrichment in (self._solver_advice, self._grades):
+            for enrichment in (self._solver_advice, self._grades, self._rule_record):
                 reset = getattr(enrichment, "reset", None)
                 if callable(reset):
                     reset()
@@ -314,6 +316,11 @@ class AARecognitionSession:
                         advice = {"schema_version": 1, "status": "abstain",
                                   "reason": "advice_failed", "advice_emitted": False,
                                   "acts_on_client": False}
+                    if self._rule_record is not None:
+                        try:
+                            advice = self._rule_record(advice)
+                        except Exception:       # the advice stands without its record
+                            pass
                     payload["solver_advice_v1"] = advice
                 if self._grades is not None:
                     try:
@@ -472,18 +479,23 @@ def _actions_v1(history):
 
 
 def _advice(advice):
-    """The solver advice status, without its fixed wording."""
+    """The solver advice status, without its fixed wording (nor the rule's
+    record, which the ledger already holds)."""
     if not advice:
         return None
-    return {key: advice[key] for key in ("status", "reason", "hand_id", "street",
-                                         "decision", "kind", "heads_up", "advice",
-                                         "options", "cuts", "to_call", "pot_offset",
-                                         "mushroom_pool", "reads_hands",
-                                         "stacks_assumed", "inferred_actions",
-                                         "range_equity", "seconds", "stakes",
-                                         "plain", "provisional", "price",
-                                         "missing", "waited", "facing")
-            if key in advice}
+    out = {key: advice[key] for key in ("status", "reason", "hand_id", "street",
+                                        "decision", "kind", "heads_up", "advice",
+                                        "options", "cuts", "to_call", "pot_offset",
+                                        "mushroom_pool", "reads_hands",
+                                        "stacks_assumed", "inferred_actions",
+                                        "range_equity", "seconds", "stakes",
+                                        "plain", "provisional", "price",
+                                        "missing", "waited", "facing")
+           if key in advice}
+    if isinstance(out.get("plain"), dict) and "record" in out["plain"]:
+        out["plain"] = {key: value for key, value in out["plain"].items()
+                        if key != "record"}
+    return out
 
 
 def _recording_log(source):
