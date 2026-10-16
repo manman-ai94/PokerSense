@@ -138,7 +138,7 @@ def built(tmp_path):
 
 def test_the_session_says_who_played_where_and_with_what_code(built):
     folder, found = built
-    assert found["schema"] == "pokersense.session_package" and found["format"] == 2
+    assert found["schema"] == "pokersense.session_package" and found["format"] == 3
     session = found["session"]
     assert session["label"] == folder.name and session["machine"] == "peng-mac"
     assert session["code"] == CODE and session["spectate"] is False
@@ -206,6 +206,45 @@ def test_rule_hits_and_timing(built):
     timing = found["timing"]
     assert timing["decisions"] == 4 and timing["no_advice"] == 0
     assert timing["changes_of_mind"] == 0
+
+
+def test_compliance_counts_only_advice_that_is_not_unknown(built):
+    _, found = built
+    assert [item["complied"] for item in found["decisions"]] == [True, True, True, None]
+    block = found["compliance"]
+    assert block["all"] == block["plain"]
+    assert block["all"]["counted"] == 3 and block["all"]["rate"] == 1.0
+    assert block["all"]["unknown"] == 1 and block["all"]["results_count"] is True
+    assert "old" not in block
+
+
+def test_what_complies_looser_and_tighter():
+    def one(action, you, *, to=None, amount=None, button="call", missing=None):
+        return package.complied({"advice": {"action": action, "to": to},
+                                 "you_did": you, "you_amount": amount,
+                                 "button": button, "to_call": "4", "missing": missing})
+    assert one("raise", "raise", to="40", amount="48") == (True, None)    # +20%
+    assert one("raise", "raise", to="40", amount="60") == (False, "looser")
+    assert one("bet", "raise", to="40", amount="20") == (False, "tighter")
+    assert one("call", "fold") == (False, "tighter")
+    assert one("fold", "call") == (False, "looser")
+    assert one("check", "fold", button="check") == (True, None)
+    assert one("call", "check", button="check") == (True, None)            # call of 0
+    assert one("fold", "call", missing=["pot"]) == (None, None)            # UNKNOWN
+    assert one(None, "call") == (None, None)
+    assert one("call", None) == (None, None)
+
+
+def test_under_80_percent_the_results_do_not_count():
+    rows = [{"advice": {"kind": "plain"}, "complied": index < 3,
+             "complied_way": None if index < 3 else "looser", "missing": None,
+             "you_did": "call"} for index in range(4)]
+    rows.append({"advice": None, "complied": None, "complied_way": None,
+                 "you_did": "call"})
+    block = package.compliance_block(rows)
+    assert block["all"]["rate"] == 0.75 and block["all"]["results_count"] is False
+    assert block["all"]["looser"] == 1 and block["all"]["no_advice"] == 1
+    assert block["plain"]["decisions"] == 4
 
 
 def test_versions_hash_each_rule_with_the_pages_numbers(built, monkeypatch):
