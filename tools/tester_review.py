@@ -11,8 +11,10 @@ and ``upload.json``) it says what went wrong, against the Samsung baseline of
   frame (a slow computer reads fewer frames, so actions and cards get
   missed), frames the recorder skipped, the video writer, errors;
 * recognition: every field's coverage (``p30_acceptance.field_coverage``)
-  against 90% of the Samsung baseline, and the hands whose level (blinds)
-  was read from the table;
+  against 90% of the Samsung baseline; the hands whose level (blinds) was
+  read from the table, and how the others got theirs (carried from an
+  earlier hand, or not settled); the seats whose bets go unread
+  (``blind_badges``: none of a seat's blinds read on the table);
 * advice (``tools/aa_session_report.py``): the tester's turns with no advice
   on screen (there should be none), and why; hands advised at every step;
   stalls over two seconds; the turns where the advice and his answer were
@@ -74,7 +76,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from poker_engine.desktop import aa_solver_input as solver_input  # noqa: E402
 from poker_engine.desktop import aa_upload  # noqa: E402
+from poker_engine.desktop.aa_stakes import stakes_label  # noqa: E402
 from tools import aa_population_stats as pop  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
 from tools import luck_results  # noqa: E402
@@ -97,6 +101,13 @@ SLOW_FPS = 4.0              # fewer frames read per second: a slow computer
 SKIPPED_LINE = 0.02         # frames the recorder dropped
 MB_PER_HOUR_LINE = 2000     # an FFmpeg recording is 0.5-1 GB an hour
 STAKES_LINE = 0.9           # hands whose level was read from the table
+# A seat's bets unread: of its blinds (at least BADGE_POSTS) this share or
+# fewer read on the table. 10/16 on 杜's computer seats 1 and 7 showed none of
+# their 33 (his recording before: 50 of 50); on the Mac (14 recordings of
+# 10/06-10/10) every seat showed 60% or more.
+BADGE_POSTS = 5
+BADGE_LINE = 0.2
+BLINDS = ("small_blind", "big_blind", "straddle_amount")
 USABLE_LINE = 0.7           # hands usable for the opponents (Mac: about 85%)
 SHORT_MINUTES = 3           # shorter: numbers are only a hint
 TOP_CAUSES = 3
@@ -203,10 +214,48 @@ def speed(rows):
                                    if times else None)}
 
 
-def stakes_read(rows):
-    """(hands whose level was read from the table, hands)."""
-    found = fly.hand_stakes(fly.by_hand(rows))
-    return [sum(item["source"] == "table" for item in found.values()), len(found)]
+def stakes_read(stakes):
+    """(hands whose level was read from the table, hands); ``stakes``:
+    ``flywheel_session.hand_stakes``."""
+    return [sum(item["source"] == "table" for item in stakes.values()), len(stakes)]
+
+
+def stakes_kept(stakes):
+    """How the hands with no level read from the table got theirs: carried
+    from an earlier hand, or not settled (the window says so); and the
+    levels the table showed."""
+    sources = Counter(item["source"] for item in stakes.values())
+    return {"carried": sources["carried"], "unsure": sources["unsure"],
+            "levels": sorted({stakes_label(item) for item in stakes.values()
+                              if item["source"] == "table"})}
+
+
+def blind_badges(hands, stakes):
+    """{seat: [blinds whose bet was read on the table, blinds posted]}: the
+    small blind, big blind and straddle of every hand whose dealer was read,
+    on the seats after the dealer, each read when a frame of the deal before
+    the first action shows that amount in front of the seat. Bomb pots post
+    no blinds."""
+    posted, read = Counter(), Counter()
+    for hand_id, rows in hands.items():
+        facts = solver_input.hand_facts(rows, stakes[hand_id])
+        seats, dealer = facts["seats"], facts["dealer"]
+        if (not facts["actions"] or dealer not in seats or len(seats) < 4
+                or solver_input.bomb_post(facts) is not None):
+            continue
+        fields = [row.get("fields") or {} for row in rows]
+        first = facts["actions"][0]["frame"]
+        start = solver_input._deal_start(rows, fields, first)
+        deal = [f for row, f in zip(rows[start:], fields[start:])
+                if row["processed"] < first]
+        at = seats.index(dealer)
+        for step, key in enumerate(BLINDS, 1):
+            seat = str(seats[(at + step) % len(seats)])
+            posted[seat] += 1
+            read[seat] += any(
+                _decimal((f.get("street_wagers") or {}).get(seat))
+                == Decimal(stakes[hand_id][key]) for f in deal)
+    return {seat: [read[seat], posted[seat]] for seat in sorted(posted)}
 
 
 def advice(name, rows):
@@ -359,11 +408,15 @@ def review(folder, baseline, machine=None):
     lines, usable = opponents(log, rows)
     facts = recording_facts(folder)
     hands, ledger = played(machine, log, rows, facts["code"])
+    by_hand = fly.by_hand(rows)
+    stakes = fly.hand_stakes(by_hand)
     result = {"machine": machine, "folder": name, "log": log, "digest": digest,
               "recording": facts, "frames": len(rows),
               "speed": speed(rows),
               "recognition": p30.compare(measured, baseline) if rows else None,
-              "stakes_read": stakes_read(rows),
+              "stakes_read": stakes_read(stakes),
+              "stakes_kept": stakes_kept(stakes),
+              "blind_badges": blind_badges(by_hand, stakes),
               "advice": advice(log, rows) if rows else None,
               "far_apart": far_apart(rows, facts["started"]),
               "opponents_usable": usable,
@@ -444,9 +497,26 @@ def problems(result):
     done, deep = turns["past_preflop_advised"]
     if deep and done < deep:
         found.append(f"打到翻后的 {deep} 手里，每一步都有建议的只有 {done} 手")
+    badges = result.get("blind_badges") or {}
+    unread = [seat for seat, (seen, posts) in badges.items()
+              if posts >= BADGE_POSTS and seen <= BADGE_LINE * posts]
+    if unread:
+        rest = [badges[seat] for seat in badges if seat not in unread]
+        found.append(f"座位 {'、'.join(unread)} 下盲注时金额几乎读不到（"
+                     + "、".join("/".join(map(str, badges[seat])) for seat in unread)
+                     + f" 次读出，其他座位 {sum(seen for seen, _ in rest)}/"
+                     f"{sum(posts for _, posts in rest)}）")
     read, hands = result["stakes_read"]
     if hands and read < STAKES_LINE * hands:
-        found.append(f"{hands - read}/{hands} 手没从牌桌读出级别（盲注）")
+        kept = result.get("stakes_kept") or {}
+        how = [text for count, text in (
+            (kept.get("carried"), f"{kept.get('carried')} 手沿用前面读到的"),
+            (kept.get("unsure"), f"{kept.get('unsure')} 手级别没定下来")) if count]
+        levels = kept.get("levels") or []
+        found.append(f"{hands - read}/{hands} 手没从牌桌读出级别（盲注）"
+                     + ("：" + "，".join(how) if how else "")
+                     + (("；读出的都是 " if len(levels) == 1 else "；读出的有 ")
+                        + "、".join(levels) if levels else ""))
     usable, total = result["opponents_usable"]
     if total and usable < USABLE_LINE * total:
         found.append(f"能用来统计对手的只有 {usable}/{total} 手"
