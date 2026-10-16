@@ -148,16 +148,11 @@ post. The advice comes from a model of how people play and is for study
 only; nothing here acts on the client.
 
 With the window's switch on ``plain`` (``strategy``; the default is still
-``classic``, all of the above) every decision is the one-page rules of
-《一页纸打法 v3.1》 (``scoreboard.plain_policy``) and nothing else: no
-solver, no range rule, no rough rule. The hand is replayed the same way; a
-hand that cannot be (step 1: something not read) gets iron law 5 at once
-(fold facing a bet, check when nothing is to call), and so does a turn whose
-answer has not come ``HOLD_SECONDS`` in (``provisional``: the answer
-replaces it when it comes). The report's ``kind`` is ``plain`` and its
-``plain`` is the rule that decided, the rules hit, the one-sentence reason,
-the three numbers (the opponents' range, your equity, the equity needed) and
-the flip condition (``plain_policy.Advice.row``).
+``classic``, all of the above) every frame goes to ``aa_plain_advice``
+instead: the one-page rules of 《一页纸打法 v3.1》 (``scoreboard.plain_policy``)
+from the frame's fields and a state kept per hand, worked out once per
+decision on the frame's own thread. No replay, no solver, no range rule, no
+rough rule, no background worker; nothing of the above runs.
 """
 
 from __future__ import annotations
@@ -180,7 +175,6 @@ from poker_engine.scoreboard.multiway_bot import big_pot, guard_action, guarded
 from poker_engine.scoreboard.multiway_bot import draw_outs
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_hand
-from poker_engine.scoreboard import plain_policy
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy, rake
 from poker_engine.scoreboard.preflop_reading import reading_model, reading_of
 from poker_engine.scoreboard.ranges import (BET_SCALE, BIG_BET, RAISE_SCALE, narrowed,
@@ -192,6 +186,7 @@ from poker_engine.scoreboard.style_rules import LIVE as STYLE_RULES
 from poker_engine.scoreboard.style_rules import adjust as style_adjust
 from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
+from .aa_plain_advice import AAPlainAdvice
 from .aa_reads import AAReads
 from .aa_session import frame_summary
 from .aa_solver_input import (RULES_PATH, bomb_post, hand_facts,
@@ -260,7 +255,6 @@ POSTFLOP = ("flop", "turn", "river")
 IN_HAND = ("active", "all_in")
 VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
 STRATEGIES = ("classic", "plain")   # the window's switch: classic until plain passes
-PLAIN_BASIS = "一页纸打法 v3.1（plain）：只按这一页的规则；只显示建议，不替你点"
 
 
 def _switch_quickly():
@@ -701,37 +695,6 @@ def rough_guard(row, quiet, cards, board, street, pot, mine, stakes=None):
     return quiet, guard_report(size, row, street)
 
 
-def plain_advice_row(advice, observation):
-    """A ``plain_policy`` advice as an advice row, like the solver's."""
-    if advice.action not in ("bet", "raise") or advice.to is None:
-        return {"action": advice.action, "frequency": 1.0}
-    mine = Decimal(observation["bets"][str(observation["observing_seat"])])
-    to = Decimal(str(advice.to)).quantize(Decimal(1))
-    return {"action": advice.action, "frequency": 1.0, "chips": str(to - mine),
-            "to": str(to)}
-
-
-UNREAD = {"street_mismatch": "公共牌和动作的街道对不上",
-          "waiting_for_last_action": "前面的动作还没读到"}
-
-
-def plain_unread(fields, reason, situation=None):
-    """Iron law 5 from the screen alone (step 1 of the page: something is not
-    read, or the answer did not come in time): check when the button says
-    让牌, fold otherwise."""
-    controls = fields.get("hero_controls") or {}
-    action = "check" if controls.get("button") == "check" else "fold"
-    advice = plain_policy.unread(
-        action, situation or "看不清：" + UNREAD.get(
-            reason, "这手的动作接不上（" + str(reason) + "）"),
-        "I5" if situation else "S1")
-    to_call = "0" if action == "check" else controls.get("call_amount")
-    return {"status": "ready", "kind": "plain", "plain": {**advice.row(),
-                                                          "unread": reason},
-            "advice": [{"action": action, "frequency": 1.0}], "to_call": to_call,
-            "basis": PLAIN_BASIS}
-
-
 class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
@@ -741,6 +704,7 @@ class AASolverAdvice:
         if strategy not in STRATEGIES:
             raise ValueError(f"strategy must be one of {STRATEGIES}")
         self.strategy = strategy
+        self._plain = AAPlainAdvice(clock=clock)
         self._bot = bot
         self._executor = executor
         # The rough rule's own worker; an executor given for the solve serves
@@ -772,13 +736,14 @@ class AASolverAdvice:
         return self.observe(payload, frame)
 
     def set_strategy(self, strategy):
-        """The window's switch: ``classic`` or ``plain``. The decision on
-        screen is worked out again the new way."""
+        """The window's switch: ``classic`` or ``plain``. Either starts on the
+        frames from now on: the other one's hand and decisions are dropped."""
         if strategy not in STRATEGIES:
             raise ValueError(f"strategy must be one of {STRATEGIES}")
         if strategy != self.strategy:
             self.strategy = strategy
             self._jobs, self._quick, self._rough = {}, {}, {}
+            self._plain.reset()
         return self.strategy
 
     def settled(self):
@@ -787,6 +752,8 @@ class AASolverAdvice:
         after you acted is here too, for grading what you did; where the
         window showed the range rule's action instead (the solve could not
         answer) or the rough rule's, that is the outcome."""
+        if self.strategy == "plain":
+            return self._plain.settled()
         return self._hand_id, {key: self._shown(key) for key in list(self._jobs)}
 
     def observe(self, payload, frame):
@@ -795,6 +762,8 @@ class AASolverAdvice:
     def observe_fields(self, fields, frame):
         """The same from a frame's summary (``frame_summary``), as the
         measurement log keeps it: advice can be replayed from a log."""
+        if self.strategy == "plain":
+            return self._plain.observe_fields(fields, frame)
         history = fields.get("actions_v1")
         if not history:
             return self._report("idle", "no_hand")
@@ -837,13 +806,13 @@ class AASolverAdvice:
             report = self._carried(key, street) or report
         if report["status"] == "ready" or not self._rough_due(frame, report):
             return report
-        if self.strategy == "plain":
-            return self._plain_late(key, fields, street, report)
         return self._rough_outcome(key, fields, cards, street, frame, report) or report
 
     def stakes(self):
         """The stakes of the hand being followed (``aa_stakes``): what it
         showed before its first action, else what earlier hands settled on."""
+        if self.strategy == "plain":
+            return self._plain.stakes()
         rows = self._rows
         acted = bool(rows and ((rows[-1]["fields"].get("actions_v1") or {})
                                .get("actions")))
@@ -861,7 +830,7 @@ class AASolverAdvice:
         """Long enough into your turn on this street for the rough rule; longer
         while the proper advice is being worked out, which then replaces it."""
         _, first, since = self._turn_from
-        computing = report["status"] == "computing" or self.strategy == "plain"
+        computing = report["status"] == "computing"
         frames, seconds = ((HOLD_FRAMES, HOLD_SECONDS) if computing
                            else (ROUGH_FRAMES, ROUGH_SECONDS))
         return frame - first >= frames or self._clock() - since >= seconds
@@ -870,8 +839,6 @@ class AASolverAdvice:
 
     def _start(self, fields, cards, frame, key):
         """A Future for the solve, or a finished outcome when there is none."""
-        if self.strategy == "plain":
-            return self._plain_start(fields, cards, frame)
         observation, reason = solver_observation(hand_facts(self._rows, self._stakes),
                                                  HERO, cards)
         if reason == "not_your_turn_yet":
@@ -921,9 +888,8 @@ class AASolverAdvice:
         """After the flop, read the opponents' ranges as they act: at your turn
         only the actions since are left to read (``opponent_ranges`` keeps
         each action's reading). One reading at a time; a new action waits
-        for the one running. Not for ``plain``: it reads its own ranges."""
-        if (self._warm_off or self.strategy == "plain"
-                or fields.get("street") not in ("flop", *SOLVED)):
+        for the one running."""
+        if self._warm_off or fields.get("street") not in ("flop", *SOLVED):
             return
         mark = (self._hand_id, len(history.get("actions") or ()))
         running = self._warming is not None and not self._warming[1].done()
@@ -1109,56 +1075,6 @@ class AASolverAdvice:
                 "bomb_pot": observation.get("bomb_pot"),
                 "seconds": round(time.monotonic() - started, 2)}
 
-    # -- plain (《一页纸打法 v3.1》) -----------------------------------------------
-
-    def _plain_start(self, fields, cards, frame):
-        """``plain_policy.decide`` on the replayed hand, on a worker; iron law 5
-        at once when the hand cannot be replayed (step 1: not read)."""
-        observation, reason = solver_observation(hand_facts(self._rows, self._stakes),
-                                                 HERO, cards)
-        if reason == "not_your_turn_yet":
-            return {"status": "idle", "reason": "waiting_for_last_action",
-                    "retry_at": frame + RETRY}
-        if observation is None:
-            return plain_unread(fields, reason)
-        if observation["street"] != fields.get("street"):
-            return plain_unread(fields, "street_mismatch")
-        pot = _decimal(fields.get("pot"))
-        offset = None
-        if pot is not None and pot > Decimal(observation["pot"]):
-            offset = pot - Decimal(observation["pot"])
-            observation = {**observation, "pot": str(pot)}
-        pool = _decimal(fields.get("mushroom_pool"))
-        if pool is not None and pool > 0:
-            observation = {**observation, "mushroom_pool": str(pool)}
-        return self._submit(self._plain, observation, offset, frame, time.monotonic())
-
-    def _plain(self, observation, offset, frame, started):
-        advice = plain_policy.decide(observation)
-        row = advice.row()
-        table = plain_policy.Table(observation) if advice.rule != "S1" else None
-        report = {"status": "ready", "kind": "plain", "plain": row,
-                  "advice": [plain_advice_row(advice, observation)],
-                  "pot": observation["pot"], "to_call": observation["to_call"],
-                  "pot_offset": None if offset is None else str(offset),
-                  "mushroom_pool": (str(table.mushroom * table.big_blind)
-                                    if table is not None and table.mushroom else None),
-                  "inferred_actions": observation.get("inferred_actions", 0),
-                  "bomb_pot": observation.get("bomb_pot"), "basis": PLAIN_BASIS,
-                  "seconds": round(time.monotonic() - started, 2)}
-        if advice.rule == "S1":
-            # A stack read a moment later is worked out then.
-            report["retry_at"] = frame + STACK_RETRY
-        return report
-
-    def _plain_late(self, key, fields, street, report):
-        """Iron law 5 while the answer has not come (it replaces this)."""
-        late = plain_unread(fields, report.get("reason") or report["status"],
-                            situation="来不及算完")
-        return self._report("ready", None, street=street, decision=key[0],
-                            provisional=True, **{name: late[name] for name in (
-                                "kind", "plain", "advice", "to_call", "basis")})
-
     def _settle(self, key):
         """The decision's outcome, or None while the solve is running."""
         job = self._jobs[key]
@@ -1272,7 +1188,7 @@ class AASolverAdvice:
                                 "to_call", "pot_offset", "mushroom_pool", "reads_hands",
                                 "stacks_assumed", "inferred_actions", "range_equity",
                                 "bomb_pot", "seconds", "basis", "provisional",
-                                "solver_gave_up", "guard", "style", "plain")
+                                "solver_gave_up", "guard", "style")
                                 if name in job})
 
     def _report(self, status, reason, **extra):
@@ -1284,4 +1200,4 @@ class AASolverAdvice:
 
 
 __all__ = ["AASolverAdvice", "STRATEGIES", "advice_rows", "decision_key",
-           "multiway_row", "plain_advice_row", "plain_unread", "range_report"]
+           "multiway_row", "range_report"]

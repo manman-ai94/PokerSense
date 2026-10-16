@@ -578,10 +578,29 @@ assert.equal(view.basis[1], "一路命中：F.A → J3");
 assert.equal(view.numbers[1].value, "—");
 assert.equal(view.numbers[1].note, "中对 D-强 档");
 view = signalView(running(page({action: "fold", frequency: 1.0},
-  {...foldPlain, rule: "I5", rule_label: "铁律 5·拿不准就弃", hits: ["I5"], unspecified: "blind_unopened"},
-  {provisional: true})), 0, {});
+  {...foldPlain, rule: "I5", rule_label: "铁律 5·拿不准就弃", hits: ["I5"], unspecified: "blind_unopened"})), 0, {});
 assert.ok(view.basis.includes("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人"));
-assert.ok(view.basis.includes("来不及算完：先按铁律 5，算完会换"));
+// The small labels: how it was read, the defaults taken; a new price worked out again
+// with the old answer beside it; never "已更新" within a decision.
+view = signalView(running(page({action: "call", frequency: 1.0},
+  {...foldPlain, action: "call", tag: "就绪 0.6s", defaults: ["缺对手筹码→按最深已读"]},
+  {facing: "36", previous: {advice: [{action: "call", frequency: 1.0}], to_call: "12", price: "12"}})), 0, {});
+assert.deepEqual(view.tags.slice(-4), ["一页纸", "就绪 0.6s", "缺对手筹码→按最深已读", "对手加注到 36，重新算"]);
+assert.equal(view.basis[1], "刚才（要跟 12）是“跟注 12”；价格变了，重新算");
+assert.equal(view.changed, null);
+// Two seconds without a steady screen: iron law 5 and what was missing.
+view = signalView(running(page({action: "fold", frequency: 1.0},
+  {...foldPlain, rule: "S1", rule_label: "第 1 步·看不清 → 铁律 5", hits: ["S1"],
+    tag: "铁律 5：缺你的手牌", missing: ["hero_cards"]})), 0, {});
+assert.ok(view.tags.includes("铁律 5：缺你的手牌"));
+assert.ok(view.basis.includes("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"));
+// Before the screen is steady: no advice, how long it has read and what it waits for.
+view = signalView(running(base({solver_advice_v1: {status: "reading", kind: "plain",
+  reason: "price_not_steady", waited: 0.4, missing: ["price_not_steady"],
+  missing_words: ["要跟的金额没稳"]}})), 0, {});
+assert.deepEqual([view.tone, view.title], ["info", "读画面中"]);
+assert.equal(view.note, "读画面中 0.4 秒（等：要跟的金额没稳），读稳了马上算，最多等 2 秒。");
+assert.equal(view.verdict, undefined);
 // The table's level shows beside the table, from the advice's reading of it.
 const atStakes = stakes => signalView(running(base({solver_advice_v1: {status: "idle", stakes}})), 0, {}).stakes;
 assert.equal(atStakes({label: "2/4/8(4)", source: "table"}), "级别 2/4/8(4)");

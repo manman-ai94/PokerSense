@@ -482,7 +482,11 @@ def seat_classes(observation):
 
 
 class Table:
-    """第 2 步：牌桌上的事实，都从观察（``AAFullHandArena.observe``）里来。"""
+    """第 2 步：牌桌上的事实，都从观察（``AAFullHandArena.observe``）里来。
+
+    实时窗口（``aa_plain_advice``）给的观察里，没读到筹码的对手不在 ``stacks`` 里：
+    他不算进有效筹码（按最深的已读对手，补充一澄清 2），也不当他全下；
+    ``flop_pot`` 给了就用它当翻牌开始时的底池（按手锁存的那个）。"""
 
     def __init__(self, observation):
         o = self.observation = observation
@@ -527,7 +531,7 @@ class Table:
         start = {seat: chips - paid.get(seat, 0.0)
                  for seat, chips in contributions.items()}
         totals = {seat: self.behind[seat] + chips
-                  for seat, chips in contributions.items()}
+                  for seat, chips in contributions.items() if seat in self.behind}
         behind = {seat: totals[seat] - start[seat] for seat in totals}
         pot = self.pot - sum(paid.values())
         ante = 0.0 if self.bomb else float((o.get("rules") or {}).get("ante") or 0)
@@ -551,9 +555,10 @@ class Table:
             else:
                 kind = "bet" if street != "preflop" and top <= 0 else "raise"
             to = float(row["raise_to"]) if row.get("raise_to") is not None else None
-            behind[seat] -= chips
+            if seat in behind:
+                behind[seat] -= chips
             acts.append(Act(seat, street, kind, chips, to, pot, facing,
-                            kind != "fold" and behind[seat] <= EPSILON,
+                            kind != "fold" and behind.get(seat, 1.0) <= EPSILON,
                             limps if kind == "raise" and street == "preflop" else 0))
             if street == "preflop" and kind == "call" and facing == 0:
                 limps += 1
@@ -563,6 +568,8 @@ class Table:
                 facing += 1
         if self.street != "preflop" and flop_pot is None:
             flop_pot, flop_behind = pot, dict(behind)
+        if o.get("flop_pot") is not None and self.street != "preflop":
+            flop_pot = float(o["flop_pot"])
         return acts, flop_pot, flop_behind, totals
 
     def _mushroom(self, o):
@@ -593,14 +600,17 @@ class Table:
                      if act.kind in ("bet", "raise")), None)
 
     def effective(self):
-        """有效筹码（这手开始时）：你和还在局里最深的对手较小的那个。"""
-        deepest = max((self.totals[seat] for seat in self.opponents), default=0.0)
+        """有效筹码（这手开始时）：你和还在局里最深的对手较小的那个；筹码没读到的
+        对手不算，一个都没读到就按你的。"""
+        deepest = max((self.totals[seat] for seat in self.opponents
+                       if seat in self.totals), default=self.totals[self.me])
         return min(self.totals[self.me], deepest)
 
     def effective_flop(self):
         """翻牌开始时的有效筹码（剩在手里的）。"""
         behind = self.flop_behind or self.behind
-        deepest = max((behind[seat] for seat in self.opponents), default=0.0)
+        deepest = max((behind[seat] for seat in self.opponents if seat in behind),
+                      default=behind[self.me])
         return min(behind[self.me], deepest)
 
     def spr(self):
@@ -1225,7 +1235,7 @@ def _facing_raise(table, advice, strength, plays, spr_many, agg, context):
         if street != "flop":
             return _fold(advice, "R.B")
         behind = table.stack - table.to_call
-        his = table.behind[agg.seat]
+        his = table.behind.get(agg.seat, float("inf"))
         pot = table.pot + table.to_call
         if min(behind, his) / pot > B_RAISED_SPR + EPSILON:
             return _fold(advice, "R.B")

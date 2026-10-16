@@ -303,8 +303,27 @@
       basis.push(`一路命中：${page.hits.join(" → ")}`);
     if (page.flip) basis.push(`翻转条件：${page.flip}`);
     if (page.unspecified) basis.push("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
-    if (advice.provisional) basis.push("来不及算完：先按铁律 5，算完会换");
+    if (Array.isArray(page.missing) && page.missing.length)
+      basis.push("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
+    const before = advice.previous;
+    if (before) {
+      const row = (before.advice || [])[0];
+      const word = row ? short(solverLabel(row, before.to_call, null)) : "—";
+      basis.splice(1, 0, `刚才（要跟 ${chips(before.price)}）是“${word}”；价格变了，重新算`);
+    }
     return basis;
+  }
+
+  // The page's small labels: how the answer was read (就绪 0.6s, or 铁律 5：缺价格),
+  // the defaults it took, and a new price worked out again.
+  function pageTags(advice) {
+    const page = advice.plain || {};
+    const tags = ["一页纸"];
+    if (page.tag) tags.push(page.tag);
+    for (const item of page.defaults || []) tags.push(item);
+    if (advice.previous) tags.push(isNumber(advice.facing)
+      ? `对手加注到 ${chips(advice.facing)}，重新算` : "价格变了，重新算");
+    return tags;
   }
 
   function plainVerdict(advice, controls, stack) {
@@ -771,14 +790,16 @@
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
         const tags = verdict.kind === "rough" ? [...view.tags, "粗略"]
-          : verdict.kind === "plain" ? [...view.tags, "一页纸"] : [...view.tags];
+          : verdict.kind === "plain" ? [...view.tags, ...pageTags(advice)] : [...view.tags];
         if (advice.guard) {
           tags.push("护栏");
           const was = advice.guard.was;
           const before = was ? short(solverLabel(was, advice.to_call ?? controls.call_amount, stack)) : null;
           basis.unshift(`护栏改的${before ? `：原来是“${before}”` : ""}；胜率按读出的范围算，范围偏窄、胜率偏高，大底池里只有一对时不下大注、不加注`);
         }
-        const change = changed(memory, stepKey(row, history), verdict.word, now);
+        // A plain answer never changes within a decision; a new price says so itself.
+        const change = verdict.kind === "plain" ? null
+          : changed(memory, stepKey(row, history), verdict.word, now);
         if (change) {
           tags.push(`已更新：刚才是${change.from}`);
           basis.unshift(`刚才显示“${change.from}”，后面算得更准，改成“${verdict.word}”`);
@@ -786,6 +807,13 @@
         return {...view, tags, tone: verdict.tone, verdict, basis,
           changed: change ? {...change, flash: change.seconds < FLASH_SECONDS && Math.floor(change.seconds * 2) % 2 === 0} : null};
       }
+    }
+    if (yourTurn && advice?.status === "reading") {
+      // 《一页纸打法》 waits for a steady screen (up to 2 s), then works it out once.
+      const what = (advice.missing_words || []).join("、");
+      return {...view, tone: "info", title: "读画面中",
+        tags: [...view.tags, "一页纸"],
+        note: `读画面中 ${one(Number(advice.waited) || 0)} 秒${what ? `（等：${what}）` : ""}，读稳了马上算，最多等 2 秒。`};
     }
     if (computing) {
       return {...view, tone: "busy", title: "正在算",
