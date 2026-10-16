@@ -72,11 +72,28 @@ def test_a_recording_still_on_its_way_is_left_for_the_next_pull(tmp_path):
                      for rel, size in data["files"]]
     marker.write_text(json.dumps(data), encoding="utf-8")
     assert sync.pull(cloud, tmp_path / "mac", None, out=said.append) == {"failed": 1}
-    assert not (tmp_path / "mac" / f"du-{folder.name}" / "pulled.json").exists()
+    # Half pulled, it is not among the recordings yet (the owner's own review
+    # would take a folder there without pulled.json for one of his).
+    assert not (tmp_path / "mac" / f"du-{folder.name}").exists()
+    assert (tmp_path / "mac" / sync.PULLING / f"du-{folder.name}").is_dir()
     data["files"] = [["../../outside.txt", 1]]
     marker.write_text(json.dumps(data), encoding="utf-8")
     assert sync.pull(cloud, tmp_path / "mac", None, out=said.append) == {"bad": 1}
     assert not (tmp_path / "outside.txt").exists()
+
+
+def test_a_pull_an_older_version_left_half_done_is_finished_in_place(tmp_path):
+    folder = uploaded(tmp_path)
+    cloud = sync.LocalSource(tmp_path / "cloud" / "PokerSense 同事数据")
+    half = tmp_path / "mac" / f"du-{folder.name}"
+    half.mkdir(parents=True)
+    (half / "frames.jsonl").write_bytes((folder / "frames.jsonl").read_bytes()[:10])
+    assert sync.pull(cloud, tmp_path / "mac", None, out=[].append) == {"pulled": 1}
+    frames = (folder / "frames.jsonl").read_bytes()
+    assert (half / "frames.jsonl").read_bytes() == frames
+    pulled = json.loads((half / "pulled.json").read_text(encoding="utf-8"))
+    assert pulled["machine"] == "du"
+    assert not any((tmp_path / "mac" / sync.PULLING).iterdir())
 
 
 def test_a_recording_without_its_sheet_gets_one_here(tmp_path, monkeypatch):

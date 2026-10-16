@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import shutil
 
 from tools import tester_review as review
 from tools.flywheel_sync import digest_of
@@ -220,6 +221,30 @@ def test_the_owners_own_recordings_are_reviewed_and_counted_apart(tmp_path):
     again.machine, again.out = "peng", tmp_path / "out2"
     review.run(again)
     assert not (tmp_path / "out2" / review.OWNER).exists()
+
+
+def test_a_tester_recording_is_counted_once_however_it_reaches_the_review(tmp_path):
+    # Nightly code check 10/16: a pull to the Mac not finished yet (no
+    # pulled.json) was reviewed as the owner's own, then again as 杜's.
+    cloud = recording(tmp_path, "20261016-190000-live", rows=played_rows())
+    pulled = tmp_path / "aa-mac-recordings" / "du-20261016-190000-live"
+    shutil.copytree(cloud, pulled)
+    (pulled / "upload.json").unlink()
+    run = args(tmp_path, [pulled])
+    run.machine = "peng"
+    review.run(run)
+    assert review.read_lines(tmp_path / "state" / review.RESULTS) == []
+    (pulled / "pulled.json").write_text(json.dumps(
+        {"machine": "du", "folder": cloud.name, "digest": "d1"}), encoding="utf-8")
+    # The cloud copy and the pulled copy in one run: one recording.
+    run = args(tmp_path, [cloud, pulled])
+    run.machine = "peng"
+    review.run(run)
+    hands = review.read_lines(tmp_path / "state" / review.RESULTS)
+    assert [line["log"] for line in hands] == ["du-20261016-190000-live"] * 2
+    lines = (tmp_path / "out" / review.LINES).read_text(encoding="utf-8").splitlines()
+    assert lines[0].startswith("复盘了 杜 的 1 场录像（18 分钟，2 手）")
+    assert lines[3] == "上桌条件：2/2000 手（杜 2），扣掉运气 说不准"
 
 
 def test_the_owner_is_told_plainly_even_without_hands():
