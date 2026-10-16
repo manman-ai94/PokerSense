@@ -49,12 +49,17 @@ from poker_engine.desktop.aa_solver_input import (  # noqa: E402
 from poker_engine.scoreboard import simple  # noqa: E402
 from poker_engine.scoreboard.spots import preflop_spot  # noqa: E402
 from poker_engine.solver.texassolver import SolverTimeout  # noqa: E402
+from tools import flywheel_session as fly  # noqa: E402
+from tools import luck_results  # noqa: E402
 from tools.aa_compare_advice import answer, chips, shown_spot, turns  # noqa: E402
-from tools.aa_session_report import _Now, load, plain  # noqa: E402
+from tools.aa_session_report import _Now, load, number, plain, stack  # noqa: E402
 from tools.aa_strategy_review import mode  # noqa: E402
 
 AGGRESSIVE = ("raise", "bet", "all_in", "allin")
+WENT_ON = ("call", "raise")      # what you did, plainly: you put chips in
 STREETS = ("preflop", "flop", "turn", "river")
+BIG_LOSS = 50.0         # big blinds: a big pot lost (after the all-in luck)
+MUSHROOM_BB = Decimal(3)    # the dealer's mushroom post (蘑菇:3BB)
 
 
 class GiveUp:
@@ -113,7 +118,8 @@ def screen_moves(facts, hero=HERO):
             if letter == "r":
                 size = float(amount) / max(float(pot), 1e-9)
             else:
-                size = float(to_call) / max(float(pot - to_call), 1e-9) if to_call else 0.0
+                size = (float(to_call) / max(float(pot - to_call), 1e-9)
+                        if to_call else 0.0)
             moves.append(simple.Move(seat, street, letter, facing,
                                      "hu" if live == 1 else "multi",
                                      "pfa" if seat == raiser else "other", size,
@@ -217,6 +223,67 @@ def screen_spot(fields, rows, facts, cards, street, stakes):
     return spot, None
 
 
+# -- what a fold would have kept -----------------------------------------------
+
+def final_stacks(rows):
+    """{hand id: your chips once the hand was over}: the next hand's stack at
+    its start (``aa_session_report.stack``, read after its antes and blinds)
+    plus what you posted for it; None after the log's last hand (or a bust).
+    A hand that goes on with your same two cards (split in two) is one hand."""
+    grouped = fly.by_hand(rows)
+    stakes = fly.hand_stakes(grouped)
+    ids = list(grouped)
+    cards = {hand_id: mode(" ".join(row["fields"]["hero"]) for row in part
+                           if row["fields"].get("hero") and all(row["fields"]["hero"]))
+             for hand_id, part in grouped.items()}
+    found = {}
+    for index, hand_id in enumerate(ids):
+        later = next((other for other in ids[index + 1:]
+                      if not (cards[other] and cards[other] == cards[hand_id])), None)
+        start = stack(grouped[later]) if later is not None else None
+        if start is None:
+            found[hand_id] = None
+            continue
+        found[hand_id] = float(Decimal(str(start)) + posted(
+            hand_facts(grouped[later], stakes[later])))
+    return found
+
+
+def posted(facts, seat=HERO):
+    """What ``seat`` put in before a hand's first action: the bomb pot's post,
+    or the ante, the blind or straddle of its place (as read, else from the
+    dealer) and the mushroom post (蘑菇: the dealer's 3 big blinds, four
+    players or more)."""
+    bomb = bomb_post(facts)
+    if bomb is not None:
+        return bomb
+    stakes = facts.get("stakes") or {}
+    total = Decimal(stakes.get("ante") or 0)
+    seats = list(facts.get("seats") or ())
+    dealer = facts.get("dealer")
+    if dealer not in seats:
+        dealer = facts.get("blind_dealer")
+    wagers = facts.get("opening_wagers") or {}
+    if seat in wagers:
+        total += Decimal(wagers[seat])
+    elif dealer in seats and seat in seats:
+        after = (seats.index(seat) - seats.index(dealer)) % len(seats)
+        blinds = (stakes.get("small_blind"), stakes.get("big_blind"),
+                  stakes.get("straddle_amount"))
+        if 1 <= after <= 3 and blinds[after - 1]:
+            total += Decimal(blinds[after - 1])
+    if dealer == seat and len(seats) >= 4 and stakes.get("big_blind"):
+        total += MUSHROOM_BB * Decimal(stakes["big_blind"])
+    return total
+
+
+def results(name, rows):
+    """{hand id: (your result in big blinds, all-in luck in big blinds)} as
+    ``luck_results`` counts them."""
+    lines, _ = luck_results.hand_lines(name, rows)
+    return {line["hand_id"]: (line["bb"], line["runout_luck"] or 0.0) for line in lines}
+
+
 # -- one turn ------------------------------------------------------------------
 
 def simple_answer(rows, fields, cards, street, stakes):
@@ -234,7 +301,8 @@ def simple_answer(rows, fields, cards, street, stakes):
         if pool is not None and pool > 0:
             observation = {**observation, "mushroom_pool": str(pool)}
         try:
-            return simple.decide(simple.spot_from_observation(observation)), "table", None
+            spot = simple.spot_from_observation(observation)
+            return simple.decide(spot), "table", None
         except Exception as error:            # the screen still answers
             reason = f"table_failed:{type(error).__name__}"
     spot, why = screen_spot(fields, rows, facts, cards, street, facts.get("stakes"))
@@ -255,6 +323,8 @@ def replay_log(name, rows, solver=False):
     """Every one of your turns in one log: the window's and the rule's answers."""
     rows = [row for row in rows if row.get("fields")]
     found = turns(rows)
+    finals = final_stacks(rows)
+    outcome = results(name, rows)
     last = {indexes[-1]: indexes for indexes in found}
     now = [0.0]
     window = AASolverAdvice(None if solver else GiveUp(), _Now(), clock=lambda: now[0])
@@ -286,8 +356,8 @@ def replay_log(name, rows, solver=False):
         item["window"] = ready[-1] if ready else None
         if hero and street in STREETS:
             try:
-                advice, source, why = simple_answer(list(window._rows), fields,
-                                                    hero.split(), street, window._stakes)
+                advice, source, why = simple_answer(
+                    list(window._rows), fields, hero.split(), street, window._stakes)
             except Exception as error:
                 advice, source, why = None, None, f"failed:{type(error).__name__}"
         else:
@@ -296,15 +366,28 @@ def replay_log(name, rows, solver=False):
         item["simple_why"] = why
         start = rows[indexes[0]]["processed"]
         keys = ("frame", "street", "slot", "kind", "amount", "source")
-        done = next((dict(zip(keys, a)) for a in (final.get(hand_id) or {}).get("actions", [])
-                     if str(a[2]) == str(HERO) and a[1] == street and a[0] >= start), None)
+        actions = (final.get(hand_id) or {}).get("actions", [])
+        done = next((dict(zip(keys, a)) for a in actions
+                     if str(a[2]) == str(HERO) and a[1] == street and a[0] >= start),
+                    None)
         item["you_did"] = None if done is None else plain(done["kind"])
         if done is not None and done["kind"] in AGGRESSIVE and done.get("amount"):
             item["you_put"] = done["amount"]
+        now_stack = number(mode((rows[i]["fields"].get("stacks") or {}).get(str(HERO))
+                                for i in indexes))
+        ended = finals.get(hand_id)
+        result = outcome.get(hand_id)
+        big_blind = float((window.stakes() or {}).get("big_blind") or 2)
+        if now_stack is not None and ended is not None:
+            # Folding here keeps what you have now; the hand ended with
+            # ``ended`` (less the all-in luck, as the results count it).
+            luck = result[1] if result else 0.0
+            item["fold_keeps_bb"] = round((now_stack - ended) / big_blind + luck, 2)
+        if result is not None:
+            item["hand_bb"], item["hand_luck_bb"] = result
         spot = shown_spot(rows, indexes, hand_id)
         if spot is not None:
             observation, share, cards = spot
-            big_blind = float((window.stakes() or {}).get("big_blind") or 2)
             item["shown"] = {
                 "cards": cards, "share": round(share, 3), "big_blind": big_blind,
                 "window": priced(item["window"], observation, share),
@@ -354,8 +437,8 @@ def summarize(items, hands=None):
     differ = [item for item in priced_items
               if _act(item, "window") != _act(item, "simple")
               or (item["window"] or {}).get("to") != (item["simple"] or {}).get("to")]
-    gain = [(item["shown"]["simple"] - item["shown"]["window"]) / item["shown"]["big_blind"]
-            for item in differ]
+    gain = [(item["shown"]["simple"] - item["shown"]["window"])
+            / item["shown"]["big_blind"] for item in differ]
     summary["shown"] = {
         "priced": len(priced_items), "differ": len(differ),
         "simple_better": sum(value > 0.01 for value in gain),
@@ -364,9 +447,56 @@ def summarize(items, hands=None):
         "by_street": {street: round(sum(
             g for g, item in zip(gain, differ) if item["street"] == street), 1)
             for street in STREETS}}
+    summary["folds"] = {key: fold_value(read, key) for key in ("window", "simple")}
+    # The check on that sum: where you folded, folding keeps what you had.
+    yours = [item["fold_keeps_bb"] for item in read if item.get("you_did") == "fold"
+             and item.get("fold_keeps_bb") is not None]
+    summary["fold_check"] = {"your_folds": len(yours),
+                             "exact": sum(abs(value) < 0.5 for value in yours),
+                             "sum_bb": round(sum(yours), 1)}
+    summary["big_losses"] = big_losses(read)
     if hands is not None:
         summary["hands"] = hands
     return summary
+
+
+def _first_folds(items, key):
+    """Per hand, the first turn where ``key`` said fold and you put chips in."""
+    found = {}
+    for item in items:
+        if (_act(item, key) == "fold" and item.get("you_did") in WENT_ON
+                and item.get("fold_keeps_bb") is not None):
+            found.setdefault((item["log"], item["hand_id"]), item)
+    return found
+
+
+def fold_value(items, key):
+    """What following ``key``'s folds would have kept, in big blinds: at the
+    first turn of each hand where it said fold and you went on, the chips you
+    had then against how the hand ended (less the all-in luck)."""
+    values = [item["fold_keeps_bb"] for item in _first_folds(items, key).values()]
+    return {"hands": len(values), "kept_bb": round(sum(values), 1),
+            "saved": sum(value > 0.5 for value in values),
+            "cost": sum(value < -0.5 for value in values)}
+
+
+def big_losses(items, line=BIG_LOSS):
+    """The hands you lost at least ``line`` big blinds in (after the all-in
+    luck): how many each rule folds before the end, and what that keeps."""
+    hands = {}
+    for item in items:
+        if item.get("hand_bb") is not None:
+            hands.setdefault((item["log"], item["hand_id"]),
+                             item["hand_bb"] - item.get("hand_luck_bb", 0.0))
+    lost = {key for key, value in hands.items() if value <= -line}
+    part = [item for item in items if (item["log"], item["hand_id"]) in lost]
+    found = {"hands": len(lost),
+             "lost_bb": round(sum(hands[key] for key in lost), 1)}
+    for key in ("window", "simple"):
+        folds = _first_folds(part, key)
+        found[key] = {"folds_in": len(folds), "kept_bb": round(sum(
+            item["fold_keeps_bb"] for item in folds.values()), 1)}
+    return found
 
 
 def main(argv=None):

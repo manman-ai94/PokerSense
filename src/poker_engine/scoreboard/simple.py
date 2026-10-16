@@ -204,7 +204,8 @@ class Advice:
         if self.to is not None:
             item["to"] = round(self.to, 2)
         if self.kept:
-            item["kept"] = {str(seat): round(share, 3) for seat, share in self.kept.items()}
+            item["kept"] = {str(seat): round(share, 3)
+                            for seat, share in self.kept.items()}
         return item
 
 
@@ -332,7 +333,8 @@ def continuing(weights, board, street, width, facing, size):
         raise_share, call_share = FACING_RAISE[width]
     keep = min(1.0, (raise_share + call_share) * size_factor(size))
     floor = STICKY.get(street, 0.05)
-    return weights * np.where(places(weights, board_strength(board)) <= keep, 1.0, floor)
+    place = places(weights, board_strength(board))
+    return weights * np.where(place <= keep, 1.0, floor)
 
 
 def as_keys(weights):
@@ -345,11 +347,13 @@ def share_of_pot(spot, ranges, pots=None, trials=TRIALS):
         return 1.0
     board = tuple(card for card in spot.board if card)
     if len(ranges) == 1 and len(board) >= 4 and not pots:
-        value, _ = range_equity(tuple(spot.hero), board, as_keys(next(iter(ranges.values()))))
+        (weights,) = ranges.values()
+        value, _ = range_equity(tuple(spot.hero), board, as_keys(weights))
         if value is not None:
             return value
     value, _ = ranges_equity(tuple(spot.hero), board,
-                             {seat: as_keys(weights) for seat, weights in ranges.items()},
+                             {seat: as_keys(weights)
+                              for seat, weights in ranges.items()},
                              trials=trials, seed=spot.seed, pots=pots)
     return value
 
@@ -411,7 +415,8 @@ def postflop(spot):
         against = share_of_pot(spot, callers, spot.pots)
         if against is not None and against >= fair + MARGIN:
             return Advice("bet", to, against, fair + MARGIN, "value_bet", left)
-        return Advice("check", equity=share, need=fair + MARGIN, rule="check", kept=left)
+        return Advice("check", equity=share, need=fair + MARGIN, rule="check",
+                      kept=left)
     if can_raise and share >= spot.price:
         to = raise_to(spot)
         size = (to - spot.top) / max(spot.pot + spot.to_call, 1e-9)
@@ -575,8 +580,8 @@ def spot_from_observation(observation):
         preflop_spot=preflop_spot(preflop_actions, me),
         raises=sum(kind == "r" for _, kind in preflop_actions),
         behind=sum(seat not in acted for seat in opponents),
-        in_position=all(_postflop_order(observation, me) > _postflop_order(observation, seat)
-                        for seat in opponents),
+        in_position=all(_postflop_order(observation, me)
+                        > _postflop_order(observation, seat) for seat in opponents),
         effective_bb=effective / big_blind if big_blind else 100.0,
         bomb=observation.get("bomb_pot") is not None,
         seed=int.from_bytes(digest[:4], "big"))
