@@ -1007,12 +1007,12 @@ def test_the_rough_rule_remembers_a_bet_on_an_earlier_street():
         {**fields, "actions_v1": _history(("flop", 2, "raise"), ("flop", 4, "call"),
                                           ("turn", 2, "check"))}, ["Qs", "Jc"], "turn")
     assert bet["range_equity"]["value"] < quiet["range_equity"]["value"]
-    hands = [advice["range_equity"]["hands_each"]["2"] for advice in (bet, quiet)]
-    assert hands[0] < hands[1]
-    assert aa_solver_advice.aggressors(
+    # Before the flop no bet narrows; an all in with its chips unread counts.
+    assert aa_solver_advice.aggression(
         {"actions_v1": _history(("preflop", 2, "raise"), ("flop", 3, "all_in"),
-                                ("turn", 5, "raise"))}, "turn") == {"3"}
-    assert aa_solver_advice.aggressors({}, "flop") == set()
+                                ("turn", 5, "raise"))}, "turn", None) == [
+        ("3", "flop", False), ("5", "turn", False)]
+    assert aa_solver_advice.aggression({}, "flop", None) == []
 
 
 def test_in_a_bomb_pot_the_rough_rule_takes_any_two_cards():
@@ -1187,12 +1187,15 @@ def _rough_seats(participants, hero, button="call", price="10"):
 def test_the_rough_rule_counts_seats_not_read_as_maybe_in():
     # Audit 10/14 (P-02): one opponent known and five seats unknown was
     # answered as heads-up. The answer stands only when it is the same with
-    # the unknown seats in the hand.
+    # the unknown seats in the hand; else the answer with them in does (it
+    # was none, and your turn went without advice).
     known = {"2": "active", "3": "folded", "4": "active"}
     unread = {**known, **{seat: "unknown" for seat in "01567"}}
     queens = _rough_seats(known, ("Qs", "Qh"))
     assert queens["advice"][0]["action"] == "call" and "unknown_seats" not in queens
-    assert _rough_seats(unread, ("Qs", "Qh")) is None     # fold against six
+    six = _rough_seats(unread, ("Qs", "Qh"))
+    assert (six["advice"][0]["action"], six["unknown_seats"]) == ("fold", 5)
+    assert six["unknown_in"] and six["range_equity"]["opponents"] == 6
     weak = _rough_seats(unread, ("Js", "Ts"))              # a fold either way
     assert (weak["advice"][0]["action"], weak["unknown_seats"]) == ("fold", 5)
     assert weak["range_equity"]["opponents"] == 1
@@ -1245,3 +1248,72 @@ def test_a_shove_read_only_from_the_history_is_in_the_pot_worked_out():
     assert aa_solver_advice.rough_winnable(
         {"2": Decimal(500), "4": Decimal(0)}, Decimal(0), Decimal(100),
         Decimal(50)) == Decimal(50)
+
+
+def _bets(*actions):
+    return {"hand_id": "hand_1", "actions": [
+        [frame, street, slot, kind, chips, "read"]
+        for frame, (street, slot, kind, chips) in enumerate(actions)]}
+
+
+def test_the_rough_rule_reads_a_pot_sized_bet_on_the_board():
+    # A pair under the board's top card facing a bet of the pot: read as any
+    # of the bettor's top 40% of hands it came out at 0.64 and called (real
+    # hands of 10/07-10/16 like it were behind with 0-0.25).
+    fields = {"board": ["Qd", "9c", "3c", None, None], "pot": "160",
+              "participants": {"2": "active", "5": "folded"},
+              "street_wagers": {"2": "80"}, "stacks": {"4": "1000", "2": "1000"},
+              "hero_controls": {"visible": True, "button": "call", "call_amount": "80"},
+              "actions_v1": _bets(("flop", 2, "raise", "80"),
+                                  ("flop", 5, "fold", "0"))}
+    advice = aa_solver_advice.rough_advice(fields, ["Jh", "Jd"], "flop")
+    assert advice["range_equity"]["value"] < 0.3
+    assert advice["advice"][0]["action"] == "fold"
+
+
+def test_the_rough_rule_reads_a_caller_who_leads_the_turn_and_bets_the_river():
+    # Top pair with a weak kicker: the opponent called the flop, led the turn
+    # and bet the river. It came out at 0.65 and called both.
+    fields = {"board": ["8c", "Kh", "3d", "Ts", "Js"], "pot": "430",
+              "participants": {"2": "active"},
+              "street_wagers": {"2": "150"}, "stacks": {"4": "1000", "2": "1000"},
+              "hero_controls": {"visible": True, "button": "call",
+                                "call_amount": "150"},
+              "actions_v1": _bets(
+                  ("flop", 2, "check", "0"), ("flop", 4, "raise", "40"),
+                  ("flop", 2, "call", "40"), ("turn", 2, "raise", "70"),
+                  ("turn", 4, "call", "70"), ("river", 2, "raise", "150"))}
+    advice = aa_solver_advice.rough_advice(fields, ["Kd", "5c"], "river")
+    assert advice["advice"][0]["action"] == "fold"
+
+
+def test_the_rough_rule_reads_a_check_raise_stronger_than_a_bet():
+    fields = {"board": ["Jd", "8c", "4s", None, None], "pot": "120",
+              "participants": {"2": "active"}, "stacks": {"4": "1000", "2": "1000"},
+              "hero_controls": {"visible": True, "button": "call", "call_amount": "40"}}
+    check_raise = aa_solver_advice.rough_advice(
+        {**fields, "street_wagers": {"4": "20", "2": "60"},
+         "actions_v1": _bets(("flop", 2, "check", "0"), ("flop", 4, "raise", "20"),
+                             ("flop", 2, "raise", "60"))}, ["Js", "5c"], "flop")
+    bet = aa_solver_advice.rough_advice(
+        {**fields, "pot": "60", "street_wagers": {"2": "20"},
+         "hero_controls": {"visible": True, "button": "call", "call_amount": "20"},
+         "actions_v1": _bets(("flop", 2, "raise", "20"))}, ["Js", "5c"], "flop")
+    assert check_raise["range_equity"]["value"] < bet["range_equity"]["value"] - 0.1
+    # A bet the history has not got yet is read from the chips in front: a
+    # raise over yours as a raise.
+    unread = aa_solver_advice.rough_advice(
+        {**fields, "street_wagers": {"4": "20", "2": "60"},
+         "actions_v1": _bets(("flop", 2, "check", "0"))}, ["Js", "5c"], "flop")
+    values = [advice["range_equity"]["value"] for advice in (unread, check_raise)]
+    assert abs(values[0] - values[1]) < 0.06
+
+
+def test_a_bet_of_the_pot_or_an_all_in_counts_as_a_raise():
+    history = _bets(("flop", 2, "raise", "30"), ("flop", 3, "call", "30"),
+                    ("turn", 2, "raise", "100"), ("turn", 3, "all_in", "60"),
+                    ("river", 3, "all_in", "40"))
+    # The pot before the turn bet: 300 less the chips from it on (100 + 60 +
+    # 40); the all in for 60 only calls it.
+    found = aa_solver_advice.aggression({"actions_v1": history}, "river", Decimal(300))
+    assert found == [("2", "flop", False), ("2", "turn", True), ("3", "river", False)]

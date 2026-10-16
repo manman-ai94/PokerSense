@@ -46,6 +46,25 @@ the reads show, not the average one, in two ways:
 Without reads, or for a seat that plays like the model, nothing changes.
 Against reg and maniac tables the AI folded to flop bets with hands that had
 the price (23% and 48% of its folds), and in bomb pots far more.
+
+A bet read by strength alone (``narrowed``, for the live window's rough rule,
+which has no model of the hand): each hand of the range keeps exp(-p / scale)
+of its weight, p its place in the range by the hand it makes with the board
+of the bet (0 the strongest, 1 the weakest); ``BET_SCALE`` for a bet,
+``RAISE_SCALE`` for a raise over a bet or a bet of ``BIG_BET`` of the pot or
+more, and a flush or open-ended straight draw keeps at least
+``DRAW_WEIGHT``. The scales are those of the hands shown at the end of a
+hand in the recordings of 2026-09-14 to 10-16 (10 of the window's own logs
+and 杜's three): placed in a top-40% range on the board of each of their
+bets, the 82 shown bets had their middle at 0.23, a quarter beyond 0.44 and
+a tenth beyond 0.75, and the 17 shown raises 0.08, 0.16 and (two draws)
+1.0; exp(-p / scale) has its middle at scale x ln 2, its quarter at
+scale x ln 4 and its tenth at scale x ln 10 (0.23, 0.46, 0.76 for 0.33;
+0.08, 0.16, 0.26 for 0.115). Shown draws were 8% of the bets (10% of the
+ranges were such draws) and 2 of the 13 raises before the river (6%), so a
+draw weighs about the average hand of the range. Shown hands lean strong (a
+bluff that is not called is not shown), so these read a bettor a little
+stronger than he is.
 """
 
 from __future__ import annotations
@@ -54,7 +73,10 @@ from bisect import bisect
 from dataclasses import replace
 from functools import partial
 from itertools import accumulate
+import math
 import random
+
+from phevaluator import evaluate_cards
 
 from poker_engine.solver.texassolver import all_combos
 
@@ -72,6 +94,12 @@ FLOOR_SLOPE = 3.0
 MAX_FLOOR = 0.5
 _KEPT = {}
 MAX_DRAWS = 50                  # tries for one deal of hands that do not collide
+# A bet weighs each hand exp(-p / scale), p its place by strength (``narrowed``).
+BET_SCALE = 0.33
+RAISE_SCALE = 0.115             # a raise, or a bet of BIG_BET of the pot or more
+DRAW_WEIGHT = 0.25              # a strong draw keeps at least this
+BIG_BET = 0.9                   # of the pot before it
+_RANK_VALUES = {rank: value for value, rank in enumerate("23456789TJQKA", start=2)}
 
 
 def _shares(model):
@@ -97,6 +125,64 @@ def read_floors(observation, model, seats):
     reads = observation.get("reads") or {}
     return {seat: floor(aggression_factor(reads.get(str(seat)), _shares(model)))
             for seat in seats}
+
+
+def strong_draw(hole, board):
+    """Whether ``hole`` holds a flush draw or an open-ended straight draw
+    (two ranks that make a straight with one of its cards) on the flop or
+    the turn, without a straight or a flush yet."""
+    if len(board) not in (3, 4):
+        return False
+    cards = list(hole) + list(board)
+    for suit in "cdhs":
+        mine = sum(card[1] == suit for card in hole)
+        if mine and sum(card[1] == suit for card in cards) == 4:
+            return True
+    ranks = {_RANK_VALUES[card[0]] for card in cards}
+    own = {_RANK_VALUES[card[0]] for card in hole}
+    ranks |= {1} if 14 in ranks else set()
+    own |= {1} if 14 in own else set()
+
+    def straight(have):
+        return any(all(low + step in have for step in range(5))
+                   and own & set(range(low, low + 5)) for low in range(1, 11))
+    if straight(ranks):
+        return False
+    makes = sum(straight(ranks | {rank} | ({1} if rank == 14 else set()))
+                for rank in range(2, 15) if rank not in ranks)
+    return makes >= 2
+
+
+def narrowed(weights, base, board, scale):
+    """``weights`` (part of ``base``) after a bet on ``board``: each hand's
+    weight times exp(-p / ``scale``), p its place in the ``base`` range by the hand it
+    makes with the board (the share of ``base`` that makes a stronger one,
+    and half of an equal one); a strong draw (``strong_draw``) at least
+    ``DRAW_WEIGHT`` of its weight."""
+    ranks = {key: evaluate_cards(key[:2], key[2:], *board) for key in base
+             if key[:2] not in board and key[2:] not in board}
+    total = sum(base[key] for key in ranks)
+    if not total:
+        return weights
+    order = sorted(ranks, key=ranks.get)
+    place, above, start = {}, 0.0, 0
+    while start < len(order):
+        end = start
+        while end < len(order) and ranks[order[end]] == ranks[order[start]]:
+            end += 1
+        group = sum(base[key] for key in order[start:end])
+        place[ranks[order[start]]] = (above + group / 2) / total
+        above += group
+        start = end
+    result = {}
+    for key, weight in weights.items():
+        if key[:2] in board or key[2:] in board:
+            continue
+        keep = math.exp(-place[ranks[key]] / scale)
+        if strong_draw((key[:2], key[2:]), board):
+            keep = max(keep, DRAW_WEIGHT)
+        result[key] = weight * keep
+    return result
 
 
 def _decide(model, observation):
@@ -244,5 +330,6 @@ def _won(mine, ranks):
     return 0.0
 
 
-__all__ = ["FLOOR_FROM", "FLOOR_SLOPE", "MAX_FLOOR", "TRIALS", "floor",
-           "opponent_ranges", "ranges_equity", "read_factors"]
+__all__ = ["BET_SCALE", "BIG_BET", "DRAW_WEIGHT", "FLOOR_FROM", "FLOOR_SLOPE",
+           "MAX_FLOOR", "RAISE_SCALE", "TRIALS", "floor", "narrowed",
+           "opponent_ranges", "ranges_equity", "read_factors", "strong_draw"]
