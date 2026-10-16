@@ -184,8 +184,9 @@ def test_late_result_cannot_publish_after_stop():
     finally:
         release.set()
         wait_until(lambda: source.closed.is_set())
+    # The worker says STOPPED once close() has returned, a moment after.
+    wait_until(lambda: session.snapshot()["status"] == "STOPPED")
     assert session.snapshot()["payload"] is None
-    assert session.snapshot()["status"] == "STOPPED"
 
 
 class TimedSource(Source):
@@ -248,7 +249,7 @@ def test_a_stall_clears_the_table_and_the_next_frame_in_time_shows_again():
         release.set()
         session.stop()
     wait_until(lambda: source.closed.is_set())
-    assert session.snapshot()["status"] == "STOPPED"
+    wait_until(lambda: session.snapshot()["status"] == "STOPPED")
 
 
 def test_a_late_first_result_is_never_shown_as_fresh():
