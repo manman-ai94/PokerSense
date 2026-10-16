@@ -256,6 +256,54 @@ def test_iron_law_5_checks_when_it_can():
     assert report["to_call"] == "0"
 
 
+def blind_hand(clock, hero=("Qs", "Qh"), opener=("call", 4)):
+    """庄位 2：3 小盲、4（你）大盲、5 抓头；6 平跟（或加注），其余弃到你。"""
+    screen = Screen(AAPlainAdvice(clock=clock), clock=clock, dealer=2, hero=hero)
+    screen.deal(blinds=())
+    for seat, chips in ((3, 1), (4, 2), (5, 4)):
+        screen.put(seat, chips, frames=0)
+    screen.show(3)
+    kind, chips = opener
+    screen.put(6, chips, badge=kind)
+    for seat in (7, 0, 1, 2, 3):
+        screen.fold(seat)
+    return screen
+
+
+def test_a_blind_nobody_raised_is_not_iron_law_5_without_your_cards():
+    # v3.2：翻前轮到盲位且没人加注时铁律 5 不适用（过牌或补齐）；牌没读到就补齐
+    clock = Clock()
+    screen = blind_hand(clock, hero=("Qs", None))
+    report = screen.turn(call=2, frames=25)
+    assert report["status"] == "ready"
+    assert report["advice"] == [{"action": "call", "frequency": 1.0}]
+    page = report["plain"]
+    assert page["rule"] == "I5.blind" and page["missing"] == ["hero_cards"]
+    assert page["tag"] == "盲位没人加注：补齐（缺你的手牌）"
+
+
+def test_a_blind_nobody_raised_follows_the_table_when_the_cards_are_read():
+    clock = Clock()
+    screen = blind_hand(clock)
+    controls = {"visible": True, "button": "call", "call_amount": "2"}
+    for state in ("active", "folded") * 13:                 # 7 号一会儿在一会儿弃
+        screen.fields["participants"]["7"] = state
+        report = screen.show(1, hero_controls=controls)
+    assert report["status"] == "ready"
+    page = report["plain"]
+    assert page["rule"] == "T1.b" and page["missing"] == ["opponents"]
+    assert page["tag"] == "盲位按表：缺在局对手没稳"
+    assert report["advice"][0]["action"] == "raise"
+
+
+def test_a_blind_facing_a_raise_is_still_iron_law_5():
+    clock = Clock()
+    screen = blind_hand(clock, hero=("Qs", None), opener=("raise", 12))
+    report = screen.turn(call=10, frames=25)
+    assert report["advice"] == [{"action": "fold", "frequency": 1.0}]
+    assert report["plain"]["rule"] == "S1"
+
+
 # -- 一个决策只算一次 ---------------------------------------------------------------
 
 def test_a_decision_is_worked_out_once_and_kept(monkeypatch):
@@ -418,6 +466,29 @@ def test_the_dealer_is_the_one_the_blinds_show():
     screen.put(3, 12)
     ready(screen, call=12)
     assert screen.advice.state.dealer(screen.advice.stakes()) == 7
+
+
+def test_an_unread_dealer_comes_from_the_one_blind_that_was_read():
+    stakes = {"small_blind": "1", "big_blind": "2", "straddle_amount": "4"}
+    seats = list(range(8))
+    flash = {"street_wagers": {str(seat): "2" for seat in seats}}      # 前注闪一下
+    assert live.posted_dealer([flash, {"street_wagers": {"2": "4"}}], seats,
+                              stakes) == 7
+    assert live.posted_dealer([{"street_wagers": {"1": "2"}}], seats, stakes) == 7
+    assert live.posted_dealer([{"street_wagers": {"0": "1"}}], seats, stakes) == 7
+    two = [{"street_wagers": {"0": "1"}}, {"street_wagers": {"5": "4"}}]
+    assert live.posted_dealer(two, seats, stakes) is None
+    assert live.posted_dealer([flash], seats, stakes) is None
+    screen = Screen(AAPlainAdvice(), dealer=None)        # 庄位按钮一直没读到
+    screen.deal(blinds=())
+    screen.stacks[0] -= 1
+    screen.stacks[1] -= 2
+    screen.pot += 3
+    screen.put(2, 4)                                     # 只读到抓头的筹码
+    screen.put(3, 12, badge="raise")
+    report = ready(screen, call=12)
+    assert screen.advice.state.dealer(screen.advice.stakes()) == 7
+    assert report["plain"]["rule"] != "S1"
 
 
 def test_the_flop_pot_is_kept_from_the_flop_s_first_frames():
