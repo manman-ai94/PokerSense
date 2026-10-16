@@ -7,8 +7,12 @@ GitHub never flags a conflict. This tool moves those entries into the
 files, so people still read one place. The nightly routine runs it as its own
 PR.
 
-Order: by the date in the file name, newest first; on the same date, the file
-git added last comes first (files git does not know yet count as newest).
+Order: by the date in the file name, newest first; on the same date, the PR
+merged last comes first (files git does not know yet count as newest). The
+merge time is read from main's own history (``--first-parent``), so run this
+on a checkout of main: an entry counts from the merge that brought it into
+main, even when it was written earlier on its branch or inside a merge of main
+into that branch.
 
 Usage: python tools/worklog_rollup.py [--root DIR] [--dry-run]
 """
@@ -29,11 +33,15 @@ def entries(folder):
 
 
 def added_at(root, path):
-    """Seconds since the epoch when git first added ``path``; None if unknown."""
+    """Seconds since the epoch when ``path`` came into the checked-out branch
+    (for main: when its PR merged); None if unknown.
+
+    ``--first-parent`` compares each merge with the branch it landed on, so the
+    merge that brought the file in is the one that adds it."""
     try:
         out = subprocess.run(
-            ["git", "log", "--diff-filter=A", "--format=%ct", "-1", "--",
-             path.relative_to(root).as_posix()],
+            ["git", "log", "--first-parent", "--diff-filter=A", "--format=%ct",
+             "-1", "--", path.relative_to(root).as_posix()],
             cwd=root, check=True, capture_output=True, text=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return None
