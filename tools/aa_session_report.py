@@ -9,8 +9,9 @@ opponent showed with that seat's actions street by street, the betting-history
 checks of ``tools/check_aa_action_history.py``, whether the hand replays on
 the AA table (``aa_solver_input.check_hand``), the stalls (more than a second
 between two shown frames) and your chips from this hand's start to the next
-one's. The summary leads with the hands in which every one of your decisions
-got advice, from the first before the flop to the last (``fully_advised``;
+one's (with this hand's blinds, antes and mushroom post, not the next one's).
+The summary leads with the hands in which every one of your decisions got
+advice, from the first before the flop to the last (``fully_advised``;
 also for the hands you played past the flop), then counts the decisions
 advised, by kind of advice (``rough`` is the rough rule's), and the causes
 over the session, most frequent first, splits hands and decisions by table
@@ -47,7 +48,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from poker_engine.desktop.aa_solver_input import check_hand, hand_facts  # noqa: E402
+from poker_engine.desktop.aa_solver_input import (  # noqa: E402
+    _rules, bomb_post, check_hand, hand_facts)
+from poker_engine.strategy.aa_rules_v2 import build_forced_bet_plan  # noqa: E402
 from tools.aa_range_exclusion import session_exclusion  # noqa: E402
 from tools.check_aa_action_history import (  # noqa: E402
     skipped_seats, unexplained_rises, unrecorded_folds)
@@ -58,6 +61,7 @@ IN_HAND = ("active", "all_in")
 STALL = 1.0          # seconds between two shown frames that count as a stall
 STALE = 2.0          # the live window clears the table after this long
 LATE = 3.0           # advice later than this after your buttons showed
+MUSHROOM_POST = 3    # big blinds the dealer puts in the mushroom pool (蘑菇:3BB)
 MISREAD = 3          # frames a second reading of one card needs to count
 FIRST = 5            # frames at a hand's start that read its stacks
 AGGRESSIVE = {"bet": "raise", "raise": "raise", "all_in": "raise", "allin": "raise"}
@@ -202,9 +206,36 @@ def stalls(rows):
     return gaps
 
 
-def hand_report(rows, advice, gaps=()):
+def posted(facts):
+    """Your chips the table took before the hand's start reading
+    (``stack``): your ante and blind or straddle, the mushroom post when you
+    are the dealer, or a bomb pot's post. 0 when you were not dealt in; None
+    when the dealer is not read or the table size has no AA rules (4 to 8
+    players), so the hand counts as before 10/17.
+
+    10/17: each hand counted from that reading to the next hand's, so it
+    paid the next hand's posts instead of its own (on 1/2/4(2) a small
+    blind folding cost 4 big blinds, the dealer's mushroom post and ante)."""
+    seats, hero = facts["seats"], int(HERO)
+    if hero not in seats:
+        return 0.0
+    bomb = bomb_post(facts)
+    if bomb is not None:
+        return float(bomb)
+    dealer = facts["dealer"] if facts["dealer"] in seats else facts.get("blind_dealer")
+    if dealer not in seats or not 4 <= len(seats) <= 8:
+        return None
+    rules = _rules(len(seats), facts["stakes"])
+    chips = build_forced_bet_plan(rules, tuple(seats), dealer).contributions[hero]
+    if dealer == hero:
+        chips += rules.big_blind * MUSHROOM_POST
+    return float(chips)
+
+
+def hand_report(rows, advice, gaps=(), stakes=None):
+    """One hand; ``stakes``: what earlier hands settled on (``hand_facts``)."""
     fields = [row["fields"] for row in rows]
-    facts = hand_facts(rows)
+    facts = hand_facts(rows, stakes)
     in_hand = [f for f in fields if (f.get("participants") or {}).get(HERO) in IN_HAND
                or (f.get("hero_controls") or {}).get("visible")]
     cards = Counter(" ".join(f["hero"]) for f in in_hand
@@ -239,7 +270,8 @@ def hand_report(rows, advice, gaps=()):
         "bomb_pot": None if replay is None else replay.get("bomb_pot"),
         "stalls": [gap for gap in gaps
                    if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]],
-        "start_stack": stack(rows),
+        "start_stack": stack(rows), "posted": posted(facts),
+        "stakes": facts["stakes"],
         "first_stack": next(iter(readings(rows)), None),
         "end_stack": (readings(rows) or [None])[-1],
         "most_pot": max(filter(None, map(number, (f.get("pot") for f in fields))),
@@ -299,9 +331,13 @@ def session_report(logs, *, replay_advice=False):
             history = row["fields"].get("actions_v1")
             if history and row["fields"].get("scene_supported"):
                 grouped.setdefault(history["hand_id"], []).append((row, report))
-        ours = []
+        ours, settled = [], None
         for pairs in grouped.values():
-            hand = hand_report([p[0] for p in pairs], [p[1] for p in pairs], gaps)
+            hand = hand_report([p[0] for p in pairs], [p[1] for p in pairs], gaps,
+                               settled)
+            stakes = hand.pop("stakes")
+            if stakes["source"] == "table":
+                settled = stakes
             ours.append({"log": name, **hand})
         chips(ours)
         hands += ours
@@ -331,10 +367,10 @@ def range_reads(logs, hands):
 
 def chips(hands):
     """Your chips from each hand's start to the next hand's start in the same
-    recording. A hand that goes on with your same two cards was split in two
-    (a new hand was started in the middle of it): both parts count as one, on
-    the first. A rise larger than the hand's biggest pot is a rebuy or a
-    misread and is left out.
+    recording, before either hand's posts (``posted``). A hand that goes on
+    with your same two cards was split in two (a new hand was started in the
+    middle of it): both parts count as one, on the first. A rise larger than
+    the hand's biggest pot is a rebuy or a misread and is left out.
 
     A hand you finished all in with nothing left (``busted``) costs your
     whole start. Until 10/16 those were left out (no stack read after it)
@@ -353,6 +389,10 @@ def chips(hands):
         first = whole[0]
         one = first["start_stack"]
         two = after[0]["start_stack"] if after else None
+        if one is not None:
+            one += first["posted"] or 0
+        if two is not None:
+            two += after[0]["posted"] or 0
         most = max((h["most_pot"] for h in whole if h["most_pot"] is not None),
                    default=None)
         for hand in whole:
@@ -369,7 +409,7 @@ def chips(hands):
             continue
         first["your_chips"] = round(change, 2)
     for hand in hands:
-        for key in ("start_stack", "most_pot", "first_stack", "end_stack"):
+        for key in ("start_stack", "posted", "most_pot", "first_stack", "end_stack"):
             del hand[key]
 
 
