@@ -1196,3 +1196,24 @@ def test_the_rough_rule_counts_seats_not_read_as_maybe_in():
     weak = _rough_seats(unread, ("Js", "Ts"))              # a fold either way
     assert (weak["advice"][0]["action"], weak["unknown_seats"]) == ("fold", 5)
     assert weak["range_equity"]["opponents"] == 1
+
+
+def test_the_rough_rule_counts_a_draws_implied_odds_as_the_range_rule_does(monkeypatch):
+    # A draw just short of the price folded however deep the stacks were.
+    # Off while the range rule's ``implied`` is 0.
+    fields = {"board": ["Jd", "9c", "2s", None, None], "pot": "60",
+              "participants": {"1": "active", "2": "active", "4": "active",
+                               "6": "active"},
+              "street_wagers": {"2": "20"}, "stacks": {"4": "220", "2": "300",
+                                                       "1": "80", "6": "200"},
+              "hero_controls": {"visible": True, "button": "call",
+                                "call_amount": "20"}}
+    off = aa_solver_advice.rough_advice(fields, ["Qs", "Th"], "flop")
+    monkeypatch.setitem(aa_solver_advice.MULTIWAY_LINES, "implied", 0.25)
+    on = aa_solver_advice.rough_advice(fields, ["Qs", "Th"], "flop")
+    # 20 to win 60 + 20 less rake, and a quarter of the 200 left behind.
+    assert on["required"] < off["required"]
+    assert on["required"] == pytest.approx(20 / (20 / off["required"] + 200 / 4),
+                                           abs=0.001)
+    dry = aa_solver_advice.rough_advice(fields, ["Ah", "Kd"], "flop")
+    assert dry["required"] == off["required"]

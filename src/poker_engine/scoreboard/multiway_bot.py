@@ -51,6 +51,14 @@ against the hands that call. 30 big blinds from the 10/08-10/10 recordings
 (lines from 20 to 30 change the same decisions there, a higher one lets
 lost hands through; see the pull request).
 
+``implied`` (off at 0): a draw's implied odds. On the flop or the turn,
+holding at least ``outs`` cards that make you a straight or a flush, a call
+is priced as if that share of the chips still behind were in the pot too
+(yours after calling, at most the most an opponent still in has behind): a
+draw hit wins more on the later streets than the pot now; without it a
+draw just short of the price folds however deep the stacks are. A candidate
+for the scoreboard league; the live rough rule counts it the same way.
+
 Parameters can follow the name, for example
 ``range_multiway@bet=0.55:raise=0.7:margin=0.05+aa_preflop`` (":" between
 them: "," separates strategies on the command line).
@@ -69,7 +77,8 @@ from .side_pots import pots, price
 
 DEFAULTS = {"bet": 0.3, "raise": 0.6, "margin": 0.0, "trials": 600,
             "hu": 0.0, "hu_bet": 0.55, "hu_raise": 0.7,
-            "size": 0.66, "size3": 1.0, "raise_size": 1.0, "guard": 30.0}
+            "size": 0.66, "size3": 1.0, "raise_size": 1.0, "guard": 30.0,
+            "implied": 0.0, "outs": 8}
 GUARD_SIZE = 0.5                # the most a guarded bet puts in, of the pot
 # phevaluator's ranks (lower is stronger) where each kind of hand ends.
 KINDS = ((10, "straight_flush"), (166, "four_of_a_kind"), (322, "full_house"),
@@ -143,7 +152,60 @@ def cuts(observation, params=DEFAULTS):
     to_call = float(observation["to_call"] or 0)
     if to_call == 0:
         return {"bet": params["bet"]}
-    return {"call": price(observation) + params["margin"], "raise": params["raise"]}
+    return {"call": implied_price(observation, params) + params["margin"],
+            "raise": params["raise"]}
+
+
+def implied_price(observation, params=DEFAULTS):
+    """``side_pots.price`` with a draw's implied odds: on the flop or the turn,
+    holding at least ``outs`` cards that make you a straight or a flush, a
+    call is priced as if ``implied`` of the chips still behind (yours after
+    calling, at most the most an opponent still in has behind) were in the
+    pot too. Off (0) by default."""
+    base = price(observation)
+    extra = implied_chips(observation, params)
+    if not base or not extra:
+        return base
+    to_call = float(observation["to_call"])
+    return to_call / (to_call / base + extra)
+
+
+def implied_chips(observation, params=DEFAULTS):
+    """The chips ``implied_price`` adds to the pot: 0 when it does not apply."""
+    share = float(params.get("implied", 0) or 0)
+    if share <= 0 or observation["street"] not in ("flop", "turn"):
+        return 0.0
+    if draw_outs(observation["own_hole"], observation["board"]) < params["outs"]:
+        return 0.0
+    stacks = {str(seat): float(value)
+              for seat, value in (observation.get("stacks") or {}).items()}
+    me = str(observation["observing_seat"])
+    mine = stacks.get(me, 0.0) - float(observation["to_call"] or 0)
+    theirs = [stacks.get(str(seat), 0.0) for seat in observation["occupied_seats"]
+              if str(seat) != me and seat not in observation["folded"]]
+    return share * max(0.0, min(mine, max(theirs, default=0.0)))
+
+
+DRAWN = ("straight", "flush", "straight_flush")
+
+
+def draw_outs(hole, board):
+    """The cards still unseen that would make you a straight or a flush with
+    one of your own cards, where you do not have one yet and the board would
+    not make it by itself."""
+    hole, board = list(hole), [card for card in board if card]
+    if len(board) not in (3, 4) or ORDER.index(hand_kind(hole + board)) >= ORDER.index(
+            "straight"):
+        return 0
+    seen = set(hole) | set(board)
+    count = 0
+    for card in (rank + suit for rank in "23456789TJQKA" for suit in "cdhs"):
+        if card in seen or hand_kind(hole + board + [card]) not in DRAWN:
+            continue
+        if len(board) == 4 and hand_kind(board + [card]) in DRAWN:
+            continue
+        count += 1
+    return count
 
 
 def choose(observation, share, params=DEFAULTS):

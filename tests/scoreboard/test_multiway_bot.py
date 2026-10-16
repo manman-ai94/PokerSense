@@ -196,3 +196,40 @@ def test_guard_leaves_small_pots_strong_hands_and_its_off_switch():
     assert guard(river, "raise_to:60", 1.0, off) == "raise_to:60"
     assert multiway_bot.choose(river, 1.0) == "check_call"
     assert multiway_bot.unguarded(river, 1.0) == "raise_to:60"
+
+
+def test_a_draw_counts_its_outs_to_a_straight_or_a_flush():
+    assert multiway_bot.draw_outs(["Qs", "Th"], ["Jd", "9c", "2s"]) == 8   # open-ended
+    assert multiway_bot.draw_outs(["Ah", "2h"], ["Kh", "9h", "3c"]) == 9   # flush draw
+    assert multiway_bot.draw_outs(["8h", "2c"], ["5d", "6s", "7c", "Kh"]) == 8
+    assert multiway_bot.draw_outs(["Ah", "Kd"], ["2c", "7s", "9h"]) == 0
+    # Made already, or on the river: nothing to draw.
+    assert multiway_bot.draw_outs(["8h", "9h"], ["5d", "6s", "7c"]) == 0
+    assert multiway_bot.draw_outs(["Qs", "Th"], ["Jd", "9c", "2s", "3h", "4d"]) == 0
+    # A card that makes the straight on the board alone is not yours.
+    assert multiway_bot.draw_outs(["Ac", "2d"], ["5d", "6s", "7c", "8h"]) == 0
+
+
+def test_implied_odds_are_off_by_default_and_count_chips_behind_for_a_draw(table):
+    spot = {**table["facing"], "street": "flop", "own_hole": ["Qs", "Th"],
+            "board": ["Jd", "9c", "2s"]}
+    price = side_pots.price(spot)
+    assert multiway_bot.implied_price(spot) == price
+    assert multiway_bot.cuts(spot)["call"] == price
+    on = {**multiway_bot.DEFAULTS, "implied": 0.25}
+    me = str(spot["observing_seat"])
+    behind = float(spot["stacks"][me]) - float(spot["to_call"])
+    theirs = max(float(spot["stacks"][str(seat)]) for seat in spot["occupied_seats"]
+                 if str(seat) != me and seat not in spot["folded"])
+    extra = 0.25 * max(0.0, min(behind, theirs))
+    assert multiway_bot.implied_chips(spot, on) == pytest.approx(extra)
+    to_call = float(spot["to_call"])
+    assert multiway_bot.implied_price(spot, on) == pytest.approx(
+        to_call / (to_call / price + extra))
+    assert multiway_bot.implied_price(spot, on) < price
+    # No draw, or the river: the price as it is.
+    dry = {**spot, "own_hole": ["Ah", "Kd"], "board": ["2c", "7s", "9h"]}
+    assert multiway_bot.implied_price(dry, on) == side_pots.price(dry)
+    river = {**spot, "street": "river", "board": ["Jd", "9c", "2s", "3h", "4d"]}
+    assert multiway_bot.implied_price(river, on) == side_pots.price(river)
+    assert multiway_bot.RangeMultiwayBot(Base(), implied=0.25).params["implied"] == 0.25

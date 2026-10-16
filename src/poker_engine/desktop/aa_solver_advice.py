@@ -160,6 +160,7 @@ from poker_engine.scoreboard.mushroom import MIN_PLAYERS
 from poker_engine.scoreboard.multiway_bot import DEFAULTS as MULTIWAY_LINES
 from poker_engine.scoreboard.multiway_bot import GUARD_SIZE
 from poker_engine.scoreboard.multiway_bot import big_pot, guard_action, guarded
+from poker_engine.scoreboard.multiway_bot import draw_outs
 from poker_engine.scoreboard.multiway_bot import cuts as multiway_cuts
 from poker_engine.scoreboard.multiway_bot import street_params, unguarded, weak_hand
 from poker_engine.scoreboard.preflop_policy import AAPreflopPolicy, rake
@@ -510,8 +511,13 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes, bomb=
         return None
     realize = PREFLOP_REALIZE if street == "preflop" and not all_in else 1.0
     value *= realize
-    required = (to_call / rough_winnable(wagers, mine, pot, to_call, stakes)
-                if to_call > 0 else Decimal(0))
+    required = Decimal(0)
+    if to_call > 0:
+        winnable = rough_winnable(wagers, mine, pot, to_call, stakes)
+        if not all_in:
+            winnable += rough_implied(cards, board, street, to_call, stack, fields,
+                                      opponents)
+        required = to_call / winnable
     action = "check" if to_call == 0 else "call" if value >= required else "fold"
     row = {"action": action, "frequency": 1.0}
     guard = None
@@ -524,6 +530,23 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes, bomb=
                              "hands": None, "hands_each": counts, "realize": realize},
             "required": round(float(required), 3), "pot": str(pot),
             "pot_read": read is not None, "to_call": str(to_call), "basis": ROUGH_BASIS}
+
+
+def rough_implied(cards, board, street, to_call, stack, fields, opponents):
+    """A draw's implied odds as the range rule counts them
+    (``multiway_bot.implied_chips``, off while its ``implied`` is 0): the
+    chips added to what a call can win."""
+    share = Decimal(str(MULTIWAY_LINES["implied"]))
+    if share <= 0 or street not in ("flop", "turn") or stack is None:
+        return Decimal(0)
+    if draw_outs(cards, board) < MULTIWAY_LINES["outs"]:
+        return Decimal(0)
+    stacks = fields.get("stacks") or {}
+    theirs = [chips for chips in (_decimal(stacks.get(seat)) for seat in opponents)
+              if chips is not None]
+    if not theirs:
+        return Decimal(0)
+    return share * max(Decimal(0), min(stack - to_call, max(theirs)))
 
 
 def rough_winnable(wagers, mine, pot, to_call, stakes=None):
