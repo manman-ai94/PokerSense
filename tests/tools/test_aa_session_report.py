@@ -87,6 +87,54 @@ def test_what_you_did_your_chips_and_a_hand_split_in_two():
     assert summary["by_players"][2]["advised"] == 1
 
 
+def busted_rows(after, *, rebuy=None):
+    """You (100 chips) go all in and lose: your stack reads 0 to the end of
+    the hand. ``after``: "sits out" (a whole hand goes by without you, your
+    stack 0, then ``rebuy`` read late in it), "dealt in" (the next hand deals
+    you in with 205) or "ends" (the recording stops)."""
+    rows = ([row(f, f * 0.1, stack="100") for f in range(4)]
+            + [row(f, f * 0.1, stack="0", pot=210) for f in range(4, 8)])
+    for item in rows:
+        item["fields"]["actions_v1"]["complete"] = True
+    if after == "sits out":
+        for f in range(8, 16):
+            late = rebuy if rebuy and f >= 14 else "0"
+            item = row(f, f * 0.1, hand="hand_8", cards=None, stack=late, pot=30)
+            item["fields"]["participants"] = {"4": "waiting", "5": "active"}
+            item["fields"]["actions_v1"]["complete"] = True
+            rows.append(item)
+        rows += [row(f, f * 0.1, hand="hand_16", cards=("2c", "7d"),
+                     stack=rebuy or "200") for f in range(16, 22)]
+    elif after == "dealt in":
+        rows += [row(f, f * 0.1, hand="hand_8", cards=("2c", "7d"), stack="205")
+                 for f in range(8, 14)]
+    return rows
+
+
+def test_a_bust_costs_your_whole_stack():
+    # Sat out the next hand: until 10/16 no stack was read after the hand,
+    # so it was left out.
+    first = session_report([("log", busted_rows("sits out"))])["hands"][0]
+    assert first["your_chips"] == -100.0
+    # A rebuy read in the hand sat out is not what you had after the bust
+    # (10/07: 186 all in, lost, rebought 196, counted +10).
+    first = session_report([("log", busted_rows("sits out", rebuy="110"))])["hands"][0]
+    assert first["your_chips"] == -100.0
+    # The recording ends after the hand you busted in.
+    first = session_report([("log", busted_rows("ends"))])["hands"][0]
+    assert first["your_chips"] == -100.0
+    # Dealt in the next hand with chips: you won, as before.
+    first = session_report([("log", busted_rows("dealt in"))])["hands"][0]
+    assert first["your_chips"] == 105.0
+
+
+def test_a_hand_cut_off_all_in_is_not_a_bust():
+    rows = busted_rows("ends")
+    for item in rows:
+        item["fields"]["actions_v1"]["complete"] = False
+    assert session_report([("log", rows)])["hands"][0]["your_chips"] is None
+
+
 def test_buttons_read_while_your_seat_sits_out_are_not_a_turn():
     sitting = row(3, 0.3, turn=True, cards=None,
                   advice={"status": "idle", "reason": "your_cards_not_read"})
