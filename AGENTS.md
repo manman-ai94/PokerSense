@@ -13,6 +13,8 @@ PokerSense 是一个德州扑克**实时策略分析**工具：用采集卡读�
 - 软件只显示分析结果，**绝不**自动点击、下注或控制扑克客户端；人始终是唯一操作者。
 - 识别或状态不确定时输出 `UNKNOWN` / `ABSTAIN`，不猜、不补默认值。
 - 合成数据、开发集和单元测试的结果，不能当作真实牌局验收结论。
+- 策略默认值的改动一律不以单场积分为依据。（2026-10-16 主人定）
+- plain 换成默认后 2000 手内不改任何规则，只修识别。（2026-10-16 主人定；plain 指按“一页纸打法”出建议的策略）
 
 ## 当前阶段
 
@@ -179,12 +181,10 @@ Windows 上由 `launch/aa/START-AA.cmd` 启动（第二台电脑从源码装见 
 
 ## Git 与 GitHub 规则
 
-- 仓库：<https://github.com/manman-ai94/PokerSense>（公开）。旧仓库 `xiaoyangpeng1994-create/PokerSense`
-  的账号 2026-10-07 被暂停，2026-10-09 起改用这个新仓库，旧仓库不再推送。
+- 仓库：<https://github.com/manman-ai94/PokerSense>（公开）。旧仓库 `xiaoyangpeng1994-create/PokerSense` 的账号 2026-10-07 被暂停，2026-10-09 起改用这个新仓库，旧仓库不再推送。
 - `main` 是唯一的长期分支：不直接推送或强推，只通过 PR 合并；三项检查 `review-hygiene`、
   `test (macos-latest)`、`test (windows-latest)` 全绿、分支和 main 同步后再合并。
-- 固定流程：从最新 `main` 开短分支 → 提交 → 推送 → 开 PR → CI 通过 →
-  用 merge commit 合并 → 删除分支。
+- 固定流程：从最新 `main` 开短分支 → 提交 → 推送 → 开 PR → CI 通过 → 用 merge commit 合并 → 删除分支。
 - 分支命名：`feat/`、`fix/`、`docs/`、`chore/`、`research/` 加简短英文描述。
 - 一个 PR 只做一件事；main 必须随时能跑。PR 描述用中文写清：做了什么、怎么验证的、还剩什么。策略和裁判（模拟对手和牌桌、统计数字、拟合、检查和验收线，清单在 `configs/evaluator-protection.json`）不能在同一个 PR 里改，review-hygiene 会拦；改裁判只为更像真人。
 - 修改 `.github/workflows/` 需要 `gh` 带 `workflow` 权限。
