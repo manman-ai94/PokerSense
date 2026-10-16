@@ -119,3 +119,28 @@ def test_groups_with_too_few_players_are_left_out():
     assert groups["winner"]["players"] == MIN_GROUP
     assert groups["all"]["vpip"]["share"] == 0.3
     assert groups["winner"]["bb_per_100_median"] == pytest.approx(500.0)
+
+
+def test_a_player_at_two_low_stakes_is_one_player_in_low():
+    # Code check 10/16: the pooled "low" stake had one member per (player,
+    # stake) row, so a player at NL25 and NL50 counted twice.
+    def player(result, hands=10):
+        row = Row()
+        row.add("hands", hands)
+        row.add("vpip", 3)
+        for i in range(hands):
+            value = result + (1 if i % 2 else -1)
+            row.add("net_hands")
+            row.net += value
+            row.net_sq += value * value
+        return row
+
+    count = MIN_GROUP
+    rows = {(f"w{i}", stake): player(5.0) for i in range(count)
+            for stake in (0.25, 0.5)}
+    out = summarize(rows, min_hands=10)
+    assert out["low"]["winner"]["players"] == count
+    assert out["bb=0.25"]["winner"]["players"] == count
+    # Fewer distinct players than MIN_GROUP: no low group at all.
+    few = {key: row for key, row in rows.items() if key[0] != "w0"}
+    assert "winner" not in summarize(few, min_hands=10).get("low", {})

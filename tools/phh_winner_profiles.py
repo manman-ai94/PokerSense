@@ -395,17 +395,22 @@ def profile(members):
 
 def summarize(rows, min_hands=MIN_HANDS, big=BIG, low_max=LOW_MAX):
     """{stake: {group: profile}} for groups of at least ``MIN_GROUP`` players."""
+    # The pooled "low" stake has each player once: his low-stake rows merged.
+    low = {}
+    for (player, big_blind), row in rows.items():
+        if big_blind <= low_max:
+            low.setdefault(player, Row()).merge(row)
+    entries = [(f"bb={big_blind:g}", row) for (_, big_blind), row in rows.items()]
+    entries += [("low", row) for row in low.values()]
     members = {}
-    for (_, big_blind), row in rows.items():
+    for stake, row in entries:
         if row.get("net_hands") < min_hands:
             continue
         rate = win_rate(row)
         if rate is None:
             continue
-        stakes = [f"bb={big_blind:g}"] + (["low"] if big_blind <= low_max else [])
-        for stake in stakes:
-            for group in groups_of(rate, big):
-                members.setdefault(stake, {}).setdefault(group, []).append((row, rate))
+        for group in groups_of(rate, big):
+            members.setdefault(stake, {}).setdefault(group, []).append((row, rate))
     return {stake: {group: profile(players) for group, players in sorted(groups.items())
                     if len(players) >= MIN_GROUP}
             for stake, groups in sorted(members.items())}
