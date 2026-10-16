@@ -16,7 +16,8 @@ logs that are already there (the window's ``frames.jsonl``,
 nothing new is worked out about the play. What a field needs and the log
 does not have is ``null``, with the reason in ``nulls``.
 
-Blocks (``FORMAT`` 1; ``tools/session_evidence.py`` reads them):
+Blocks (``FORMAT`` 2, which added block 11; ``tools/session_evidence.py``
+reads them):
 
 1. ``session``: machine, played code, level, hands, length, spectating or
    not, results in big blinds (per 100 hands with a 95% interval; with the
@@ -55,6 +56,12 @@ Blocks (``FORMAT`` 1; ``tools/session_evidence.py`` reads them):
     showdown; ``late`` for a hand not seen from its start, ``unfinished``
     for the hand the log ends in); only all-in and plain showdowns of hands
     seen whole calibrate a range.
+11. ``shadow``: 离线影子重放 and the 分量账本 of the page's section 7
+    (``tools/session_shadow.py``): at each of your decisions the page and the
+    older advice both worked out again from the frame log; the first
+    divergence of each hand booked with a fold worth 0 in the page's three
+    groups, and every spot of v3.3's two loosenings kept apart. Calculated
+    and kept, never shown to the player.
 
 The package holds other players' hands: it stays in the private data folder
 and the owner's cloud folder, never in the repository. All of it is table
@@ -84,10 +91,11 @@ from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     bomb_post, hand_facts, replay_hand, starting_stacks)
 from poker_engine.desktop.aa_stakes import stakes_label  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
-from tools.aa_session_report import session_report  # noqa: E402
+from tools.aa_session_report import session_report, stack  # noqa: E402
 from tools.aa_strategy_review import decision as review_decision  # noqa: E402
+from tools import session_shadow  # noqa: E402
 
-FORMAT = 1
+FORMAT = 2
 FILE = "package.json"
 HERO = 4
 STREETS = ("preflop", "flop", "turn", "river")
@@ -204,7 +212,9 @@ def session_block(folder, meta, item, luck, machine, spectate):
 
 
 def luck_summary(name, rows, code, report):
-    """``luck_results`` over this log: (summary, {hand id: luck-adjusted bb})."""
+    """``luck_results`` over this log: (summary, {hand id: luck-adjusted bb},
+    {hand id: {"runout": the luck of the cards dealt after an all-in in big
+    blinds, "allin": whether there was one}})."""
     from tools import luck_results
     commit = code.get("commit") if isinstance(code, dict) else code
     lines, _ = luck_results.hand_lines(name, rows, commit, report=report)
@@ -213,7 +223,9 @@ def luck_summary(name, rows, code, report):
             "card_luck_bb_per_100", "runout_luck_bb", "cards", "allin")
     summary = luck_results.summarize(lines)
     return ({key: summary.get(key) for key in keep},
-            {line["hand_id"]: line["adjusted"] for line in lines})
+            {line["hand_id"]: line["adjusted"] for line in lines},
+            {line["hand_id"]: {"runout": line["runout_luck"], "allin": line["allin"]}
+             for line in lines})
 
 
 # -- position -----------------------------------------------------------------------
@@ -900,9 +912,9 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
     report = session_report([(name, rows)])
     code = item.get("code") or fly.code_of(folder, rows)
     try:
-        luck, adjusted = luck_summary(name, rows, code, report)
+        luck, adjusted, runouts = luck_summary(name, rows, code, report)
     except Exception as exc:            # noqa: BLE001 - the rest stands without it
-        luck, adjusted = None, {}
+        luck, adjusted, runouts = None, {}, {}
         nulls["session.luck_adjusted"] = f"扣运气没算成：{exc}"
     results = {hand["hand_id"]: {"bb": hand["bb"], "adjusted": adjusted.get(
         hand["hand_id"])} for hand in hands}
@@ -916,7 +928,8 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
         if history and row["fields"].get("scene_supported"):
             grouped.setdefault(history["hand_id"], []).append((row, _advice(row)))
     stakes, earlier = {}, None
-    decisions, shown, outcomes, records = [], [], [], []
+    decisions, shown, outcomes, records, shadowed = [], [], [], [], []
+    chips = {hand["hand_id"]: hand.get("chips") for hand in hands}
     last = list(grouped)[-1] if grouped else None
     for hand_id, pairs in grouped.items():
         hand_rows = [row for row, _ in pairs]
@@ -936,8 +949,13 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
                                   finished=hand_id != last)
         shown += found
         outcomes += list(ends.values())
-        decisions += decision_rows(name, pairs, hand_id, facts, replay, page, start,
-                                   results, facts["stakes"]["big_blind"])
+        mine = decision_rows(name, pairs, hand_id, facts, replay, page, start,
+                             results, facts["stakes"]["big_blind"])
+        decisions += mine
+        shadowed.append({"hand_id": hand_id, "rows": hand_rows,
+                         "turns": turns_of(pairs), "decisions": mine,
+                         "stakes": facts["stakes"], "chips": chips.get(hand_id),
+                         "start": stack(hand_rows), "luck": runouts.get(hand_id)})
     if page is None:
         nulls.update({"versions.page": PLAIN_MISSING,
                       "decisions.position": PLAIN_MISSING,
@@ -958,6 +976,14 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
     nulls["identity.table"] = "识别不读桌号"
     nulls["identity.opponents"] = "识别不读对手昵称，没有可以做哈希的东西"
     nulls["decisions.deviation_reason"] = "窗口还没有记你不照建议时理由的地方"
+    version_info = versions(page, code)
+    try:
+        shadow = session_shadow.block(
+            rows, shadowed, code=version_info["built_with"],
+            page_version=(version_info["page"] or {}).get("version"))
+    except Exception as exc:            # noqa: BLE001 - the rest stands without it
+        shadow = None
+        nulls["shadow"] = f"影子重放没做成：{type(exc).__name__}: {exc}"
     return {
         "schema": "pokersense.session_package", "format": FORMAT,
         "built": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -972,8 +998,9 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
         "misreads": misread_block(report["hands"], decisions, shown, records),
         "rule_hits": rule_hits,
         "timing": timing_block(decisions, item),
-        "versions": versions(page, code),
+        "versions": version_info,
         "hands": records,
+        "shadow": shadow,
         "nulls": nulls}
 
 
