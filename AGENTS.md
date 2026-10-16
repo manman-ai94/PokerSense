@@ -108,7 +108,7 @@ PYTHONPATH=src:. .venv/bin/python tools/check_aa_solver_input.py --frames <测�
 PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <测量目录>/frames.jsonl --out <新目录>/frames.jsonl [--streets]
 # 每场实战后（不去 AA 里截图，靠录像文件夹里的 frames.jsonl 和录像）：停下录像就自动出体检单（录像文件夹的 flywheel/体检单.txt：代码版本、建议覆盖、按本桌级别换算的成绩和 95% 区间、输得最多的局面），记进账本 PokerSense_private/flywheel/ledger.jsonl；rank 是跨场输得最多的局面排行，ledger 是账本合计（按代码版本分）。逐手细节用 tools/aa_session_report.py，真牌排除率用 tools/aa_range_exclusion.py
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_session.py report --recording <录像文件夹>   # 或 rank [--since 日期] / ledger
-# 改动上 Mac 前的三道关：和 main 比，录像日志重放（建议覆盖不降；卡顿要按原速重放才量得出）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8
+# 改动上 Mac 前的三道关：和 main 比，录像日志重放（建议覆盖不降；卡顿要按原速重放才量得出）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8。一页纸打法在实录上和旧策略比（覆盖、改口、铁律 5、读到率、翻前加注、按亮牌算、规则命中、能力指标，只写汇总）：`tools/plain_live_report.py --frames <日志> [...] --out <汇总.json>`；帧率要在 Mac 上按原速放两遍：`measure_aa_realtime.py --advice` 和再加 `--strategy plain`
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_gates.py --frames <录像文件夹>/frames.jsonl [...] --pools aa_real,noisy --out <目录>
 # 装新版前的复查（给杜或 Mac 装之前，合并后的 main 和装着的那版比一次，主人不打牌时在 Mac 上跑）：测试、录像日志重放（建议变了几处、为什么）、按原速重放（覆盖率、卡顿；两版都在这次复查里放一遍，不用以前量的）、杜的 P30 验收，出一页复查单；先加 --plan 看要多久
 PYTHONPATH=src:. .venv/bin/python tools/release_check.py <装着的版本> <新版> --recording <录像文件夹> [...] --measure <三星录像文件夹> --p30 <杜的录像文件夹> --out <目录>
