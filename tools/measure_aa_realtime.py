@@ -10,7 +10,7 @@ labels. Agreement on development checkpoints is not independent acceptance.
         [--exclude 300-820] [--gold <checkpoint json>] [--max-seconds 1800] \\
         [--advice [--strategy plain]]
 
-``--strategy plain`` gives the advice by the one page of 《一页纸打法 v3.1》
+``--strategy plain`` gives the advice by the one page of 《一页纸打法》
 (the window's switch), worked out on the frame thread with no solver: run
 the same recording with ``--advice`` and with ``--advice --strategy plain``
 to see what each does to the frame rate.

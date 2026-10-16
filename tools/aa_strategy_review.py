@@ -145,6 +145,8 @@ def decision(name, hand_id, turn, actions):
                             "share": share})
             if page.get("rule"):
                 answers[-1]["rule"] = page["rule"]
+                if page.get("rule_key"):          # 编号#条文哈希 (aa_rule_record)
+                    answers[-1]["rule_key"] = page["rule_key"]
                 if page.get("unspecified"):
                     answers[-1]["unspecified"] = page["unspecified"]
             seen = kind, action, page.get("rule")
