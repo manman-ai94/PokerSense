@@ -28,7 +28,9 @@ the values in ``FITTED``):
   depth (``depth_slope``, on the log of the effective stack, over the pot
   after the flop) and a call that is all in (``allin_shift``), and before
   the flop with the ``preflop_`` ones (``adjusted_keep``; all 0 until the
-  recordings show they hold, see ``tools/fit_aa_cal.py --phh``);
+  recordings show they hold, see ``tools/fit_aa_cal.py --phh``, except
+  ``preflop_allin_shift``: AA players call an all-in before the flop about half
+  as often as the spot's share says);
 * bets and raises take the sizes measured: half the pot heads-up, 60% in
   pots of three or more, raises 1.1 pots (first raises before the flop as
   ``aa_real``); after the flop, with little behind for the pot, all in as
@@ -90,9 +92,10 @@ def cal_stats():
 # First fitted 2026-10-15 on 475 replayed hands of 15 recordings
 # (``tools/fit_aa_cal.py``; out of sample each half of them fits the other
 # better than ``aa_real``; a price slope did not hold from one half to the
-# other, so it is 0). Refitted weekly by ``tools/refit_aa_cal.py``, which
-# replaces numbers and parameters together, and only when recordings neither
-# has seen are predicted better.
+# other, so it is 0). Refitted by ``tools/refit_aa_cal.py``, which replaces
+# numbers and parameters together, and only when recordings neither has seen
+# are predicted better. ``preflop_allin_shift`` fitted with them since
+# 2026-10-16 (it held on both halves of 20 recordings, ``tools/fit_aa_cal.py``).
 FITTED = cal_stats()["fitted"]
 
 

@@ -19,10 +19,10 @@
 4. Each fold is scored with the parameters and numbers fitted on the other
    fold (out of sample), for three versions: the numbers only (every
    parameter 0, as ``aa_real`` on the new numbers), with the price (the
-   slope only), everything, and everything with how the price, the depth
-   and an all-in call move the share that goes on (``depth``); and, to
-   compare, ``aa_real`` as the scoreboard has it (its own numbers, no
-   departures).
+   slope only), everything (with how much less an all-in call before the
+   flop goes on), and everything with how the price, the depth and an
+   all-in call move the share that goes on (``depth``); and, to compare,
+   ``aa_real`` as the scoreboard has it (its own numbers, no departures).
 5. With ``--phh <phh_depth_stats_v1.json>`` (``tools/phh_depth_stats.py``),
    those six depth parameters are taken from the 2009 PHH hands instead: a
    logistic regression of going on facing a bet, one intercept per
@@ -294,9 +294,16 @@ def fit(hands, version, stats, names, start=None, workers=1):
 
 VARIANTS = {"numbers": (),
             "price": ("price_slope",),
+            # With how much less a call that is all in before the flop goes
+            # on (``preflop_allin_shift``): 2026-10-16, on two halves of the
+            # 20 recordings (317 and 319 hands) each half fitted with it
+            # predicted the other better than without (real players folded
+            # 83% to an all-in before the flop, aa_cal 66%); the price and
+            # depth slopes and the all-in shift after the flop did not hold.
             "all": ("mix", "price_slope",
                     *(f"{street}.{key}" for street in STREETS
-                      for key in ("slow", "bluff", "sticky"))),
+                      for key in ("slow", "bluff", "sticky")),
+                    "preflop_allin_shift"),
             # "all" and how the price, the depth and an all-in call move the
             # share that goes on facing a bet, before and after the flop;
             # searched from where "all" ended.
