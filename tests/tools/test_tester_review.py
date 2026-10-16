@@ -284,6 +284,63 @@ def test_problems_are_measured_against_the_mac():
         "录像每小时 26000 MB（编码 avc1），上传会很慢"]
 
 
+def answered(advice, answer):
+    """One hand: his turn with ``advice`` on screen, then his ``answer``
+    (1/2/4(2): a big blind of 2; 100 chips behind)."""
+    asked = {"status": "ready", "street": "preflop", "advice": [advice]}
+    rows = ([row(f) for f in range(3)]
+            + [row(f, turn=True, advice=asked) for f in range(3, 6)]
+            + [row(f, actions=[answer]) for f in range(6, 8)])
+    for item in rows:
+        item["video_seconds"] = item["pts_seconds"]
+    return rows
+
+
+def raise_to(chips):
+    return {"action": "raise", "frequency": 1.0, "chips": chips, "to": chips}
+
+
+FOLD = {"action": "fold", "frequency": 1.0}
+STARTED = "2026-10-16T09:32:12+0800"
+
+
+def test_advice_far_from_his_answer_is_flagged():
+    # 10/16: all in to 143 advised with 3-8 after a misread level; he folded
+    # and only peng's eye caught it.
+    folded = (7, "preflop", 4, "fold", "0", "fold")
+    [item] = review.far_apart(answered(raise_to("143"), folded), STARTED)
+    assert item["text"] == "18:32 翻前建议全下 72 个大盲、他弃牌"
+    assert (item["advice"], item["advice_to"], item["you_did"]) == (
+        "raise", "143", "fold")
+    [item] = review.far_apart(answered(raise_to("60"), folded), STARTED)
+    assert item["text"] == "18:32 翻前建议加注到 30 个大盲、他弃牌"
+    # A fold advised and 25 big blinds called, or a raise to 22.
+    called = (7, "preflop", 4, "call", "50", "call")
+    [item] = review.far_apart(answered(FOLD, called), STARTED)
+    assert item["text"] == "18:32 翻前建议弃牌、他跟了 25 个大盲"
+    raised = (7, "preflop", 4, "raise", "45", "bet")
+    assert review.far_apart(answered(FOLD, raised))[0]["text"] == (
+        "第 0 分钟 翻前建议弃牌、他加注到 22 个大盲")
+    # Small differences are his to make.
+    assert review.far_apart(answered(raise_to("16"), folded), STARTED) == []
+    assert review.far_apart(answered(FOLD, (7, "preflop", 4, "call", "4", "call")),
+                            STARTED) == []
+    assert review.far_apart(answered(raise_to("143"), called), STARTED) == []
+
+
+def test_far_apart_advice_is_the_first_problem():
+    far = [{"text": f"19:{minute} 翻前建议弃牌、他跟了 25 个大盲"}
+           for minute in (10, 20, 30, 40)]
+    found = review.problems(result(
+        far_apart=far, speed={"frames_per_second": 2.3, "recognition_ms": 360}))
+    assert found[0] == (
+        "建议和他的选择差很远 4 次，先看这几处建议对不对：19:10 翻前建议弃牌、"
+        "他跟了 25 个大盲，19:20 翻前建议弃牌、他跟了 25 个大盲，19:30 翻前建议"
+        "弃牌、他跟了 25 个大盲等")
+    assert "（" not in found[0]
+    assert found[1].startswith("电脑太慢")
+
+
 def test_times_are_shown_in_los_angeles():
     assert review.when("2026-10-15T10:20:47+0800") == "10/14 晚上 7:20（洛杉矶）"
     assert review.when("2026-10-15T09:05:00-0700") == "10/15 上午 9:05（洛杉矶）"
