@@ -40,6 +40,10 @@ and ``upload.json``) it says what went wrong, against the Samsung baseline of
 
 A recording folder is the cloud copy (with ``upload.json``) or one pulled to
 this computer (``pulled.json``); its machine and own name come from there.
+A folder whose ``frames.jsonl`` was measured again from the video (no advice
+in it) can keep the window's own log of that session beside it as
+``window-frames.jsonl``: the advice is then taken from there
+(``window_advice``).
 ``run`` skips recordings already in ``<复盘目录>/reviewed.jsonl`` with the
 same files (``--again`` reviews them again), a second copy of one recording
 given in the same run, and a tester's recording whose pull to this computer
@@ -68,6 +72,7 @@ hands.
 from __future__ import annotations
 
 import argparse
+from bisect import bisect_right
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -97,6 +102,9 @@ BASE = "population-base.json"
 SHEET = "复盘单.md"
 LINES = "三行.txt"
 OWNER = "给主人.txt"
+WINDOW = "window-frames.jsonl"  # the window's own log, beside a log measured again
+WINDOW_GAP = 1.0            # seconds back the window frame its advice comes from
+WINDOW_AHEAD = 0.05         # seconds the two logs' clocks may differ by
 # The owner's Mac, window log of 20261010-012911-live: 7.8 frames read per
 # second, recognition 83 ms a frame (median).
 MAC_FPS, MAC_RECOGNITION_MS = 7.8, 83
@@ -180,7 +188,10 @@ def identify(folder, machine=None):
             continue
     frames = folder / "frames.jsonl"
     size = frames.stat().st_size if frames.exists() else 0
-    return machine or fly.LOCAL, folder.name, f"frames.jsonl:{size}"
+    digest = f"frames.jsonl:{size}"
+    if (folder / WINDOW).exists():
+        digest += f"+{WINDOW}:{(folder / WINDOW).stat().st_size}"
+    return machine or fly.LOCAL, folder.name, digest
 
 
 def unfinished_pull(folder):
@@ -384,6 +395,53 @@ def opponents(log, rows):
     return lines, [source.get("counted", 0), len(lines)]
 
 
+def video_time(row):
+    """Where in the video a row is: the window's log has ``video_seconds``, a
+    log measured from the recording its ``pts_seconds``."""
+    seconds = row.get("video_seconds")
+    return row["pts_seconds"] if seconds is None else seconds
+
+
+def window_rows(path):
+    """The window log's rows one at a time (a long session's log is large)."""
+    with Path(path).open(encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                yield json.loads(line)
+            except ValueError:
+                continue
+
+
+def window_advice(rows, window):
+    """``rows`` of a log measured again from the video, which has no advice
+    (``measure_aa_realtime.py`` without ``--advice``), with what the window
+    advised at the same moment of the video, from its own log ``window``:
+    each row takes the latest window frame at or before it, at most
+    ``WINDOW_GAP`` seconds back. A row with advice of its own keeps it.
+
+    10/17: peng's sessions of 10/09-10/10 were reviewed from the logs
+    measured again on 10/13 (they read the cards shown); those had no
+    advice, so all his hands there counted as "no advice" though the window
+    advised them."""
+    timed = sorted(((video_time(row), row["fields"]["solver_advice"])
+                    for row in window
+                    if (row.get("fields") or {}).get("solver_advice")),
+                   key=lambda item: item[0])
+    times = [at for at, _ in timed]
+    result = []
+    for row in rows:
+        fields = row.get("fields") or {}
+        if fields.get("solver_advice") or fields.get("solver_advice_v1"):
+            result.append(row)
+            continue
+        at = video_time(row)
+        index = bisect_right(times, at + WINDOW_AHEAD) - 1
+        if index >= 0 and at - times[index] <= WINDOW_GAP:
+            row = {**row, "fields": {**fields, "solver_advice": timed[index][1]}}
+        result.append(row)
+    return result
+
+
 def recording_facts(folder):
     info = read_json(Path(folder) / "recording.json")
     seconds = info.get("recorded_seconds")
@@ -416,6 +474,8 @@ def review(folder, baseline, machine=None):
     folder = Path(folder)
     machine, name, digest = identify(folder, machine)
     rows = [row for row in fly.load(folder / "frames.jsonl") if row.get("fields")]
+    if (folder / WINDOW).exists():
+        rows = window_advice(rows, window_rows(folder / WINDOW))
     log = f"{machine}-{name}"
     measured = p30.field_coverage(rows) if rows else None
     lines, usable = opponents(log, rows)
