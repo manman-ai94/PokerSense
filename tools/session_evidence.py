@@ -39,6 +39,11 @@ or an AI, not for a person.
   meant to be read once, after 1000-1500 hands). Packages from before
   block 11 are counted as having none.
 
+* 遵从率 (block 12) is added up over the packages that have it, all advice
+  and the page's and the older advice's apart; the sessions under 80%,
+  which the page does not count in results, are named (their results are
+  still in the results line).
+
 The packages hold other players' hands: this reads them where they are and
 prints counts; nothing is written.
 """
@@ -87,6 +92,10 @@ ENTER_WORD = {"a_preflop_old_in": "没弃", "b_postflop_plain_fold": "没弃",
 GROUPS = (*GROUP_WORD, "other")       # as session_shadow.GROUPS
 LOOSE_WORD = {"late_limp": "晚位平跟", "bb_complete": "大盲补齐", "sb_complete": "小盲补齐"}
 WITHDRAW_TOP = 4.0
+COMPLIANCE_WORD = {"all": "全部", "plain": "一页纸", "old": "旧策略"}
+COMPLIANCE_KEYS = ("counted", "complied", "looser", "tighter", "no_advice", "unknown",
+                   "you_unread")
+COMPLIANCE_ENOUGH = 400                 # decisions: the page's sample for it
 DEVIATIONS_SHOWN = 30
 MAX_MISREAD = 0.2
 AGREE = 0.05
@@ -408,11 +417,47 @@ def results_line(packages):
     return line
 
 
+def compliance_lines(packages):
+    """遵从率 (block 12) and the sessions under 80%, which the page does not
+    count in results."""
+    found = [package for package in packages if package.get("compliance")]
+    without = len(packages) - len(found)
+    if not found:
+        return [f"遵从率：没有（{without} 场的场次包是格式 1–2）"]
+    parts, total = [], None
+    for name, word in COMPLIANCE_WORD.items():
+        tallies = [package["compliance"][name] for package in found
+                   if name in package["compliance"]]
+        added = {key: sum(tally[key] for tally in tallies) for key in COMPLIANCE_KEYS}
+        if name == "all":
+            total = added
+        elif not added["counted"]:
+            continue
+        parts.append(f"{word} {share(added['complied'], added['counted'])}，偏松 "
+                     f"{added['looser']}、偏紧 {added['tighter']}")
+    enough = "够" if total["counted"] >= COMPLIANCE_ENOUGH else "不够"
+    text = ["遵从率（动作和建议一样、加注尺寸 ±25%，除以不是 UNKNOWN 的建议）："
+            + "；".join(parts),
+            f"  不算的：没有建议 {total['no_advice']}、UNKNOWN {total['unknown']}、"
+            f"没读到你的动作 {total['you_unread']}；{total['counted']} 次决策"
+            f"（{COMPLIANCE_ENOUGH} 次才稳：{enough}）"]
+    low = [package for package in found
+           if package["compliance"]["all"].get("results_count") is False]
+    if low:
+        text.append("  低于 80% 的场次（本页规定不计成绩）：" + "、".join(
+            f"{package['session'].get('machine')} {package['session']['label']}"
+            f"（{package['compliance']['all']['rate']:.0%}）" for package in low))
+    if without:
+        text.append(f"  没有遵从率的场次 {without} 场（场次包格式 1–2）")
+    return text
+
+
 def body(packages):
     """The sections every page has, over these packages."""
     decisions = all_decisions(packages)
     text = [results_line(packages)]
     text += coverage_lines(packages)
+    text += compliance_lines(packages)
     text += iron5_lines(decisions)
     text.append("规则命中排行（按一页纸版本和规则哈希分开）：")
     text += rule_lines(packages)

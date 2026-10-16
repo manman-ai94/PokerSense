@@ -16,8 +16,8 @@ logs that are already there (the window's ``frames.jsonl``,
 nothing new is worked out about the play. What a field needs and the log
 does not have is ``null``, with the reason in ``nulls``.
 
-Blocks (``FORMAT`` 2, which added block 11; ``tools/session_evidence.py``
-reads them):
+Blocks (``FORMAT`` 3; 2 added block 11 and 3 block 12;
+``tools/session_evidence.py`` reads them):
 
 1. ``session``: machine, played code, level, hands, length, spectating or
    not, results in big blinds (per 100 hands with a 95% interval; with the
@@ -62,6 +62,14 @@ reads them):
     divergence of each hand booked with a fold worth 0 in the page's three
     groups, and every spot of v3.3's two loosenings kept apart. Calculated
     and kept, never shown to the player.
+12. ``compliance``: 遵从率 as the page's section 7 has it: decisions where
+    you did what the advice that showed said (a raise within 25% of its
+    size) over those with advice that is not UNKNOWN (no advice, or the
+    page's rule 5 for a reading it lacked, are out; so are turns where what
+    you did was not read), each miss ``looser`` or ``tighter``; all of the
+    session's advice, and the page's and the older advice's apart. Under
+    80% the page does not count the session's results (``results_count``).
+    Each decision row says how it went (``complied``, ``complied_way``).
 
 The package holds other players' hands: it stays in the private data folder
 and the owner's cloud folder, never in the repository. All of it is table
@@ -93,9 +101,10 @@ from poker_engine.desktop.aa_stakes import stakes_label  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
 from tools.aa_session_report import session_report, stack  # noqa: E402
 from tools.aa_strategy_review import decision as review_decision  # noqa: E402
+from tools.plain_live_report import act, compliance  # noqa: E402
 from tools import session_shadow  # noqa: E402
 
-FORMAT = 2
+FORMAT = 3
 FILE = "package.json"
 HERO = 4
 STREETS = ("preflop", "flop", "turn", "river")
@@ -110,6 +119,11 @@ BUCKETS = (0.2, 0.5, 1.0, 2.0, 5.0)     # seconds: the first-advice histogram
 # Preflop classes of section 4, in the order the evidence sheet lists them.
 CLASSES = ("limp", "raise", "call_raise", "three_bet", "call_three_bet")
 CALIBRATING = ("allin_showdown", "showdown")
+COMPLIANCE_COUNTS = 0.8                 # 遵从率 under this: results do not count
+COMPLIANCE_CONVENTION = (
+    "遵从率（一页纸第七节）：你的动作和当时窗口显示的建议一样（加注的尺寸在建议的 ±25% 内）的决策，"
+    "除以建议不是 UNKNOWN 的决策；没有建议、本页因为缺读数按铁律 5 给的、没读到你做了什么的都不算；"
+    "不一样的分偏松（投的比建议多）和偏紧；能过牌时弃牌算照做；低于 80% 的场次本页规定不计成绩。")
 
 
 def plain_policy():
@@ -747,6 +761,7 @@ def decision_rows(name, pairs, hand_id, facts, replay, page, start, results,
             "you_did": base["you_did"],
             "you_amount": None if done is None else done["amount"],
             "followed": base.get("followed"),
+            "complied": None, "complied_way": None,
             "deviation_reason": None,       # the window has no place for it yet
             "acted_seconds": (None if acted is None else round(
                 acted - first_row["pts_seconds"], 2)),
@@ -758,7 +773,54 @@ def decision_rows(name, pairs, hand_id, facts, replay, page, start, results,
             "flags": base["flags"],
             "hand_bb": results.get(hand_id, {}).get("bb"),
             "hand_bb_luck_adjusted": results.get(hand_id, {}).get("adjusted")})
+        out[-1]["complied"], out[-1]["complied_way"] = complied(out[-1])
     return out
+
+
+def complied(decision):
+    """(followed, ``looser`` / ``tighter`` / None) of one decision by the
+    page's 遵从率 (``plain_live_report.compliance``), or (None, None) when it
+    is not counted: no advice, advice from a reading the page lacked
+    (UNKNOWN), or what you did not read. A call of nothing is a check."""
+    advice = decision.get("advice") or {}
+    action = act(advice.get("action"))
+    you = decision.get("you_did")
+    if action is None or decision.get("missing") or you is None:
+        return None, None
+    free = decision.get("button") == "check" or number(decision.get("to_call")) == 0
+    if free:
+        action = "check" if action == "call" else action
+        you = "check" if you == "call" else you
+    return compliance(you, decision.get("you_amount"),
+                      {"advice": action, "to": advice.get("to")})
+
+
+def compliance_block(decisions):
+    """遵从率 over the session: all advice, then the page's and the older
+    advice's apart."""
+    def tally(items):
+        marks = [(item["complied"], item["complied_way"]) for item in items
+                 if item["complied"] is not None]
+        rate = (round(sum(mark for mark, _ in marks) / len(marks), 3)
+                if marks else None)
+        return {"decisions": len(items), "counted": len(marks),
+                "complied": sum(mark for mark, _ in marks), "rate": rate,
+                "looser": sum(way == "looser" for _, way in marks),
+                "tighter": sum(way == "tighter" for _, way in marks),
+                "no_advice": sum(item.get("advice") is None for item in items),
+                "unknown": sum(bool(item.get("advice") and item.get("missing"))
+                               for item in items),
+                "you_unread": sum(item.get("you_did") is None for item in items),
+                "results_count": None if rate is None else rate >= COMPLIANCE_COUNTS}
+    kinds = {"plain": [], "old": []}
+    for item in decisions:
+        if item.get("advice"):
+            kinds["plain" if item["advice"].get("kind") == "plain" else "old"].append(
+                item)
+    return {"all": tally(decisions),
+            **{name: tally(items) for name, items in kinds.items() if items},
+            "threshold": COMPLIANCE_COUNTS, "size_within": 0.25,
+            "convention": COMPLIANCE_CONVENTION}
 
 
 def timing_block(decisions, summary):
@@ -998,6 +1060,7 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
         "misreads": misread_block(report["hands"], decisions, shown, records),
         "rule_hits": rule_hits,
         "timing": timing_block(decisions, item),
+        "compliance": compliance_block(decisions),
         "versions": version_info,
         "hands": records,
         "shadow": shadow,

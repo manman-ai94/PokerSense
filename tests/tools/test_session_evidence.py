@@ -74,6 +74,7 @@ def test_one_package_reads_as_one_page(tmp_path, capsys):
     assert "加注：校准用 1 个，翻前范围里 1/1（100%），缩窄后范围里 1/1（100%）" in text
     assert "分母 1 个座位（普通摊牌 1）" in text
     assert "改口 0 次" in text and "动作靠筹码推断：1/12" in text
+    assert "遵从率（动作和建议一样、加注尺寸 ±25%，除以不是 UNKNOWN 的建议）：全部 3/3（100%）" in text
     assert "identity.opponents" in text
 
 
@@ -181,6 +182,31 @@ def test_the_withdrawal_test_wants_0_inside_and_the_top_under_4():
     assert evidence.withdraw_line([9.0, 10.0, 11.0, 12.0]).endswith("否")   # all above 0
     assert evidence.withdraw_line([-30.0, 40.0, -20.0, 30.0]).endswith("否")  # top>4
     assert evidence.withdraw_line([3.0]) == "还算不出区间"
+
+
+def test_compliance_adds_up_and_names_the_sessions_under_80(tmp_path):
+    def tally(counted, complied, looser=0, tighter=0):
+        rate = complied / counted
+        return {"counted": counted, "complied": complied, "rate": rate,
+                "looser": looser, "tighter": tighter, "no_advice": 1, "unknown": 2,
+                "you_unread": 0, "results_count": rate >= 0.8}
+    packages = []
+    for label, numbers in (("20261016-200000-live", (100, 90, 6, 4)),
+                           ("20261017-200000-live", (100, 70, 25, 5))):
+        path = made(tmp_path, "peng", label)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["compliance"] = {"all": tally(*numbers), "plain": tally(*numbers)}
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        packages.append(evidence.load(path))
+    packages.append(evidence.load(made(tmp_path, "du", "20261016-100000-live")))
+    text = evidence.compliance_lines(packages)
+    assert text[0].endswith("全部 160/200（80%），偏松 31、偏紧 9；"
+                            "一页纸 160/200（80%），偏松 31、偏紧 9")
+    assert "没有建议 2、UNKNOWN 4" in text[1] and "（400 次才稳：不够）" in text[1]
+    assert text[2] == "  低于 80% 的场次（本页规定不计成绩）：peng 20261017-200000-live（70%）"
+    assert text[3] == "  没有遵从率的场次 1 场（场次包格式 1–2）"
+    assert evidence.compliance_lines(packages[2:]) == [
+        "遵从率：没有（1 场的场次包是格式 1–2）"]
 
 
 def test_old_packages_say_they_have_no_ledger(tmp_path):
