@@ -1,4 +1,4 @@
-"""一页纸打法 ``plain``（《一页纸打法 v3.2》）：每条规则至少一个用例。
+"""一页纸打法 ``plain``（《一页纸打法 v3.3》）：每条规则至少一个用例。
 
 牌局都是合成的：按指定的牌发牌（``spot``），在 AA 8 人桌上照写好的动作走到要测的那一步，
 再看 ``plain`` 的建议。8 人桌：0 小盲、1 大盲、2 抓头、3 早位、4 和 5 中位、6 CO、7 庄位；
@@ -98,8 +98,10 @@ def test_speculative_hands_are_defined_once():
     assert {"22", "A2s", "K5s", "54s", "75s", "Q9s", "JTo", "KTo", "A8o"} <= spec
     assert not {"K4s", "64s", "53s", "A7o", "K9o", "J9o", "T9o", "Q8s"} & spec
     assert plain.TABLE1["middle"]["limp"] == spec
+    # 晚位平跟再加 Q8s、J8s、T8s、97s、86s、75s、A2o+、K9o+、Q9o+；v3.3 再加 K2s+、Q6s+、J7s+、
+    # T7s+、96s、64s、53s、43s、K8o+、J9o+、T9o、98o（投机牌里已有的不重复）
     assert plain.TABLE1["late"]["limp"] - spec == plain.hands(
-        "Q8s J8s A2o-A7o K9o Q9o")
+        "Q6s-Q8s J7s-J8s K2s-K4s T7s 96s 64s 53s 43s A2o-A7o K8o-K9o Q9o J9o T9o 98o")
 
 
 @pytest.mark.parametrize("seats, expected", [
@@ -149,7 +151,12 @@ def test_positions_follow_the_number_of_seats(seats, expected):
     ("3f 4f 5f", "Qc9d", "call", None, "T1.limp"),
     ("3f 4f 5f", "Js8s", "call", None, "T1.limp"),
     ("3f 4f 5f", "8c7d", "fold", None, "T1.out"),
-    ("3f 4f 5f", "Jc9d", "fold", None, "T1.out"),
+    ("3f 4f 5f", "Jc9d", "call", None, "T1.limp"),        # v3.3 晚位再加 K2s+ … J9o+、98o
+    ("3f 4f 5f", "Ks2s", "call", None, "T1.limp"),
+    ("3f 4f 5f", "4s3s", "call", None, "T1.limp"),
+    ("3f 4f 5f", "Kc8d", "call", None, "T1.limp"),
+    ("3f 4f 5f", "Jc8d", "fold", None, "T1.out"),
+    ("3f 4f 5f", "Qs5s", "fold", None, "T1.out"),
     ("3c 4f 5f", "7s6s", "call", None, "T1.limp"),
     ("3c 4c 5f", "TcTd", "raise", 31, "T1.iso2"),         # ≥ 2 个平跟者：TT+ 隔离，底池 31
     ("3c 4c 5f", "KsQs", "raise", 31, "T1.iso2"),
@@ -174,15 +181,27 @@ def test_preflop_raises_are_not_turned_into_all_in():
     assert "J1" not in advice.hits and not advice.all_in
 
 
-def test_straddle_isolates_one_limper_with_the_middle_chart_else_checks():
-    advice = decide({2: "KcQd"}, actions="3c 4f 5f 6f 7f 0f 1f")     # 情形 b
-    assert (advice.action, advice.to, advice.rule) == ("raise", 27, "T1.b")
-    advice = decide({2: "Kc9d"}, actions="3c 4f 5f 6f 7f 0f 1f")
-    assert (advice.action, advice.rule) == ("check", "T1.straddle")
-    advice = decide({2: "QcQd"}, actions="3c 4c 5f 6f 7f 0f 1f")
-    assert (advice.action, advice.to, advice.rule) == ("raise", 31, "T1.iso2")
-    advice = decide({2: "KcQd"}, actions="3c 4c 5f 6f 7f 0f 1f")
-    assert (advice.action, advice.rule) == ("check", "T1.straddle")
+@pytest.mark.parametrize("actions, hand, action, to", [
+    ("3c 4f 5f 6f 7f 0f 1f", "KcQd", "raise", 27),        # 1 个平跟者：底池 27
+    ("3c 4f 5f 6f 7f 0f 1f", "Kc9d", "check", None),
+    ("3c 4c 5f 6f 7f 0f 1f", "KcQd", "raise", 31),        # 不管几个平跟者（v3.2 这里过牌）
+    ("3c 4c 5c 6f 7f 0f 1f", "2c2d", "raise", 35),
+    ("3c 4c 5c 6f 7f 0f 1f", "Ac8d", "raise", 35),
+    ("3c 4c 5c 6f 7f 0c 1c", "Ks9s", "raise", 40),        # 盲位也补齐了：底池 40
+    ("3c 4c 5c 6f 7f 0f 1f", "Ac7d", "check", None),
+    ("3c 4c 5c 6f 7f 0f 1f", "8s3s", "check", None),
+])
+def test_straddle_raises_limpers_with_the_late_chart_else_checks(
+        actions, hand, action, to):
+    advice = decide({2: hand}, actions=actions)
+    rule = "T1.str" if action == "raise" else "T1.straddle"
+    assert (advice.action, advice.to, advice.rule) == (action, to, rule)
+    assert advice.unspecified is None
+
+
+def test_straddle_raise_is_capped_at_a_fifth_of_the_effective_stack():
+    advice = decide({2: "AcKd"}, actions="3c 4c 5c 6f 7f 0f 1f", stacks=100)
+    assert (advice.action, advice.to, advice.rule) == ("raise", 20, "T1.str")
 
 
 # -- 盲位三种情形 ----------------------------------------------------------------------
@@ -190,16 +209,35 @@ def test_straddle_isolates_one_limper_with_the_middle_chart_else_checks():
 @pytest.mark.parametrize("actions, seat, hand, action, to, rule", [
     # a. 小盲、大盲面对只有平跟者、这手不隔离：补齐到抓头（大盲付 2、小盲付 3），其余弃
     ("3c 4c 5f 6f 7f", 0, "Ks9s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Ac2d", "call", None, "T1.a"),       # 小盲：+ A2o+、K9o+、Q9o+、JTo
-    ("3c 4c 5f 6f 7f", 0, "Js8s", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f", 0, "Jc9d", "fold", None, "T1.a.fold"),
+    # 小盲：+ K2s+、Q6s+、J7s+、T7s+、96s、85s、74s、64s、53s、A2o+、K8o+、Q9o+、J9o+、T9o、98o
+    ("3c 4c 5f 6f 7f", 0, "Ac2d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Ks2s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Qs6s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Js7s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "8s5s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "7s4s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Kc8d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Jc9d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "9c8d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f", 0, "Js6s", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Kc7d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Qc8d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Jc8d", "fold", None, "T1.a.fold"),
     ("3c 4c 5f 6f 7f", 0, "QcQd", "raise", 31, "T1.iso2"),
-    ("3c 4c 5f 6f 7f 0f", 1, "Js8s", "call", None, "T1.a"),    # 大盲：+ 两张 8 以上的同花
-    ("3c 4c 5f 6f 7f 0f", 1, "Jc9d", "call", None, "T1.a"),    # + J9o+、T9o
+    # 大盲：+ 两张 8 以上的同花、43s、53s、64s、A2o+、K7o+、Q8o+、J8o+、T8o+、98o、97o、87o、76o
+    ("3c 4c 5f 6f 7f 0f", 1, "Js8s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "Jc9d", "call", None, "T1.a"),
     ("3c 4c 5f 6f 7f 0f", 1, "Tc9d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "4s3s", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "Kc7d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "Tc8d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "9c7d", "call", None, "T1.a"),
+    ("3c 4c 5f 6f 7f 0f", 1, "7c6d", "call", None, "T1.a"),
     ("3c 4c 5f 6f 7f 0f", 1, "8c3d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f 0f", 1, "Kc6d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f 0f", 1, "6c5d", "fold", None, "T1.a.fold"),
     ("3c 4c 5f 6f 7f 0c", 1, "7s3s", "fold", None, "T1.a.fold"),
-    # b. 盲位面对 1 个平跟者：中位加注表隔离，不在表内按 a 补齐
+    # b. 小盲、大盲面对 1 个平跟者：中位加注表隔离，不在表内按 a 补齐
     ("3c 4f 5f 6f 7f", 0, "AcTd", "raise", 27, "T1.b"),
     ("3c 4f 5f 6f 7f", 0, "Ks9s", "call", None, "T1.a"),
     ("3c 4f 5f 6f 7f", 0, "8c3d", "fold", None, "T1.a.fold"),
@@ -363,7 +401,7 @@ FACING_3BET = "3r23 4r69 5f 6f 7f 0f 1f 2f"
     (1000, "KcKd", "raise", "T3.4bet"),         # < 30%：KK+ 4-bet
     (1000, "QcQd", "call", "T3.call"),
     (1000, "AcKd", "call", "T3.call"),
-    (1000, "AsQs", "fold", "T3.fold"),          # AQs 只在有位置时跟
+    (1000, "AsQs", "fold", "T3.fold"),          # v3.3：AQs 弃
     (1000, "TcTd", "fold", "T3.fold"),
 ])
 def test_table_3(stacks, hand, action, rule):
@@ -375,8 +413,39 @@ def test_table_3(stacks, hand, action, rule):
         assert advice.to == 207
 
 
-def test_table_3_calls_ace_queen_suited_in_position():
+def test_table_3_folds_ace_queen_suited_in_position_too():
     advice = decide({7: "AsQs"}, actions="3f 4f 5f 6f 7r23 0r69 1f 2f", stacks=1000)
+    assert (advice.action, advice.rule) == ("fold", "T3.fold")
+
+
+LIMP_RERAISE = "3c 4f 5f 6f 7r27 0f 1f 2f 3r81"     # 早位平跟、庄位加注、早位再加注
+
+
+@pytest.mark.parametrize("stacks, hand, action", [
+    (1000, "KcKd", "raise"), (1000, "AcAd", "raise"),
+    (1000, "QcQd", "fold"), (1000, "AcKd", "fold"),     # 平常表 3 会跟
+    (200, "QcQd", "fold"), (200, "AcKd", "fold"),       # 平常 ≥ 30% 会全下
+    (40, "KcKd", "call"), (40, "AcKd", "fold"),         # 平常 ≤ 20 个大盲推弃会全下；
+])                                                      # 他全下，跟就是全下
+def test_a_limper_who_reraises_gets_only_kings_plus(stacks, hand, action):
+    actions = LIMP_RERAISE if stacks > 40 else "3c 4f 5f 6f 7r10 0f 1f 2f 3r38"   # 他全下
+    advice = decide({7: hand}, actions=actions, stacks=stacks)
+    assert (advice.action, advice.rule) == (action, "T3.limp")
+    if action == "raise":
+        assert advice.all_in
+
+
+def test_a_limper_who_reraises_has_the_top_three_percent():
+    table = plain.Table(spot({7: "KcKd"}, actions=LIMP_RERAISE, stacks=1000))
+    read = plain.read_range(table, 3)
+    assert (read.preflop, read.words) == ("limp_reraise", "前 3%")
+    assert "平跟后再加注" in read.story
+
+
+def test_a_reraise_over_someone_else_s_raise_is_the_usual_table_3():
+    # 你跟了别人的加注，平跟的人再加注：不是"你加注、他再加注"，按表 3 平常的行
+    actions = "3c 4r20 5f 6f 7c 0f 1f 2f 3r80 4f"
+    advice = decide({7: "QcQd"}, actions=actions, stacks=1000)
     assert (advice.action, advice.rule) == ("call", "T3.call")
 
 
@@ -483,7 +552,9 @@ def test_board_that_plays_itself_is_not_classified():
     ("7c7d", "7h Kc 2d", HU + " 2c", "bet", 2 / 3, "N.A"),
     ("7c7d", "7h Kc 2d 9s 4c", HU + " 2c 7c 2c 7c 2c", "bet", 3 / 4, "N.A"),  # 单挑河牌
     ("AsKd", "Ah 7c 2d", HU + " 2c", "bet", 1 / 2, "N.B"),
-    ("AsKd", "Ah 7c 2d 9s", HU + " 2c 7c 2c", "bet", 1 / 2, "N.B"),
+    ("AsKd", "Ah 7c 2d 9s", HU + " 2c 7c 2c", "bet", 1 / 2, "N.B"),     # 翻牌没下过注
+    ("AsKd", "Ah 7c 2d 9s", HU + " 2c 7r20 2c 2c", "check", None, "N.B.second"),  # 翻牌被跟
+    ("AsKd", "Ah 7c 2d 9s", HU + " 2r20 7c 2c", "bet", 1 / 2, "N.B"),   # 你跟了别人的注
     ("7c7d", "7h Kh 2h 9c", HU + " 2c 7c 2c", "check", None, "N.B"),   # 降到 B、三同花
     ("AsKd", "Ah 7c 2d 9s 4c", HU + " 2c 7c 2c 7c 2c", "bet", 1 / 3, "N.B"),
     ("AsKd", "Ah 7c 2d 9s 4c", HU + " 2c 7r30 2r90 7c 2c 7c 2c", "check", None,
@@ -510,6 +581,9 @@ def test_checked_to_without_raising_preflop():
 
 @pytest.mark.parametrize("hand, board, actions, action, rule", [
     ("AsKd", "Ah 7c 2d 9s", THREE_WAY + " 1c 2c 7c 1c 2c", "bet", "N.B"),   # 2 个对手
+    ("AsKd", "Ah 7c 2d 9s", THREE_WAY + " 1c 2c 7r30 1c 2c 1c 2c", "check",
+     "N.B.second"),
+    ("AsKd", "Ah 7c 2d 9s", THREE_WAY + " 1c 2c 7r30 1c 2f 1c", "check", "N.B.second"),
     ("AsKd", "Ah 7c 2d 9s 4c", THREE_WAY + " 1c 2c 7c 1c 2c 7c 1c 2c", "check", "N.B"),
     ("Ah5h", "Kh 7h 2c", THREE_WAY + " 1c 2c", "check", "N.D_strong"),
     ("6h5h", "Kh 7h 2c", THREE_WAY + " 1c 2c", "check", "N.D"),
@@ -589,6 +663,39 @@ def test_top_pair_with_two_opponents_on_a_suited_board_is_not_written():
     assert (advice.action, advice.unspecified) == ("fold", "b_two_texture")
 
 
+@pytest.mark.parametrize("street, bet, action", [
+    ("turn", "43", "call"), ("turn", "44", "fold"),      # 转牌 2 个对手：≤ 1/2 底池
+    ("river", "43", "call"), ("river", "44", "fold"),    # 河牌 2 个对手：≤ 1/2 底池
+])
+def test_top_pair_against_two_opponents_after_the_flop_calls_up_to_half(
+        street, bet, action):
+    checks = " 1c 2c 7c" + (" 1c 2c 7c" if street == "river" else "")
+    board = "Ah 7c 2d 9s" + (" 4c" if street == "river" else "")
+    advice = decide({7: "AsKd"}, board, THREE_WAY + checks + f" 1r{bet} 2c", stacks=400)
+    assert (advice.action, advice.rule) == (action, "F.B")
+
+
+@pytest.mark.parametrize("bet, action", [("36", "call"), ("37", "fold")])
+def test_top_pair_against_three_opponents_on_the_turn_calls_up_to_a_third(bet, action):
+    actions = FOUR_WAY + f" 1c 2c 6c 7c 1r{bet} 2c 6c"
+    advice = decide({7: "AsKd"}, "Ah 7c 2d 9s", actions, stacks=400)
+    assert (advice.action, advice.rule) == (action, "F.B")
+
+
+def test_top_pair_against_three_opponents_folds_any_river_bet():
+    actions = FOUR_WAY + " 1c 2c 6c 7c 1c 2c 6c 7c 1r10 2c 6c"
+    advice = decide({7: "AsKd"}, "Ah 7c 2d 9s 4c", actions, stacks=400)
+    assert (advice.action, advice.rule) == ("fold", "F.B")
+    assert "一律弃" in advice.flip
+
+
+def test_a_suited_board_with_two_opponents_is_written_on_the_turn():
+    actions = THREE_WAY + " 1c 2c 7c 1r43 2c"
+    advice = decide({7: "7c7d"}, "7h Kh 2c 9h", actions, stacks=400)
+    assert advice.tier == "B" and advice.unspecified is None
+    assert (advice.action, advice.rule) == ("call", "F.B")
+
+
 # -- 翻后 · 面对加注 ---------------------------------------------------------------
 
 @pytest.mark.parametrize("hand, board, actions, action, rule", [
@@ -632,18 +739,19 @@ def test_low_spr_top_pair_is_not_stopped_by_iron_law_1(equity_is):
 
 
 def test_low_spr_with_three_opponents_keeps_top_pair_a_one_pair_hand(equity_is):
-    # 4 人、筹码 200：翻牌剩 177、底池 109，SPR 1.6。≤ 1/2 底池跟一次；跟完剩 123 ≤ 底池
-    # 一半，按阈值 2 决定：胜率够要全下，多人底池 B 档不加注（铁律 2）→ 跟
-    actions = FOUR_WAY + " 1r54 2c 6c"
+    # 4 人、你的筹码 150：翻牌剩 125、底池 109，SPR 1.1。v3.3：≤ 1/3 底池跟一次；跟 36 后剩 89
+    # ≤ 底池一半，按阈值 2 决定：胜率够要全下，多人底池 B 档不加注（铁律 2）→ 跟
+    stacks = dict.fromkeys(range(8), 200) | {7: 150}
+    actions = FOUR_WAY + " 1r36 2c 6c"
     equity_is(0.5)
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions)
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions, stacks=stacks)
     assert advice.action == "call" and advice.hits == ["SPR.many", "J2", "I2"]
-    equity_is(0.2)
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions)
+    equity_is(0.1)                                      # 所需 36/253 = 14%，+5% = 19%
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions, stacks=stacks)
     assert advice.action == "fold" and advice.hits == ["SPR.many", "J2"]
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r56 2c 6c")
-    assert (advice.action, advice.rule) == ("fold", "SPR.many")
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r20 2c 6r60")
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r37 2c 6c", stacks=stacks)
+    assert (advice.action, advice.rule) == ("fold", "SPR.many")         # 超过 1/3（v3.2 跟）
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r20 2c 6r60", stacks=stacks)
     assert (advice.action, advice.rule) == ("fold", "SPR.many")         # 被加注弃
 
 
@@ -752,10 +860,16 @@ def test_iron_law_1_one_pair_never_puts_in_more_than_a_third():
 
 
 def test_iron_law_2_multiway_one_pair_and_draws_do_not_raise_or_call_big():
-    # 4 人：D-强 15 张补牌（30%）够价，但 ≥ 3 个对手不跟超过 1/2 底池的注
+    # 4 人：D-强 15 张补牌（30%）够价，但 ≥ 3 个对手翻牌不跟超过 1/2 底池的注
     actions = FOUR_WAY + " 1r70 2c 6c"
     advice = decide({7: "9h8h"}, "7h 6h 2c", actions, stacks=400)
     assert (advice.action, advice.rule) == ("fold", "I2")
+    # v3.3：转牌不跟超过 1/3 底池的注（补牌 15 张、转牌 × 2% = 30%，价格都够）
+    turn = FOUR_WAY + " 1c 2c 6c 7c 1r{} 2c 6c"
+    advice = decide({7: "9h8h"}, "7h 6h 2c Kd", turn.format(54), stacks=400)
+    assert (advice.action, advice.rule) == ("fold", "I2")
+    advice = decide({7: "9h8h"}, "7h 6h 2c Kd", turn.format(36), stacks=400)
+    assert (advice.action, advice.rule) == ("call", "F.D_strong")
     table = plain.Table(spot({7: "9c9d"}, "Kh Tc 2d", THREE_WAY + " 1r20 2c",
                              stacks=400))
     advice = plain._banned(table, plain.Advice("raise", to=60), _context(table, "C"))
