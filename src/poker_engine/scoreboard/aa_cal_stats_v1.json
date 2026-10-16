@@ -804,7 +804,8 @@
    "slow": 0.7,
    "bluff": 0.0,
    "sticky": 0.06
-  }
+  },
+  "preflop_allin_shift": -1.0
  },
  "logs": {
   "20261006-112110-spectate-table1": 20.0,
