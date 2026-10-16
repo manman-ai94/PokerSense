@@ -5,7 +5,7 @@ import json
 from tools import session_evidence as evidence
 from tools import session_package as package
 
-from tests.tools.test_session_package import rows
+from tests.tools.test_session_package import PAGE, rows
 
 
 def decision(hand, rule, *, followed=True, bb=-10.0, adjusted=-4.0, iron5=False,
@@ -67,10 +67,10 @@ def test_one_package_reads_as_one_page(tmp_path, capsys):
     assert evidence.main(["--package", str(path)]) == 0
     page = capsys.readouterr().out.splitlines()
     assert page[0].startswith("证据单 20261016-200000-live · 机器 peng · 打牌人 peng")
-    assert "一页纸 v3.1" in page[0] and "1/2/4(2) 1 手" in page[0]
+    assert f"一页纸 {PAGE}" in page[0] and "1/2/4(2) 1 手" in page[0]
     text = "\n".join(page)
     assert "铁律 5：1/4（25%）" in text and "缺 pot 1" in text
-    assert "  T2.call 表 2·跟注（不限筹码） [v3.1 " in text
+    assert f"  T2.call 表 2·跟注（不限筹码） [{PAGE} " in text
     assert "加注：校准用 1 个，翻前范围里 1/1（100%），缩窄后范围里 1/1（100%）" in text
     assert "分母 1 个座位（普通摊牌 1）" in text
     assert "改口 0 次" in text and "动作靠筹码推断：1/12" in text

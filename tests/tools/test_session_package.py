@@ -2,11 +2,14 @@
 (no real hands: the repository is public)."""
 
 import json
+import re
 
 import pytest
 
 from poker_engine.scoreboard import plain_policy
 from tools import session_package as package
+
+PAGE = re.search(r"v\d+(?:\.\d+)*", plain_policy.__doc__).group(0)   # 一页纸现在的版本
 
 # Six players at 1/2/4, dealer 5: small blind 0, big blind 1, straddle 2;
 # seat 3 acts first. You (seat 4) hold Ah Kd. Seat 3 raises to 16, you
@@ -208,7 +211,7 @@ def test_rule_hits_and_timing(built):
 def test_versions_hash_each_rule_with_the_pages_numbers(built, monkeypatch):
     _, found = built
     page = found["versions"]["page"]
-    assert page["version"] == "v3.1"
+    assert page["version"] == PAGE
     before = page["rules"]["T2.call"]
     assert before["text"] == plain_policy.RULES["T2.call"]
     monkeypatch.setattr(plain_policy, "PRICE_SHARE", 0.2)

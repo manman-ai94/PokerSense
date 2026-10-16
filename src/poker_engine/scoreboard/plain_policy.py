@@ -1,24 +1,26 @@
-"""一页纸打法 ``plain``：按《一页纸打法 v3.1》（2026-10-16）原样实现，翻前翻后都在这里。
+"""一页纸打法 ``plain``：按《一页纸打法 v3.2》（2026-10-16）原样实现，翻前翻后都在这里。
 
-v3.1 是唯一的规则来源：不加规则、不顺手优化、不用人群模型的 EV 调数字。v3.1 没写的
-情形按铁律 5（面对下注弃、没人下注过牌），建议里记一条 ``unspecified`` 汇总给主人。
-v3.1 有两种读法的地方，这里选了一种，写在 ``READINGS``（PR 描述里同样列出）。
+v3.2 是唯一的规则来源（替代 v3.1，只改了它第八节表里列的地方）：不加规则、不顺手优化、
+不用人群模型的 EV 调数字。v3.2 没写的情形按铁律 5（面对下注弃、没人下注过牌；翻前轮到
+盲位且没人加注时不适用），建议里记一条 ``unspecified`` 汇总给主人。有两种读法的地方，
+这里选了一种，写在 ``READINGS``（PR 描述里同样列出）。
 
-零、灵魂（v3.1 原文）
+零、灵魂（v3.2 原文）
 =====================
 
-**人设**：松桌上收账的老派紧凶玩家——不偷、不护、不斗气，开口就按这桌的大价钱要。
+**人设**：松桌上收账的老派牌手——便宜就看翻牌，贵了只带强牌去；不偷、不护、不斗气，
+开口就按这桌的大价钱要。
 
-**永远会做**：表内的牌开到底池大小；当翻前加注者时翻牌打一枪、转牌停；强牌要大钱（翻后下
-2/3 底池，被下注就加到 3 倍）。
-**永远不会做**：表外的牌不加注，前注再厚也不偷；转牌、河牌被加注，一对不管价格一律放；
-河牌不诈唬。
+**永远会做**：死钱多就便宜看翻牌（投机牌平跟、盲位补齐）；表内的强牌开到底池大小；当翻前
+加注者时翻牌打一枪、转牌停；强牌要大钱（翻后下 2/3 底池，被下注就加到 3 倍）。
+**永远不会做**：加注表外的牌不加注，前注再厚也不偷；转牌、河牌被加注，一对不管价格一律
+放；河牌不诈唬。
 
 **每个决定都走一遍的六步**（人 12 秒走得完；软件的一句话理由就是这六步串起来）：
 
 | 步 | 问题 | 输出 | 对应能力 |
 |---|---|---|---|
-| 1 | 看清了吗？牌、公牌、底池、筹码、各人动作有没有 `UNKNOWN`？ | 全清 / 缺项（缺项直接走铁律 5） | 读牌 · 纪律 |
+| 1 | 看清了吗？就绪条件（见一）满足了没有？ | 就绪 / 缺项（缺项走默认表，默认表没有的才走铁律 5） | 读牌 · 纪律 |
 | 2 | 什么局？街道、对手数、前面有没有下注、我是不是翻前加注者、SPR | 局面码 | 读牌 |
 | 3 | 他们拿什么？翻前最后动作定范围，翻后按街缩一次；谁加注谁强 | 每个对手的范围 | 读牌 |
 | 4 | 我比他强吗？翻前看表内外；翻后定档、按公牌降档，对第 3 步的范围算胜率 | 档 + 领先 / 落后 / 听牌 + 胜率 | 读牌 → 策略 |
@@ -28,6 +30,10 @@ v3.1 有两种读法的地方，这里选了一种，写在 ``READINGS``（PR �
 理由句示例："转牌单挑被下注 2/3；他翻前加注、翻牌跟注，范围前 12%×35%；我弱顶对 C 档，
 胜率 28%，需要 40%；C 档转牌被下注——弃。"
 
+**死钱**（一·定义）：每手开局底池 11.5 个大盲（8 个前注 + 小盲 0.5 + 大盲 1 + 抓头 2）。
+平跟要付 2 个大盲，立即赔率约 6:1；大盲补齐付 1 个，约 12:1；小盲补齐付 1.5 个，约 8:1。
+翻前的松紧全由这几个数定。
+
 代码怎么对应六步
 ================
 
@@ -36,7 +42,8 @@ SPR、对手数、谁是翻前加注者）→ ``ranges``（第 3 步：第四节
 ``classify``（第 4 步：五档、降档、补牌）→ 翻前 ``_preflop`` / 翻后 ``_postflop`` 查表
 （第 6 步）→ ``_banned``（第 5 步：五条铁律、"被加注"规则和直接全下的三条阈值，查完表再
 过一遍，改了动作就记下是哪一条）。每条建议是一个 ``Advice``：动作、尺寸、一句话理由、
-命中的规则编号（``RULES``）、三个数（对手范围、我的胜率、所需胜率）和翻转条件。
+命中的规则编号（``RULES``；规则键 = 编号 + 条文哈希由场次包按这里的条文和数字算）、三个数
+（对手范围、我的胜率、所需胜率）和翻转条件。
 
 记分牌上 ``plain`` 翻前翻后都这样打（``PlainBot``，每条规则命中几次记在 ``counts``）；
 实时窗口在设置里打开开关后全程用它（``desktop/aa_solver_advice``）。软件只显示建议，
@@ -62,7 +69,7 @@ from .side_pots import matched as matched_pot
 from .side_pots import pots as side_pots
 from .strength import CARD_ID, DECK, RANKS, combo_percentile, hand_class, range_equity
 
-# -- 二、翻前：手牌表（v3.1 原文的写法） -----------------------------------------
+# -- 二、翻前：手牌表（v3.2 原文的写法） -----------------------------------------
 
 
 def _rank(letter):
@@ -70,7 +77,7 @@ def _rank(letter):
 
 
 def hands(spec):
-    """v3.1 的手牌写法展开成 169 类的名字：``"77+ AJs+ KQs 22-66 A2s-A9s 65s-T9s AK"``。"""
+    """一页纸的手牌写法展开成 169 类的名字：``"77+ AJs+ KQs 22-66 A2s-A9s 65s-T9s AK"``。"""
     found = set()
     for item in spec.split():
         found |= _hands(item)
@@ -101,21 +108,30 @@ def _hands(item):
     return {high + RANKS[r] + suffix for r in lows for suffix in suffixes}
 
 
-# 表 1 · 没人加注时（前面全弃或只有平跟）
+# 投机牌（三个位置和盲位共用）：所有对子；所有同花 A；K5s+；同花连张和隔张 54s+（含 75s、
+# 86s、97s、T8s、J9s、Q9s）；两张 T 以上（同花不同花都算）；A8o+
+SPECULATIVE = hands("22+ A2s+ K5s+ 54s-KQs 75s-J9s Q9s ATs+ KTs+ QTs+ JTs "
+                    "ATo+ KTo+ QTo+ JTo A8o+")
+# 表 1 · 没人加注时（前面全弃或只有平跟）；平跟首个入池也可以
 TABLE1 = {
-    "early": {"raise": hands("77+ AJs+ KQs AQo+"), "limp": hands("22-66 A2s-A9s")},
-    "middle": {"raise": hands("55+ ATs+ KJs+ QJs JTs AJo+ KQo"),
-               "limp": hands("22-44 A2s-A9s 65s-T9s")},
-    "late": {"raise": hands("22+ A2s+ K9s+ Q9s+ J9s+ T9s 98s 87s A9o+ KTo+ QTo+ JTo"),
-             "limp": hands("76s 65s")},
+    "early": {"raise": hands("66+ ATs+ KQs AJo+"),
+              "limp": hands("22+ A2s+ 65s-KQs ATs+ KTs+ QTs+ JTs")},
+    "middle": {"raise": hands("44+ A9s+ KTs+ QTs+ JTs ATo+ KJo+"),
+               "limp": SPECULATIVE},
+    "late": {"raise": hands("22+ A2s+ K9s+ Q9s+ J9s+ T9s 98s 87s A8o+ KTo+ QTo+ JTo"),
+             "limp": SPECULATIVE | hands("Q8s J8s T8s 97s 86s 75s A2o+ K9o+ Q9o+")},
 }
-OPEN_LIMP = ("early",)              # "首个入池也可以"只写在早位
 ISOLATE_MANY = hands("TT+ AJs+ AQo+ KQs")          # ≥ 2 个平跟者只用这些隔离
+# 盲位情形 a：补齐到抓头（其余弃；抓头没人加注过牌）
+COMPLETE = {
+    "BB": SPECULATIVE | hands("98s T8s+ J8s+ Q8s+ K8s+ A2o+ K9o+ Q9o+ J9o+ T9o"),
+    "SB": SPECULATIVE | hands("A2o+ K9o+ Q9o+ JTo"),
+}
 # 表 2 · 面对一次加注
 THREE_BET = hands("QQ+ AK")
 THREE_BET_VS_LATE = hands("JJ AQs")
 FLAT = hands("TT-JJ AQs AJs ATs KQs AQo")
-PRICE_CALL = hands("22-99 65s-T9s")
+PRICE_CALL = hands("22-99 54s-T9s A2s-A9s KTs-KJs QJs")
 BLIND_DEFEND = hands("22+ A2s+ K9s+ Q9s+ J9s+ 54s-T9s KJo+ ATo+")
 SHORT_CALL = hands("55+ A8s+ ATo+ KQ")
 SHORT_CALL_ONE = hands("99+ AQ+")
@@ -130,10 +146,11 @@ PUSH_BUTTON = hands("55+ A2s+ KJo+")
 # 蘑菇池（小盲）：池 ≥ 20 个大盲再加
 MUSHROOM_WIDE = hands("22+ A2s+ K9s+")
 
-# -- v3.1 的数字 ---------------------------------------------------------------
+# -- v3.2 的数字 ---------------------------------------------------------------
 OPEN_CAP = 1 / 5                    # 开池加注封顶有效筹码的 1/5
 THREE_BET_TIMES = 3                 # 再加注到 3 倍加注额，每个跟注者再加 1 倍
 PRICE_SHARE = 0.15                  # 看价格跟注：跟注额 ≤ 有效筹码 15%
+MUSHROOM_PRICE_SHARE = 0.20         # 小盲有蘑菇池时门槛放到 20%
 BLIND_CALLERS = 2                   # 盲位防守：≥ 2 人已跟
 BLIND_POT = 0.25                    # 且跟注 ≤ 底池 1/4
 SHORT_ALL_IN_BB = 15                # 面对 ≤ 15 个大盲的翻前全下
@@ -168,17 +185,16 @@ KEEP = {("call", "flop"): 0.35, ("call", "turn"): 0.55, ("call", "river"): 0.45,
         ("raise", "flop"): 0.10, ("raise", "turn"): 0.08, ("raise", "river"): 0.05,
         ("all_in", "river"): 0.05}
 
-# v3.1 有两种读法的地方选了哪一种（PR 1 描述里同样列出，主人可以改）。
+# 有两种读法的地方选了哪一种（PR 描述里同样列出，主人可以改）。v3.1 时选的、v3.2 没改到的照旧；
+# v3.2 已经写明的删掉了（首个入池、盲位、铁律 1 的人数、蘑菇池门槛、≥ 3 个对手的 B 档注）。
 READINGS = {
-    "iso_many": "≥ 2 个平跟者时不在隔离表里、在本位置加注表里的牌（A9o/KTo 这类）"
-                "'改为平跟或弃'：在本位置平跟表里就平跟，否则弃（拿不准就弃）",
-    "limp_first": "'首个入池也可以'只写在早位：中位、晚位的平跟表要前面已有人平跟",
-    "blind_one_limper": "盲位面对 1 个平跟者'用本位置的加注范围'，盲位没有加注范围：抓头过牌，"
-                        "小盲、大盲没写 → 铁律 5",
+    "iso_many": "≥ 2 个平跟者时不在隔离表里、在本位置加注表里的牌：在本位置平跟表里就平跟，"
+                "否则弃（v3.1 写'改为平跟或弃'；v3.2 正文写'改为平跟'，但第八节没列这一处，"
+                "没改；按 v3.2 的表只差早位的 AJo）",
     "mushroom_iso": "小盲蘑菇池隔离：1 个平跟者用晚位加注表，≥ 2 个用 TT+、AJs+、AQo+、KQs，"
                     "池 ≥ 20 个大盲时再加 22+、A2s+、K9s+",
     "push_fold": "'有效筹码 ≤ 20 个大盲改推弃'写在表 3 下面：只用于面对再加注",
-    "four_bet_size": "表 3 的 4-bet 没写尺寸：按 3 倍再加注额，剩余 ≤ 底池就全下",
+    "four_bet_size": "表 3 的 4-bet 没写尺寸：按 3 倍再加注额（v3.2 的直接全下不管它，不自动全下）",
     "call_ip": "表 3 跟注一行'（有位置）'只管 AQs",
     "full_house": "降档只降暗三和两对：葫芦以上比同花顺子大，不降",
     "four_straight": "'四张连牌'按字面：公共牌里有四张点数相连",
@@ -189,7 +205,6 @@ READINGS = {
     "one_street": "翻后'每条街缩一次'：这条街他最凶的那个动作（加注 > 下注 > 跟注）",
     "river_raise": "B 档河牌'这手没人加注过'：翻牌以后没人加注过（翻前加注不算）",
     "iron1_stack": "铁律 1 和 SPR 的有效筹码：翻牌开始时你和还在局里最深的对手较小的那个",
-    "iron1_spr": "铁律 1 的'例外：翻牌 SPR ≤ 2'和 SPR 规则一样只在对手 ≤ 2 个时用",
     "d_all_in": "听牌面对全下按 D 档那一行（补牌 × 4% 比所需胜率，不加 5%）；"
                 "没人全下、跟注后剩余 ≤ 1/2 底池时按阈值 2 原文加 5%",
     "j2_jam": "直接全下阈值 2'按面对全下规则决定'：胜率够就直接全下（这一节叫'直接全下'），"
@@ -198,8 +213,6 @@ READINGS = {
     "b_bigger": "B 档单挑面对更大的下注'铁律 1'：跟了以后这手翻后投入仍 ≤ 有效筹码 1/3 就跟，"
                 "否则弃",
     "outs_all_in": "'对方全下 × 4%'只在翻牌（还要发两张）；转牌全下只剩一张，仍 × 2%",
-    "mushroom_price": "蘑菇池'看价格跟注门槛放到 15%'：v3.1 的门槛本来就是 15%，"
-                      "小盲有蘑菇池时不变，其余条件照旧",
     "spr_many_streets": "≥ 3 个对手、SPR ≤ 2 的 B 档'没人下注下 1/2'只在翻牌；"
                         "转牌、河牌照多人 B 档那一行过牌",
     "iron4_bet": "铁律 4'不加注'只禁加注：表里 D 档单挑翻牌下 1/2 照下；"
@@ -208,12 +221,28 @@ READINGS = {
                    "（不然'补牌够价可以跟全下'永远用不上）；B、C、E 档照铁律 1",
     "r_b_iron1": "铁律高于所有表：B 档翻牌被加注'跟注后 SPR ≤ 1 算胜率全下'碰到铁律 1"
                  "（翻后投入 ≤ 1/3）时弃；翻牌 SPR ≤ 2 时 B 已视同 A，所以这一行实际总是弃",
-    "spr_many_jam": "≥ 3 个对手、SPR ≤ 2 的 B 档'下 1/2'：下完剩的 ≤ 底池，按直接全下阈值 1 "
-                    "变全下，再被铁律 1 拦下 → 实际过牌",
     "j2_all_in": "直接全下阈值 2（跟注后剩 ≤ 1/2 底池）不管对手已经全下：翻前按表 2 短筹码行和"
                  "表 3 第一行，翻后按'面对全下'",
     "range_now": "缩范围算上你正面对的这一下（面对翻牌加注按'前 10%'、河牌全下按'前 5%'）；"
                  "灵魂里理由句示例没把转牌这一注算进去，按第四节的表算",
+    "speculative": "投机牌'同花连张和隔张 54s+（含 75s、86s、97s、T8s、J9s、Q9s）'：连张 54s 起，"
+                   "隔张只算括号里列的 75s、86s、97s、T8s、J9s 和 Q9s（64s、53s 不算）",
+    "early_limp": "早位平跟'同花连张 65s+'只算连张（65s 到 KQs），隔张不算",
+    "price_call": "表 2 看价格'同花连张 54s+'按第八节写的：v3.1 的 65s–T9s 加 54s，另加 QJs"
+                  "（JTs 不在）",
+    "blind_limpers": "盲位前面的平跟者数算上小盲、大盲的补齐；只有盲位补齐、没别人平跟时是情形 c",
+    "blind_c_bb": "情形 c 小盲弃了、前面全弃到大盲：没写，按小盲那一行（晚位加注表开到 1 倍底池，"
+                  "其余按 a 补齐）",
+    "blind_raise_size": "情形 b'开到 1 倍底池 + 2 个大盲'和表 1 的尺寸同一读法（底池已含平跟者的 "
+                        "2 个大盲）；情形 c 大盲、抓头'晚位加注表加注'没写尺寸，按开到 1 倍底池",
+    "blind_free": "盲位不用再投钱（没有抓头时的大盲）：补齐表外的牌也过牌，不弃",
+    "j1_preflop": "直接全下只管三种情形：翻前开池、隔离、再加注、4-bet 不再改成全下，按表的尺寸加",
+    "j1_d_raise": "D-强 翻牌加注到 3 倍后剩余 ≤ 底池：不加注，按补牌跟或弃",
+    "j1_pot": "'下出去后剩余 ≤ 底池'的底池是这一注下完以后的底池（和 A 档直接全下同一读法）",
+    "iron5_blind": "实时窗口 2 秒没就绪、翻前轮到盲位且没人加注（铁律 5 不适用）：读到了牌就照表"
+                   "（没稳的按读到的算）；牌没读到或读出两种就'过牌或补齐'：能过牌过牌，否则补齐",
+    "dealer_one_blind": "庄位读不到、小盲大盲也没有一起读到：只读到小盲、大盲、抓头其中一个也按它推"
+                        "（小盲前一位、大盲前两位、抓头前三位）",
 }
 
 # -- 规则编号：日志、体检单和窗口都用这些 ----------------------------------------
@@ -221,11 +250,15 @@ RULES = {
     "S1": "第 1 步·看不清 → 铁律 5",
     "T1.raise": "表 1·表内开池加注",
     "T1.limp": "表 1·平跟",
-    "T1.out": "表 1·表外不入池（不偷）",
+    "T1.out": "表 1·加注表、平跟表都不在，弃",
     "T1.iso1": "表 1·隔离 1 个平跟者",
     "T1.iso2": "表 1·≥ 2 个平跟者只用 TT+、AJs+、AQo+、KQs 隔离",
     "T1.iso2.no": "表 1·≥ 2 个平跟者，这手改为平跟或弃",
-    "T1.straddle": "表 1·抓头面对平跟不加注就过牌",
+    "T1.straddle": "表 1·抓头没人加注就过牌",
+    "T1.a": "表 1 盲位 a·补齐到抓头",
+    "T1.a.fold": "表 1 盲位 a·补齐表外，弃",
+    "T1.b": "表 1 盲位 b·面对 1 个平跟者用中位加注表隔离",
+    "T1.c": "表 1 盲位 c·前面全弃，晚位加注表加注",
     "T2.3bet": "表 2·再加注到 3 倍",
     "T2.call": "表 2·跟注（不限筹码）",
     "T2.price": "表 2·看价格跟注",
@@ -261,24 +294,27 @@ RULES = {
     "SPR.A": "SPR ≤ 2 且对手 ≤ 2：B 档视同 A 档",
     "SPR.many": "SPR ≤ 2、≥ 3 个对手：B 档下 1/2、跟一次、被加注弃",
     "ALLIN": "面对全下：胜率 ≥ 所需 + 5% 才跟",
-    "J1": "直接全下·下注后剩余 ≤ 底池",
+    "J1": "直接全下·A 档下注或加注后剩余 ≤ 底池",
+    "J1.no": "直接全下·B/C/D/E 档的注下出去剩余 ≤ 底池就不下",
     "J2": "直接全下·跟注后剩余 ≤ 1/2 底池按面对全下",
     "J3": "直接全下·A 档加注 ≥ 剩余筹码 40%",
-    "I1": "铁律 1·一对不送筹码",
+    "I1": "铁律 1·一对不送筹码（例外：翻牌 SPR ≤ 2 且对手 ≤ 2 个）",
     "I2": "铁律 2·多人底池只打 A 档",
     "I3": "铁律 3·河牌不诈唬",
     "I4": "铁律 4·听牌按价格",
     "I5": "铁律 5·拿不准就弃",
+    "I5.blind": "铁律 5 不适用·翻前盲位没人加注：过牌或补齐",
     "DOWN": "公共牌三张同花或四张连牌：降一档",
 }
-# v3.1 没写的情形（按铁律 5，记 unspecified）
+# v3.2 没写的情形（按铁律 5，记 unspecified）
 UNSPECIFIED = {
-    "blind_unopened": "盲位前面全弃（没人平跟）：v3.1 没写",
-    "blind_one_limper": "小盲、大盲面对 1 个平跟者：盲位没有加注范围",
-    "blind_not_isolating": "小盲、大盲面对平跟者、这手不隔离：补齐还是弃没写",
     "board_plays": "五张公共牌自己成牌，你的牌用不上：档分不出",
     "no_range": "对手范围算不出来",
     "b_two_texture": "B 档还剩 2 个对手、公共牌三张同花或四张连牌时面对下注：没写",
+    # v3.1 时记过、v3.2 已经写明的（不再出现；旧场次的日志汇总还要认得）
+    "blind_unopened": "盲位前面全弃（没人平跟）：v3.1 没写",
+    "blind_one_limper": "小盲、大盲面对 1 个平跟者：盲位没有加注范围",
+    "blind_not_isolating": "小盲、大盲面对平跟者、这手不隔离：补齐还是弃没写",
     "seats": "人数不在 4–8 人",
 }
 STREETS = ("preflop", "flop", "turn", "river")
@@ -832,7 +868,7 @@ class Advice:
     rule: str = ""              # 定生死的那一条（``RULES``）
     hits: list = field(default_factory=list)   # 一路命中的规则，最后一条定生死
     all_in: bool = False
-    unspecified: str | None = None             # v3.1 没写的情形（``UNSPECIFIED``）
+    unspecified: str | None = None             # v3.2 没写的情形（``UNSPECIFIED``）
     tier: str | None = None
     hand: str = ""              # "AJo" 或 "顶对踢脚 K"
     equity: float | None = None
@@ -889,26 +925,39 @@ def _all_in_to(table):
         table.my_bet + table.stack)
 
 
-def _aggressive(table, advice, to):
-    """下注或加注到 ``to``；直接全下阈值 1：下注或加注后剩余 ≤ 底池 → 全下。"""
+def _leaves_pot(table, to):
+    """下注或加注到 ``to``（不够就是全下）以后剩的筹码 ≤ 这一注下完的底池。"""
+    to = _round(table, to)
+    left = table.my_bet + table.stack - to
+    pot_after = table.pot + (to - table.my_bet)
+    return left <= pot_after + EPSILON
+
+
+def _aggressive(table, advice, to, jam=False):
+    """下注或加注到 ``to``。直接全下（一·定义）只管三种情形：``jam`` 是 A 档（含视同 A 的
+    B 档）的下注或加注，剩余 ≤ 底池 → 全下；翻前表 3、推弃表和别处写明的全下直接给全下的数；
+    跟注那一种在 ``_banned``。B/C/D/E 档的注下出去剩余 ≤ 底池就不下注（过牌）；翻前的加注
+    照表的尺寸，不改全下。"""
     if not table.can_raise or table.stack <= table.to_call + EPSILON:
         advice.action = "call" if table.to_call > 0 else "check"
         advice.to = None
         return advice
+    if _leaves_pot(table, to):
+        if jam and _round(table, to) < _all_in_to(table):
+            to = _all_in_to(table)
+            advice.hit("J1")
+        elif not jam and table.street != "preflop" and table.to_call <= 0:
+            advice.action, advice.to = "check", None
+            return advice.hit("J1.no")
     to = _round(table, to)
-    left = table.my_bet + table.stack - to
-    pot_after = table.pot + (to - table.my_bet)
-    if left <= pot_after + EPSILON and to < _all_in_to(table):
-        to = _all_in_to(table)
-        advice.hit("J1")
     advice.action = "raise" if table.to_call > 0 or table.street == "preflop" else "bet"
     advice.to = to
     advice.all_in = to >= _all_in_to(table) - EPSILON
     return advice
 
 
-def _bet(table, advice, share):
-    return _aggressive(table, advice, table.my_bet + share * table.pot)
+def _bet(table, advice, share, jam=False):
+    return _aggressive(table, advice, table.my_bet + share * table.pot, jam)
 
 
 def _raise_times(table, advice, times=RAISE_TIMES):
@@ -951,44 +1000,61 @@ def _open_to(table):
 
 
 def _table1(table, advice, cls, where, name, acts):
-    limpers = sum(act.kind == "call" for act in acts)
+    limpers = [act.seat for act in acts if act.kind == "call"]
+    count = len(limpers)
     advice.situation = (f"翻前{POSITION_WORD[where]}，" +
-                        ("前面没人入池" if not limpers else f"前面 {limpers} 人平跟"))
-    if where != "blind":
-        chart = TABLE1[where]
-        if limpers == 0:
-            if cls in chart["raise"]:
-                return _aggressive(table, advice.hit("T1.raise"), _open_to(table))
-            if cls in chart["limp"] and where in OPEN_LIMP:
-                return _call(table, advice, "T1.limp")
-            return _fold(advice, "T1.out")
-        if limpers == 1 and cls in chart["raise"]:
-            return _aggressive(table, advice.hit("T1.iso1"), _open_to(table))
-        if limpers >= 2 and cls in ISOLATE_MANY:
-            return _aggressive(table, advice.hit("T1.iso2"), _open_to(table))
+                        ("前面没人入池" if not count else f"前面 {count} 人平跟"))
+    if where == "blind":
+        return _blinds(table, advice, cls, name, limpers)
+    chart = TABLE1[where]
+    if count == 0:
+        if cls in chart["raise"]:
+            return _aggressive(table, advice.hit("T1.raise"), _open_to(table))
         if cls in chart["limp"]:
             return _call(table, advice, "T1.limp")
-        if limpers >= 2 and cls in chart["raise"]:
-            return _fold(advice, "T1.iso2.no")
         return _fold(advice, "T1.out")
-    # 盲位 / 抓头：面对平跟者按隔离规则；小盲见蘑菇池
-    if table.mushroom and name == "SB" and limpers:
-        wide = (TABLE1["late"]["raise"] if limpers == 1 else
+    if count == 1 and cls in chart["raise"]:
+        return _aggressive(table, advice.hit("T1.iso1"), _open_to(table))
+    if count >= 2 and cls in ISOLATE_MANY:
+        return _aggressive(table, advice.hit("T1.iso2"), _open_to(table))
+    if cls in chart["limp"]:
+        return _call(table, advice, "T1.limp")
+    if count >= 2 and cls in chart["raise"]:
+        return _fold(advice, "T1.iso2.no")
+    return _fold(advice, "T1.out")
+
+
+def _blinds(table, advice, cls, name, limpers):
+    """盲位三种情形（表 1 下面）：c 前面全弃到盲位（盲位的补齐不算平跟者）按晚位加注表加注；
+    小盲有蘑菇池按晚位表隔离；b 面对 1 个平跟者用中位加注表隔离；≥ 2 个平跟者用隔离表；
+    其余 a：补齐或弃，抓头过牌。"""
+    others = [seat for seat in limpers if table.classes[seat][0] != "blind"]
+    if not others:
+        if cls in TABLE1["late"]["raise"]:
+            return _aggressive(table, advice.hit("T1.c"), _open_to(table))
+        return _complete(table, advice, cls, name)
+    if table.mushroom and name == "SB":
+        wide = (TABLE1["late"]["raise"] if len(limpers) == 1 else
                 ISOLATE_MANY | (MUSHROOM_WIDE if table.mushroom >= MUSHROOM_WIDE_BB
                                 else frozenset()))
         if cls in wide:
             return _aggressive(table, advice.hit("M.iso"), _open_to(table))
-        return _unspecified(table, advice, "blind_not_isolating")
-    if not limpers:
-        if table.to_call <= 0:
-            return _call(table, advice, "T1.straddle")
-        return _unspecified(table, advice, "blind_unopened")
-    if limpers >= 2 and cls in ISOLATE_MANY:
+        return _complete(table, advice, cls, name)
+    if len(limpers) == 1 and cls in TABLE1["middle"]["raise"]:
+        return _aggressive(table, advice.hit("T1.b"), _open_to(table))
+    if len(limpers) >= 2 and cls in ISOLATE_MANY:
         return _aggressive(table, advice.hit("T1.iso2"), _open_to(table))
-    if name == "STR":
+    return _complete(table, advice, cls, name)
+
+
+def _complete(table, advice, cls, name):
+    """情形 a：大盲、小盲按补齐表补齐到抓头，其余弃；抓头没人加注过牌（不用再投钱的
+    盲位也过牌）。"""
+    if name not in COMPLETE:
         return _call(table, advice, "T1.straddle")
-    return _unspecified(table, advice, "blind_one_limper" if limpers == 1
-                        else "blind_not_isolating")
+    if table.to_call <= 0 or cls in COMPLETE[name]:
+        return _call(table, advice, "T1.a")
+    return _fold(advice, "T1.a.fold")
 
 
 def _unspecified(table, advice, case):
@@ -1019,7 +1085,8 @@ def _table2(table, advice, cls, name, acts, raise_act):
         return _aggressive(table, advice.hit("T2.3bet"), to)
     if cls in FLAT or cls in three:
         return _call(table, advice, "T2.call")
-    if (cls in PRICE_CALL and table.to_call <= PRICE_SHARE * table.effective()
+    share = MUSHROOM_PRICE_SHARE if table.mushroom else PRICE_SHARE
+    if (cls in PRICE_CALL and table.to_call <= share * table.effective()
             and (callers >= 1 or table.in_position(raiser))):
         return _call(table, advice, "T2.price")
     if (name in ("SB", "BB", "STR") and callers >= BLIND_CALLERS
@@ -1115,7 +1182,7 @@ def _checked_to(table, advice, strength, plays, spr_many, hu, opponents):
     if plays == "A":
         share = BET["A_river_hu"] if hu and street == "river" else BET["A"]
         rule = "SPR.A" if strength.tier == "B" else "N.A"
-        return _bet(table, advice.hit(rule), share)
+        return _bet(table, advice.hit(rule), share, jam=True)
     if spr_many:                                 # 下 1/2 只在翻牌（READINGS spr_many_streets）
         if street == "flop":
             return _bet(table, advice.hit("SPR.many"), BET["B"])
@@ -1177,7 +1244,7 @@ def _a_raise(table, advice, rule):
     if to - table.my_bet >= JAM_RAISE_SHARE * table.stack:
         advice.hit("J3")
         return _aggressive(table, advice, _all_in_to(table))
-    return _aggressive(table, advice, to)
+    return _aggressive(table, advice, to, jam=True)
 
 
 def _facing_bet(table, advice, strength, plays, spr_many, hu, opponents, size, agg,
@@ -1212,7 +1279,9 @@ def _facing_bet(table, advice, strength, plays, spr_many, hu, opponents, size, a
         if (strength.strong_draw and hu and street == "flop"
                 and size <= D_STRONG_RAISE + EPSILON and table.can_raise
                 and not agg.all_in):
-            return _raise_times(table, advice.hit("F.D_strong"))
+            if not _leaves_pot(table, RAISE_TIMES * table.top):
+                return _raise_times(table, advice.hit("F.D_strong"))
+            advice.hits.append("J1.no")          # 加完剩 ≤ 底池：不加，按补牌（READINGS j1_d_raise）
         rule = "F.D_strong" if strength.strong_draw else "F.D"
         return _by_outs(table, advice, strength, rule, agg.all_in)
     if plays == "C":
@@ -1367,11 +1436,8 @@ def decide(observation, *, numbers=True):
         advice = iron5_from(observation, "S1")
         advice.situation = f"看不清：{missing}"
         return _finish(None, advice, {})
-    if len(observation["occupied_seats"]) not in range(4, 9):
-        advice = iron5_from(observation, unspecified="seats")
-        advice.situation = f"{len(observation['occupied_seats'])} 人桌"
-        return _finish(None, advice, {})
-    table = Table(observation)
+    table = Table(observation)       # 人数不在 4–8 人按最近的人数表：位置按座位数排
+
     context = {}
     cache = {}
 
@@ -1504,7 +1570,7 @@ def flip(table, advice, context):
     """翻转条件：一句话，边界在哪里。"""
     rule = advice.rule
     if advice.unspecified or rule == "S1":
-        return "v3.1 没写或看不清时先弃 / 过牌；看清了、表里有了再按表打"
+        return "v3.2 没写或看不清时先弃 / 过牌；看清了、表里有了再按表打"
     pot_before = None
     agg = table.aggressor() if table else None
     if agg is not None and table.street != "preflop":
@@ -1513,11 +1579,16 @@ def flip(table, advice, context):
     texts = {
         "T1.raise": "前面有人加注就改按表 2",
         "T1.limp": "前面有人加注就改按表 2",
-        "T1.out": "表外的牌前注再厚也不入池；换到表里的位置才打",
+        "T1.out": "加注表、平跟表都不在的牌不入池；换到表里的位置才打",
         "T1.iso1": "再多一个平跟者就只用 TT+、AJs+、AQo+、KQs 隔离",
         "T1.iso2": "有人加注就改按表 2",
         "T1.iso2.no": "只有 1 个平跟者时就按本位置加注表隔离",
-        "T1.straddle": "≥ 2 个平跟者且拿到 TT+、AJs+、AQo+、KQs 才隔离",
+        "T1.straddle": ("1 个平跟者时中位加注表、≥ 2 个时 TT+、AJs+、AQo+、KQs 才隔离；"
+                        "只有盲位补齐时晚位加注表加注"),
+        "T1.a": "有人加注就改按表 2",
+        "T1.a.fold": "补齐表里的牌才补齐，其余弃",
+        "T1.b": "再多一个平跟者就只用 TT+、AJs+、AQo+、KQs 隔离",
+        "T1.c": "前面有人平跟就按隔离规则，有人加注就按表 2",
         "T2.3bet": "被 4-bet 只有 KK+ 继续",
         "T2.call": "被再加注就按表 3",
         "T2.price": f"跟注超过 {_chips(PRICE_SHARE * effective)} 就弃",
@@ -1550,12 +1621,14 @@ def flip(table, advice, context):
         "R.CE": "被加注一律弃",
         "SPR.A": "对手多于 2 个或 SPR 大于 2 就按 B 档正常打",
         "SPR.many": "下注超过 1/2 底池、被加注或已经跟过一次就弃",
-        "J1": "下注后剩余会不到底池，直接全下",
+        "J1": "A 档下注后剩余会不到底池，直接全下",
+        "J1.no": "这一注下出去剩的会不到底池，所以不下；只有 A 档才直接全下",
         "J3": "加注到 3 倍会占剩余筹码 40% 以上，直接全下",
         "I2": "多人底池 B 档以下不加注，≥ 3 个对手不跟超过 1/2 底池的注",
         "I3": "河牌只有 A 档下大注，B 档最多 1/3",
         "I4": "听牌只按补牌价格跟，不加注",
         "I5": "拿不准就弃；看清了再按表打",
+        "I5.blind": "盲位没人加注不按铁律 5 弃：能过牌过牌，否则补齐",
     }
     if rule == "F.B" and table and pot_before is not None:
         opponents = len(table.opponents)
@@ -1601,7 +1674,7 @@ def action_id(advice, observation):
 
 
 class PlainBot(_Policy):
-    """``plain``：翻前翻后都按 v3.1；``counts`` 记每条规则定了几次、没写的情形几次。"""
+    """``plain``：翻前翻后都按 v3.2；``counts`` 记每条规则定了几次、没写的情形几次。"""
 
     name = "plain"
 

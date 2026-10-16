@@ -16,14 +16,16 @@
   历史里读到的那一下补；你要跟的金额比推出来的最高注多，就是有人加注没读到：补一个
   加到那么多的加注（这条街读到注额最高的对手，否则动作历史里这条街最后加注的人，
   否则在你前面最近说话的还在局对手）。
-- **缺项默认**（补充二第四节）：对手筹码没读到，用他上一次的读数减之后投入的，还是
-  没有就不算他（有效筹码按最深的已读对手）；蘑菇池没读到按 0；暴击按“翻前没人动、
-  开局底池能被人数整除”认；庄位按这手开局锁定；翻牌开始时的底池按手锁存。真正缺了
-  没法算的只有四样：你的手牌、要跟的金额、底池、你的筹码（还有庄位）。
+- **缺项默认**（补充二第四节、v3.2 一·定义）：对手筹码没读到，用他上一次的读数减之后
+  投入的，还是没有就不算他（有效筹码按最深的已读对手）；蘑菇池没读到按 0；暴击按“翻前
+  没人动、开局底池能被人数整除”认；庄位按这手开局锁定，读不到按盲注和抓头的位置推
+  （只读到其中一个也行）；翻牌开始时的底池按手锁存。真正缺了没法算的只有四样：你的手牌、
+  要跟的金额、底池、你的筹码（还有庄位）。
 - **就绪条件**：按钮出现、要跟的金额连续 3 帧一样、两张手牌连续两帧读成一样、公共牌
   张数和街道对得上、还在局的对手连续 2 帧一样、底池和你的筹码读到了；这手的手牌或
   公共牌读出过两种就不就绪（``card_conflict``，宁可铁律 5 也不按其中一种算）。就绪前
-  显示“读画面中”；等了 2 秒还没就绪，按铁律 5（弃，能过牌就过牌）并写明缺什么。
+  显示“读画面中”；等了 2 秒还没就绪，按铁律 5（弃，能过牌就过牌）并写明缺什么。翻前
+  轮到盲位且没人加注时铁律 5 不适用（v3.2）：读到了牌就照表，牌没读到就过牌或补齐。
 - **一个决策只算一次**：决策 = （这手牌，街道，要跟的金额）。算完就显示，同一个决策里
   画面再变也不重算、不换；要跟的金额变了（有人加注）才是新决策，旧建议在旁边留 2 秒。
 
@@ -57,7 +59,7 @@ READY_FRAMES = 20               # 没有时钟可看时按帧数（约 10 帧一
 SIDE_BY_SIDE = 2.0              # 要跟的金额变了：旧建议在旁边留 2 秒
 OPENING_FRAMES = 300            # 认级别、庄位用的开局帧，最多留这么多
 EPSILON = 1e-9
-BASIS = "一页纸打法 v3.1（plain）：只按这一页的规则；只显示建议，不替你点"
+BASIS = "一页纸打法 v3.2（plain）：只按这一页的规则；只显示建议，不替你点"
 
 # 就绪条件没满足时缺的是什么（窗口上写“缺 X”）。
 MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没稳",
@@ -65,6 +67,9 @@ MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没�
            "board": "公共牌", "opponents": "在局对手没稳", "pot": "底池",
            "stack": "你的筹码", "dealer": "庄位", "seat": "你的座位",
            "actions": "这手的动作对不上"}
+# 盲位没人加注时表里的规则（铁律 5 不适用，画面没读稳也照表）。
+BLIND_RULES = frozenset({"T1.a", "T1.a.fold", "T1.b", "T1.c", "T1.straddle", "T1.iso2",
+                         "M.iso"})
 # 按默认补上的缺项（窗口上的小标签）。
 DEFAULTS = {"opponent_stack": "缺对手筹码→按最深已读",
             "carried_stack": "对手筹码按上次读数往前带",
@@ -313,7 +318,8 @@ class HandState:
 
     def dealer(self, stakes, bomb=None):
         """庄位：桌上的盲注说的（``blind_dealer``）；暴击局没有盲注，是第一个被读到要
-        说话的座位前面那个；都没有就是这手读到最多的庄位。"""
+        说话的座位前面那个；再没有是这手读到最多的庄位；庄位读不到，按只读到的一个
+        盲注或抓头推（``posted_dealer``，v3.2 一·定义）。"""
         seats = self.seats()
         found = None if bomb else blind_dealer(self.opening, seats, stakes)
         if found is None and bomb is not None:
@@ -322,10 +328,50 @@ class HandState:
                 found = seats[seats.index(first) - 1]
         if found is None and self.dealers:
             found = Counter(self.dealers).most_common(1)[0][0]
+        if found is None and bomb is None:
+            found = posted_dealer(self.opening, seats, stakes)
         return found if found in seats else None
 
     def _history_actions(self):
         return [tuple(item) for item in self.history.get("actions") or ()]
+
+
+def posted_dealer(fields, seats, stakes):
+    """庄位读不到、小盲大盲也没一起读到时，按开局帧上只读到的一个盲注推：小盲的前一位、
+    大盲的前两位、抓头的前三位（这手发了牌的座位里数）。每人一样多的那一下是前注，不算；
+    推出来两种的不算（None）。"""
+    back = {Decimal(str(stakes["small_blind"])): 1,
+            Decimal(str(stakes["big_blind"])): 2}
+    if len(seats) >= 4:
+        back[Decimal(str(stakes["straddle_amount"]))] = 3
+    found = set()
+    for f in fields:
+        wagers = {int(seat): _amount(value)
+                  for seat, value in (f.get("street_wagers") or {}).items()}
+        wagers = {seat: value for seat, value in wagers.items() if value}
+        if len(wagers) >= 3 and len(set(wagers.values())) == 1:
+            continue
+        for amount, steps in back.items():
+            at = [seat for seat, value in wagers.items() if value == amount]
+            if len(at) == 1 and at[0] in seats:
+                found.add(seats[(seats.index(at[0]) - steps) % len(seats)])
+    return found.pop() if len(found) == 1 else None
+
+
+def blind_unraised(state, stakes, now):
+    """你在小盲、大盲或抓头，翻前没人加注（价格不超过补齐到抓头）：铁律 5 不适用。"""
+    if now is None or state.bomb() is not None:
+        return False
+    seats = state.seats()
+    dealer = state.dealer(stakes)
+    if dealer is None or HERO not in seats or len(seats) < 3:
+        return False
+    ring = _clockwise(seats, dealer)
+    posts = [Decimal(str(stakes["small_blind"])), Decimal(str(stakes["big_blind"]))]
+    if len(ring) >= 4:
+        posts.append(Decimal(str(stakes["straddle_amount"])))
+    at = ring.index(HERO)
+    return 1 <= at <= len(posts) and posts[at - 1] + now <= posts[-1]
 
 
 def _first_actor(fields):
@@ -771,20 +817,30 @@ class AAPlainAdvice:
 
     def _decide(self, state, fields, street, now, missing, waited, history):
         stakes = self.stakes()
-        controls = fields.get("hero_controls") or {}
         observation, defaults = None, []
         if not missing:
             observation, defaults, missing = table_observation(state, fields, stakes)
         if observation is None:
+            if street == "preflop" and blind_unraised(state, stakes, now):
+                return self._blind(state, fields, street, now, missing, waited, history,
+                                   stakes)
             return self._iron5(fields, street, now, missing, waited, history, stakes)
         try:
             advice = plain_policy.decide(observation)
         except Exception:                   # 拼出来的这手自相矛盾：不猜，铁律 5
             return self._iron5(fields, street, now, ["actions"], waited, history,
                                stakes)
+        return self._ready(observation, advice, defaults, fields, street, now, waited,
+                           history, stakes, tag=f"就绪 {waited:.1f}s")
+
+    def _ready(self, observation, advice, defaults, fields, street, now, waited,
+               history, stakes, tag, missing=()):
+        controls = fields.get("hero_controls") or {}
         row = advice.row()
-        row.update(tag=f"就绪 {waited:.1f}s", waited=round(waited, 1),
+        row.update(tag=tag, waited=round(waited, 1),
                    defaults=[DEFAULTS[key] for key in defaults])
+        if missing:
+            row.update(unread=missing[0], missing=list(missing))
         table = plain_policy.Table(observation)
         facing = Decimal(observation["bets"][str(HERO)]) + now
         return self._report(
@@ -797,6 +853,35 @@ class AAPlainAdvice:
             inferred_actions=observation["inferred_actions"],
             bomb_pot=observation["bomb_pot"], stakes_used=stakes_report(stakes),
             button=controls.get("button"), facing=_money(facing) if now else None)
+
+    def _blind(self, state, fields, street, now, missing, waited, history, stakes):
+        """翻前轮到盲位、没人加注，画面 2 秒没读稳：铁律 5 不适用（v3.2）。读到了牌就照表
+        （没稳的按读到的算），牌没读到或读出过两种就过牌或补齐。"""
+        words = "、".join(MISSING[key] for key in missing)
+        if state.hero is not None and not state.card_conflict():
+            observation, defaults, _ = table_observation(state, fields, stakes)
+            advice = None
+            if observation is not None:
+                try:
+                    advice = plain_policy.decide(observation)
+                except Exception:
+                    advice = None
+            if advice is not None and advice.rule in BLIND_RULES:
+                return self._ready(observation, advice, defaults, fields, street, now,
+                                   waited, history, stakes, tag=f"盲位按表：缺{words}",
+                                   missing=missing)
+        controls = fields.get("hero_controls") or {}
+        action = "check" if now == 0 else "call"
+        advice = plain_policy.unread(action, f"画面没读稳：缺{words}", rule="I5.blind")
+        row = {**advice.row(), "unread": missing[0], "missing": list(missing),
+               "tag": f"盲位没人加注：{'过牌' if action == 'check' else '补齐'}"
+                      f"（缺{MISSING[missing[0]]}）",
+               "defaults": [], "waited": round(waited, 1)}
+        return self._report(
+            "ready", None, street=street, kind="plain", plain=row,
+            advice=[{"action": action, "frequency": 1.0}], to_call=_money(now),
+            price=_money(now), decision=len(history.get("actions") or ()),
+            stakes_used=stakes_report(stakes), button=controls.get("button"))
 
     def _iron5(self, fields, street, now, missing, waited, history, stakes):
         """缺了没法算：铁律 5（弃，能过牌就过牌），写明缺什么。"""
@@ -836,5 +921,6 @@ class AAPlainAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AAPlainAdvice", "BASIS", "DEFAULTS", "HandState", "MISSING", "advice_row",
-           "price", "table_observation"]
+__all__ = ["AAPlainAdvice", "BASIS", "BLIND_RULES", "DEFAULTS", "HandState",
+           "MISSING", "advice_row", "blind_unraised", "posted_dealer", "price",
+           "table_observation"]

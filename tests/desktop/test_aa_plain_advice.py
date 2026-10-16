@@ -1,4 +1,4 @@
-"""The window's switch to 《一页纸打法 v3.1》 (``plain``): classic stays the
+"""The window's switch to 《一页纸打法 v3.2》 (``plain``): classic stays the
 default; with the switch on, every frame goes to the live page
 (``aa_plain_advice``, tested in ``test_aa_plain_live``) and nothing of the
 old path runs; the switch is kept across restarts."""
