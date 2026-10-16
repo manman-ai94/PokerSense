@@ -98,12 +98,16 @@ SHEET = [("-38", "200", 0.0), ("-52", "200", 0.0), ("10", "200", 1.5),
          ("-122", "200", None)]
 
 
-def made_block(monkeypatch):
+BOARDS = {"preflop": [None] * 5, "flop": ["2c", "7d", "9s", None, None],
+          "turn": ["2c", "7d", "9s", "Jh", None]}
+
+
+def made_block(monkeypatch, spot=lambda *_: None):
     log, hands, old, plain = [], [], [], []
     for spots, (chips, start, runout) in zip(SPOTS, SHEET):
         hand_rows, turns, decisions = [], [], []
         for street, mine, deep, cards, place, seat, one, two, you in spots:
-            row = {"fields": {}}
+            row = {"fields": {"board": BOARDS[street]}}
             log.append(row)
             hand_rows.append(row)
             old.append(one)
@@ -126,7 +130,7 @@ def made_block(monkeypatch):
                   "luck": None})
     monkeypatch.setattr(shadow, "replays", lambda _: {"old": old, "plain": plain})
     monkeypatch.setattr(shadow, "posts", lambda *_: Decimal(2))
-    monkeypatch.setattr(shadow, "shown_spot", lambda *_: None)
+    monkeypatch.setattr(shadow, "shown_spot", spot)
     return shadow.block(log, hands, code="abcdef1", page_version="v3.3")
 
 
@@ -156,6 +160,27 @@ def test_each_hand_books_its_first_divergence_in_its_group(monkeypatch):
     assert top["fold_check"] == {"n": 1, "off": 0}
     assert top["replay_matches_shown"] == {"n": 5, "same": 5}
     assert top["shown_by"] == {"plain": 5}
+
+
+def test_p3_counts_the_folds_that_met_a_pair_or_a_bluff(monkeypatch):
+    shown = {"h0": {"3": "9h 9c"}, "h3": {"5": "Ah Kd"}}      # a set; nothing
+    monkeypatch.setattr(shadow, "chips", lambda *_: 3.0)
+    block = made_block(monkeypatch, spot=lambda rows, indexes, hand: (
+        None, 0.5, shown[hand]) if hand in shown else None)
+    weak = [item["plain_fold_weak_shown"] for item in block["decisions"]]
+    assert weak == [None, False, None, None, True]  # only plain's folds after the flop
+    assert block["summary"]["plain_fold_shown"] == {
+        "n": 2, "weak": 1, "diverged": 2, "diverged_weak": 1}
+
+
+def test_a_pair_on_the_board_is_not_the_opponents():
+    rows = [{"fields": {"board": ["Ks", "Kd", "4c", None, None]}},
+            {"fields": {"board": ["Ks", "Kd", "4c", "9h", "2s"]}}]
+    assert shadow.weak_shown((None, 0.5, {"3": "Qh 9d"}), rows) is True   # 9s up
+    assert shadow.weak_shown((None, 0.5, {"3": "Kh 3d"}), rows) is False  # trips
+    assert shadow.weak_shown((None, 0.5, {"3": "Kh 3d", "5": "7c 6c"}), rows) is False
+    assert shadow.weak_shown(None, rows) is None
+    assert shadow.weak_shown((None, 0.5, {"3": "Qh 9d"}), rows[:0]) is None
 
 
 # -- in the package -------------------------------------------------------------------

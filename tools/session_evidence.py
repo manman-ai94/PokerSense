@@ -39,6 +39,10 @@ or an AI, not for a person.
   meant to be read once, after 1000-1500 hands). Packages from before
   block 11 are counted as having none.
 
+* Each preflop class shows the mean place of its shown hands (median
+  beside it), the share outside its preflop range and whether it has the
+  shown hands the page wants (``plain_live_report.ENOUGH``), as the page's
+  section 7 has 范围校准.
 * 遵从率 (block 12) is added up over the packages that have it, all advice
   and the page's and the older advice's apart; the sessions under 80%,
   which the page does not count in results, are named (their results are
@@ -59,7 +63,9 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from poker_engine.scoreboard.luck import always_valid, interval  # noqa: E402
+from tools.plain_live_report import ENOUGH  # noqa: E402
 
 CLASSES = ("limp", "raise", "call_raise", "three_bet", "call_three_bet")
 CLASS_WORD = {"limp": "平跟", "raise": "加注", "call_raise": "跟加注",
@@ -95,7 +101,8 @@ WITHDRAW_TOP = 4.0
 COMPLIANCE_WORD = {"all": "全部", "plain": "一页纸", "old": "旧策略"}
 COMPLIANCE_KEYS = ("counted", "complied", "looser", "tighter", "no_advice", "unknown",
                    "you_unread")
-COMPLIANCE_ENOUGH = 400                 # decisions: the page's sample for it
+COMPLIANCE_ENOUGH = ENOUGH["compliance"]  # decisions the page wants for it
+SHOWN_ENOUGH = ENOUGH["shown_class"]      # shown hands a class wants
 DEVIATIONS_SHOWN = 30
 MAX_MISREAD = 0.2
 AGREE = 0.05
@@ -232,10 +239,14 @@ def range_lines(packages):
         places = sorted((item["range"] or {}).get("percentile") for item in used
                         if (item["range"] or {}).get("percentile") is not None)
         counts = seats.get(cls, Counter())
-        where = f"，真牌位置中位数 {statistics.median(places):.0%}" if places else ""
+        where = (f"，真牌位置均值 {sum(places) / len(places):.0%}（中位数 "
+                 f"{statistics.median(places):.0%}）" if places else "")
+        enough = "够" if len(used) >= SHOWN_ENOUGH else "不够"
         text.append(
             f"  {CLASS_WORD.get(cls, cls)}：校准用 {len(used)} 个，翻前范围里 "
-            f"{share(before, len(used))}，缩窄后范围里 {share(after, len(used))}{where}；"
+            f"{share(before, len(used))}，缩窄后范围里 {share(after, len(used))}，"
+            f"落在翻前范围外 {share(len(used) - before, len(used))}{where}，"
+            f"{SHOWN_ENOUGH} 个才稳：{enough}；"
             f"分母 {counts.get('seats', 0)} 个座位" + "".join(
                 f"（{'、'.join(ends)}）" for ends in [[
                     f"{OUTCOME_WORD[key]} {counts[key]}" for key in OUTCOMES
@@ -374,6 +385,14 @@ def shadow_lines(packages):
         off = sum(top["fold_check"]["off"] for top in tops)
         text.append(f"    另两种算法（不和上面相加）：两条线都算得出的分歧 {booked} 次，本页减旧 "
                     f"{booked_bb:+.1f} bb；按亮牌算 {shown} 次，本页减旧 {shown_bb:+.1f} bb")
+        p3 = [top.get("plain_fold_shown") for top in tops]
+        p3 = [entry for entry in p3 if entry]
+        if p3:
+            text.append(
+                f"    P3：翻后本页说弃、还在的对手后来都亮了牌 {sum(e['n'] for e in p3)} 次，"
+                f"其中对手亮的是一对或更差（一对、诈唬） {sum(e['weak'] for e in p3)} 次；"
+                f"是分歧的 {sum(e['diverged'] for e in p3)} 次（一对或更差 "
+                f"{sum(e['diverged_weak'] for e in p3)}）")
         text.append(f"    你弃牌时“从这一步起”不是 0 的 {off}/{folds}（筹码读错的迹象）；"
                     "旧策略重放时单挑转牌河牌用范围规则代替求解器")
     if not groups:

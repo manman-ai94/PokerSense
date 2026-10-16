@@ -72,6 +72,7 @@ def test_one_package_reads_as_one_page(tmp_path, capsys):
     assert "铁律 5：1/4（25%）" in text and "缺 pot 1" in text
     assert f"  T2.call 表 2·跟注（不限筹码） [{PAGE} " in text
     assert "加注：校准用 1 个，翻前范围里 1/1（100%），缩窄后范围里 1/1（100%）" in text
+    assert "落在翻前范围外 0/1（0%），真牌位置均值" in text and "100 个才稳：不够" in text
     assert "分母 1 个座位（普通摊牌 1）" in text
     assert "改口 0 次" in text and "动作靠筹码推断：1/12" in text
     assert "遵从率（动作和建议一样、加注尺寸 ±25%，除以不是 UNKNOWN 的建议）：全部 3/3（100%）" in text
@@ -108,6 +109,7 @@ def test_only_whole_showdowns_calibrate_the_ranges(tmp_path):
     page = evidence.range_lines([evidence.load(path)])
     line = next(line for line in page if line.startswith("  加注"))
     assert "校准用 2 个，翻前范围里 2/2（100%），缩窄后范围里 1/2（50%）" in line
+    assert "落在翻前范围外 0/2（0%），真牌位置均值 30%（中位数 30%）" in line
     assert "分母 4 个座位（普通摊牌 4）" in line
 
 
@@ -164,6 +166,7 @@ def test_the_ledger_adds_up_its_groups_and_tests_the_loosenings(tmp_path):
         "diverged": 7, "first_divergences": 7,
         "groups": {}, "booked": {"n": 3, "plain_minus_old_bb": 1.0},
         "by_shown": {"n": 0, "plain_minus_old_bb": 0.0},
+        "plain_fold_shown": {"n": 5, "weak": 2, "diverged": 1, "diverged_weak": 1},
         "fold_check": {"n": 1, "off": 0}}, "decisions": items}
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     text = "\n".join(evidence.shadow_lines([evidence.load(path)]))
@@ -174,6 +177,8 @@ def test_the_ledger_adds_up_its_groups_and_tests_the_loosenings(tmp_path):
     assert "晚位平跟：碰到 4 次，本页说进 4，你进了 4" in text
     assert "区间含 0 且上限 < +4：是" in text
     assert "大盲补齐：碰到 0 次" in text and "还算不出区间" in text
+    assert ("P3：翻后本页说弃、还在的对手后来都亮了牌 5 次，其中对手亮的是一对或更差"
+            "（一对、诈唬） 2 次；是分歧的 1 次（一对或更差 1）") in text
 
 
 def test_the_withdrawal_test_wants_0_inside_and_the_top_under_4():
