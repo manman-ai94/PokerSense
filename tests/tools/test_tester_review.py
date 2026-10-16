@@ -209,6 +209,26 @@ def test_the_owners_own_recordings_are_reviewed_and_counted_apart(tmp_path):
     assert lines[1].startswith("问题：杜：") and "。peng：" in lines[1]
     assert "；杜 累计 2 手扣掉运气 " in lines[2] and "；peng 累计 2 手扣掉运气 " in lines[2]
     assert lines[3] == "上桌条件：4/2000 手（杜 2，peng 2），扣掉运气 说不准"
+    told = (tmp_path / "out" / review.OWNER).read_text(encoding="utf-8").splitlines()
+    assert told[0].startswith("你 10/14 晚上 7:20（洛杉矶）开始，打了 18 分钟：算出成绩 2 手，"
+                              "打出来 ")
+    assert "；扣掉运气 " in told[0] and told[0].endswith("结论：说不准")
+    assert told[1] == "要注意：电脑太慢：每秒只读 2.5 帧；座位筹码只读出 25%；3/3 手没从牌桌读出级别"
+    # A run with only the tester's recordings has nothing for the owner.
+    again = args(tmp_path, [recording(tmp_path, "20261016-210000-live",
+                                      rows=played_rows())])
+    again.machine, again.out = "peng", tmp_path / "out2"
+    review.run(again)
+    assert not (tmp_path / "out2" / review.OWNER).exists()
+
+
+def test_the_owner_is_told_plainly_even_without_hands():
+    own = [{"recording": {"minutes": 2, "started": None}, "problems": [
+        "轮到他 3 次，1 次窗口没给建议（庄位没认清 1）"]}]
+    assert review.owner_lines(own, {"hands": 0}) == [
+        "你这场打了 2 分钟：没有算得出成绩的手（太短，只作参考）",
+        "要注意：轮到你 3 次，1 次窗口没给建议"]
+    assert review.owner_lines([], {}) == []
 
 
 def result(**more):

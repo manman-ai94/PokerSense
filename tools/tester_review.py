@@ -1,4 +1,4 @@
-"""A tester's uploaded recordings, reviewed the morning after (同事录像每日复盘);
+"""A tester's uploaded recordings, reviewed once each is finished (同事录像复盘);
 the owner's own Mac recordings the same way (``--machine peng``).
 
 Exception-based: nobody watches the video. For each recording another
@@ -38,7 +38,9 @@ this computer (``pulled.json``); its machine and own name come from there.
 ``run`` skips recordings already in ``<复盘目录>/reviewed.jsonl`` with the
 same files (``--again`` reviews them again), writes ``<机器>-<录像>.json``
 for each, ``复盘单.md`` (totals only, with the change since that machine's
-last review) and ``三行.txt`` into ``--out``, and adds to the state:
+last review), ``三行.txt`` and, when the owner's own recordings (``--machine``)
+were among them, ``给主人.txt`` (two lines to him: hands and result, what to
+look at) into ``--out``, and adds to the state:
 ``reviewed.jsonl`` (a line per recording) and ``hands.jsonl`` (its hand lines
 for the population statistics), ``results.jsonl`` (a line per hand with
 its result and luck) and ``decisions.jsonl`` (a line per decision: the
@@ -83,6 +85,7 @@ DECISIONS = "decisions.jsonl"
 BASE = "population-base.json"
 SHEET = "复盘单.md"
 LINES = "三行.txt"
+OWNER = "给主人.txt"
 # The owner's Mac, window log of 20261010-012911-live: 7.8 frames read per
 # second, recognition 83 ms a frame (median).
 MAC_FPS, MAC_RECOGNITION_MS = 7.8, 83
@@ -424,6 +427,32 @@ def table_condition(lines, machines=()):
             + f"，扣掉运气 {verdict or '说不准'}")
 
 
+def owner_lines(own, summary):
+    """Two plain lines to the owner about his own recordings of this run
+    (none when there are none): how long, the hands and the result with
+    luck taken out (``summary``: ``luck_results.summarize`` of their hands),
+    then what is worth his attention. His decisions are not judged."""
+    if not own:
+        return []
+    minutes = sum(item["recording"]["minutes"] or 0 for item in own)
+    first = when(own[0]["recording"]["started"]) if len(own) == 1 else None
+    what = (f"你 {first}开始，打了 {minutes:.0f} 分钟" if first
+            else f"你这 {len(own)} 场共打了 {minutes:.0f} 分钟" if len(own) > 1
+            else f"你这场打了 {minutes:.0f} 分钟")
+    if summary.get("hands"):
+        result = (f"算出成绩 {summary['hands']} 手，打出来 {summary['bb']:+g} 个大盲；"
+                  f"扣掉运气 {summary['adjusted_bb_per_100']:+g} bb/100，"
+                  f"结论：{summary['verdict']}")
+    else:
+        result = "没有算得出成绩的手"
+    if all(short(item["recording"]["minutes"]) for item in own):
+        result += "（太短，只作参考）"
+    found = [line.split("（")[0].replace("他", "你")
+             for item in own for line in item["problems"]][:TOP_PROBLEMS]
+    return [f"{what}：{result}",
+            ("要注意：" + "；".join(found)) if found else "没发现要你注意的问题"]
+
+
 def sheet(results, day, totals=None, condition=None):
     """The day's review sheet (totals only) and its lines: three, and the
     table ``condition`` (``table_condition``) when given. ``totals``:
@@ -570,6 +599,16 @@ def run(args):
     (out / SHEET).write_text(text, encoding="utf-8")
     (out / LINES).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
+    # The owner's own recordings (``--machine``): two lines for him at once.
+    own = [item for item in sorted(results, key=lambda item: item["folder"])
+           if args.machine and item["machine"] == args.machine]
+    logs = {item["log"] for item in own}
+    told = owner_lines(own, luck_results.summarize(
+        [line for line in kept if line["log"] in logs]) if own else {})
+    (out / OWNER).unlink(missing_ok=True)
+    if told:
+        (out / OWNER).write_text("\n".join(told) + "\n", encoding="utf-8")
+        print("\n".join(told))
     return 0
 
 
