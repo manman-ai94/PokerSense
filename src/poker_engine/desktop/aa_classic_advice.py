@@ -14,7 +14,9 @@ one-page rules (``aa_plain_advice``): the hand's state latched frame by frame
 (``HandState``), the decision worked out once it is ready, once per (hand,
 street, price), never changed, missing inputs filled in by their defaults, and
 after 2 s still not ready the iron rule 5 (fold, or check when it is free) with
-what is missing. Only the policy is the old one:
+what is missing; not in your blind before the flop with no raise, where v3.2
+lifted it for the one-page rules too (your cards read: worked out on what was
+read; else check, or complete). Only the policy is the old one:
 
 - before the flop ``aa_preflop`` (what folding, calling and raising are each
   worth against the AA players' ranges, with this session's reads of each
@@ -60,7 +62,7 @@ from poker_engine.strategy.aa_rules_v2 import AARuleProfileV2
 
 from .aa_plain_advice import DEFAULTS as DEFAULT_WORDS
 from .aa_plain_advice import (EPSILON, HERO, MISSING, STREETS, AAPlainAdvice,
-                              _money, table_observation)
+                              _money, blind_unraised, table_observation)
 from .aa_solver_input import DEEP, board_history
 from .aa_stakes import stakes_report
 
@@ -85,6 +87,9 @@ HEADS_UP_BASIS = ("equity against the opponent's range (a population model fitte
 DEFAULTS = {**DEFAULT_WORDS, "opponent_stack": "缺对手筹码→按很深算"}
 UNREAD_BASIS = ("the screen was not steady for 2 s: iron rule 5 (fold, or check when "
                 "it is free); for study only")
+BLIND_BASIS = ("your blind before the flop with no raise, the screen not steady for "
+               "2 s: iron rule 5 does not apply (v3.2); check, or complete; for study "
+               "only")
 
 
 def multiway_row(action, observation):
@@ -422,13 +427,24 @@ class AAClassicAdvice(AAPlainAdvice):
 
     def _decide(self, state, fields, street, now, missing, waited, history):
         stakes = self.stakes()
-        observation, defaults = None, []
         if not missing:
-            observation, defaults, missing = table_observation(state, fields, stakes)
+            found = self._worked_out(state, fields, now, stakes)
+            if not isinstance(found, list):
+                return self._ready(found, fields, street, now, waited, history, stakes,
+                                   {"tag": f"就绪 {waited:.1f}s"})
+            missing = found
+        return self._iron5(fields, street, now, missing, waited, history, stakes)
+
+    def _worked_out(self, state, fields, now, stakes):
+        """(the policy's part of the report, the table it was worked out on,
+        the screen's observation, the defaults taken), or what is missing for
+        it (a list): ``seats``, ``actions`` (the hand put together contradicts
+        itself), ``ranges``, or the inputs ``table_observation`` misses."""
+        observation, defaults, missing = table_observation(state, fields, stakes)
         if observation is None:
-            return self._iron5(fields, street, now, missing, waited, history, stakes)
+            return missing
         if not MIN_SEATS <= len(observation["occupied_seats"]) <= MAX_SEATS:
-            return self._iron5(fields, street, now, ["seats"], waited, history, stakes)
+            return ["seats"]
         try:
             table, filled = table_state(observation)
             if abs(Decimal(table["to_call"]) - now) > Decimal(EPSILON):
@@ -440,15 +456,18 @@ class AAClassicAdvice(AAPlainAdvice):
             self._caught_up(table)
             found = self.policy.decide(table)
         except Exception:                   # the hand put together contradicts itself
-            return self._iron5(fields, street, now, ["actions"], waited, history,
-                               stakes)
+            return ["actions"]
         if isinstance(found, str):
-            return self._iron5(fields, street, now, [found], waited, history, stakes)
+            return [found]
+        return found, table, observation, defaults
+
+    def _ready(self, worked, fields, street, now, waited, history, stakes, contract):
+        found, table, observation, defaults = worked
         controls = fields.get("hero_controls") or {}
         facing = Decimal(observation["bets"][str(HERO)]) + now
         return self._report(
             "ready", None, street=street, **found,
-            contract={"tag": f"就绪 {waited:.1f}s", "waited": round(waited, 1),
+            contract={**contract, "waited": round(waited, 1),
                       "defaults": [DEFAULTS[key] for key in defaults]},
             pot=table["pot"], to_call=table["to_call"], price=_money(now),
             decision=len(history.get("actions") or ()),
@@ -469,7 +488,10 @@ class AAClassicAdvice(AAPlainAdvice):
 
     def _iron5(self, fields, street, now, missing, waited, history, stakes):
         """Not ready after 2 s, or nothing to work out from: iron rule 5 (fold,
-        or check when it is free), saying what is missing."""
+        or check when it is free), saying what is missing; in your blind
+        before the flop with no raise ``_blind`` instead."""
+        if street == "preflop" and blind_unraised(self.state, stakes, now):
+            return self._blind(fields, street, now, missing, waited, history, stakes)
         controls = fields.get("hero_controls") or {}
         action = "check" if controls.get("button") == "check" else "fold"
         words = "、".join(MISSING[key] for key in missing)
@@ -483,6 +505,35 @@ class AAClassicAdvice(AAPlainAdvice):
             to_call=("0" if action == "check"
                      else None if now is None else _money(now)),
             price=None if now is None else _money(now),
+            decision=len(history.get("actions") or ()),
+            stakes_used=stakes_report(stakes), button=controls.get("button"))
+
+    def _blind(self, fields, street, now, missing, waited, history, stakes):
+        """Your small or big blind (or straddle) before the flop with no raise,
+        not worked out (the screen not steady for 2 s, or the hand not fitting
+        the table): iron rule 5 does not apply there (v3.2, as for the one-page
+        rules). Your cards read and never two ways: the old strategy on what
+        was read. Else check, or complete: a blind folds no hand it has not
+        seen for the price of a check or half a blind."""
+        state = self.state
+        words = "、".join(MISSING[key] for key in missing)
+        if state.hero is not None and not state.card_conflict():
+            found = self._worked_out(state, fields, now, stakes)
+            if not isinstance(found, list):
+                return self._ready(found, fields, street, now, waited, history, stakes,
+                                   {"tag": f"盲位照算：缺{MISSING[missing[0]]}",
+                                    "blind": True, "missing": list(missing)})
+        controls = fields.get("hero_controls") or {}
+        action = "check" if now == 0 else "call"
+        word = "过牌" if action == "check" else "补齐"
+        return self._report(
+            "ready", None, street=street, kind="unread",
+            advice=[{"action": action, "frequency": 1.0}],
+            contract={"tag": f"盲位没人加注：{word}（缺{MISSING[missing[0]]}）",
+                      "waited": round(waited, 1), "defaults": [], "blind": True,
+                      "missing": list(missing),
+                      "reason": f"盲位没人加注，铁律 5 不适用：画面没读稳（缺{words}），先{word}"},
+            basis=BLIND_BASIS, to_call=_money(now), price=_money(now),
             decision=len(history.get("actions") or ()),
             stakes_used=stakes_report(stakes), button=controls.get("button"))
 

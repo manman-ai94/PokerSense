@@ -191,6 +191,56 @@ def test_the_iron_rule_5_checks_when_it_is_free(monkeypatch):
     assert report["advice"] == [{"action": "check", "frequency": 1.0}]
 
 
+def blind_hand(clock, hero=("Qs", "Qh"), opener=("call", 4)):
+    """Dealer 2: 3 small blind, 4 (you) big blind, 5 straddle; 6 calls (or
+    raises), the rest fold to you."""
+    screen = Screen(AAClassicAdvice(clock=clock), clock=clock, dealer=2, hero=hero)
+    screen.deal(blinds=())
+    for seat, chips in ((3, 1), (4, 2), (5, 4)):
+        screen.put(seat, chips, frames=0)
+    screen.show(3)
+    kind, chips = opener
+    screen.put(6, chips, badge=kind)
+    for seat in (7, 0, 1, 2, 3):
+        screen.fold(seat)
+    return screen
+
+
+def test_a_blind_nobody_raised_completes_without_your_cards():
+    # v3.2: the iron rule 5 does not apply in your blind with no raise
+    screen = blind_hand(Clock(), hero=("Qs", None))
+    report = screen.turn(call=2, frames=25)
+    assert (report["status"], report["kind"]) == ("ready", "unread")
+    assert report["advice"] == [{"action": "call", "frequency": 1.0}]
+    contract = report["contract"]
+    assert contract["blind"] and contract["missing"] == ["hero_cards"]
+    assert contract["tag"] == "盲位没人加注：补齐（缺你的手牌）"
+    assert report["basis"] == classic.BLIND_BASIS
+
+
+def test_a_blind_nobody_raised_is_worked_out_on_what_was_read():
+    clock = Clock()
+    screen = blind_hand(clock)
+    controls = {"visible": True, "button": "call", "call_amount": "2"}
+    for state in ("active", "folded") * 13:                 # 7 in, out, in, ...
+        screen.fields["participants"]["7"] = state
+        report = screen.show(1, hero_controls=controls)
+    assert (report["status"], report["kind"]) == ("ready", "preflop")
+    contract = report["contract"]
+    assert contract["blind"] and contract["missing"] == ["opponents"]
+    assert contract["tag"] == "盲位照算：缺在局对手没稳"
+    assert report["advice"][0]["action"] == report["options"][0]["action"]
+
+
+def test_a_blind_facing_a_raise_is_still_the_iron_rule_5():
+    screen = blind_hand(Clock(), hero=("Qs", None), opener=("raise", 12))
+    report = screen.turn(call=10, frames=25)
+    assert report["kind"] == "unread"
+    assert report["advice"] == [{"action": "fold", "frequency": 1.0}]
+    assert report["contract"]["tag"] == "铁律 5：缺你的手牌"
+    assert "blind" not in report["contract"]
+
+
 def _broken(observation, partial=False):
     raise ValueError("an action left over")
 

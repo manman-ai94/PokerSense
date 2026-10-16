@@ -788,7 +788,9 @@
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
         const basis = verdict.kind === "plain" ? pageBasis(advice)
-          : verdict.kind === "unread" ? ["画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"]
+          : verdict.kind === "unread" ? [advice.contract?.blind
+            ? "盲位没人加注，铁律 5 不适用：画面没读稳就先过牌或补齐"
+            : "画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"]
           : verdict.kind === "rough" ? ["粗略建议：只看价格和大概的胜率",
           `${reasonText(advice.rough_for)}，先按价格粗略给一个`,
           "对手的牌按 AA 真人常玩的前 40% 算，下注、加注给你的人按前 20%"]

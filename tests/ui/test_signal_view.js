@@ -627,6 +627,14 @@ assert.deepEqual([view.tone, view.verdict.word, view.verdict.kind, view.verdict.
   ["fold", "弃牌", "unread", "画面没读稳：缺你的手牌"]);
 assert.ok(view.tags.includes("铁律 5：缺你的手牌"));
 assert.equal(view.basis[0], "画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
+// Your blind with no raise: no iron rule 5; check, or complete.
+view = signalView(running(base({solver_advice_v1: {status: "ready", kind: "unread",
+  advice: [{action: "call", frequency: 1.0}], to_call: "2",
+  contract: {tag: "盲位没人加注：补齐（缺你的手牌）", waited: 2.0, defaults: [], blind: true,
+    missing: ["hero_cards"], reason: "盲位没人加注，铁律 5 不适用：画面没读稳（缺你的手牌），先补齐"}}})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.kind], ["跟注", "unread"]);
+assert.ok(view.tags.includes("盲位没人加注：补齐（缺你的手牌）"));
+assert.equal(view.basis[0], "盲位没人加注，铁律 5 不适用：画面没读稳就先过牌或补齐");
 view = signalView(running(base({solver_advice_v1: {status: "reading", kind: "classic",
   reason: "price_not_steady", waited: 0.4, missing: ["price_not_steady"],
   missing_words: ["要跟的金额没稳"]}})), 0, {});
