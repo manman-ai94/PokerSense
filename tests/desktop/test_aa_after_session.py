@@ -1,4 +1,5 @@
-"""The check-up sheet starts on its own when a recording stops."""
+"""The check-up sheet and the session package start on their own when a
+recording stops."""
 
 import sys
 
@@ -7,7 +8,7 @@ from poker_engine.desktop.aa_after_session import start_report
 
 
 def test_the_report_starts_for_a_recording_with_a_window_log(tmp_path):
-    tool = tmp_path / "flywheel_session.py"
+    tool = tmp_path / "session_package.py"
     tool.write_text("")
     folder = tmp_path / "20261013-200000-live"
     folder.mkdir()
@@ -24,7 +25,8 @@ def test_the_report_starts_for_a_recording_with_a_window_log(tmp_path):
     assert started == []
     assert start_report(folder, tool=tool, popen=popen) == "process"
     [(args, options)] = started
-    assert args == [sys.executable, str(tool), "report", "--recording", str(folder)]
+    assert args == [sys.executable, str(tool), "--recording", str(folder),
+                    "--with-sheet"]
     assert options["cwd"] == aa_after_session.REPO_ROOT
     assert (folder / "flywheel" / "report.log").exists()
 

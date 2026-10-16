@@ -363,10 +363,11 @@ def _street(rows, at):
     return "preflop"
 
 
-def hand_lines(name, rows, code=None):
-    """(hand lines, decision lines) of one log."""
+def hand_lines(name, rows, code=None, report=None):
+    """(hand lines, decision lines) of one log; ``report``: its
+    ``session_report`` when already made (``tools/session_package.py``)."""
     rows = [row for row in rows if row.get("fields")]
-    report = session_report([(name, rows)])
+    report = report or session_report([(name, rows)])
     grouped = fly.by_hand(rows)
     stakes = fly.hand_stakes(grouped)
     turns = {}

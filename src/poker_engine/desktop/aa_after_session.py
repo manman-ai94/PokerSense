@@ -1,14 +1,16 @@
-"""When a recording in the window stops: its check-up sheet, made on its own.
+"""When a recording in the window stops: its check-up sheet and session
+package, made on their own.
 
-``start_report`` starts ``tools/flywheel_session.py report`` for the
+``start_report`` starts ``tools/session_package.py --with-sheet`` for the
 recording's folder in a separate process at low priority (the window keeps
-running), with its output in ``<folder>/flywheel/report.log``. It does
+running): the sheet as ``tools/flywheel_session.py report`` makes it, then
+``flywheel/package.json``, with the output in ``<folder>/flywheel/report.log``. It does
 nothing in a packaged build (no ``tools/`` next to the code) or when the
 folder has no window log (``frames.jsonl``).
 
 ``after_recording`` is what the capture source calls: the sheet, then the
 folder handed to the uploader the window started (``aa_upload``), which
-waits for the sheet before it sends the folder."""
+waits for both before it sends the folder."""
 
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ import sys
 from ..data_paths import REPO_ROOT
 from . import aa_upload
 
-TOOL = REPO_ROOT / "tools" / "flywheel_session.py"
+TOOL = REPO_ROOT / "tools" / "session_package.py"
 
 
 def start_report(folder, *, tool=TOOL, popen=subprocess.Popen):
@@ -38,7 +40,8 @@ def start_report(folder, *, tool=TOOL, popen=subprocess.Popen):
               | subprocess.BELOW_NORMAL_PRIORITY_CLASS}
              if os.name == "nt" else {"start_new_session": True})
     with open(out / "report.log", "w", encoding="utf-8") as log:
-        return popen([sys.executable, str(tool), "report", "--recording", str(folder)],
+        return popen([sys.executable, str(tool), "--recording", str(folder),
+                      "--with-sheet"],
                      cwd=REPO_ROOT, env=env, stdin=subprocess.DEVNULL, stdout=log,
                      stderr=subprocess.STDOUT, **extra)
 

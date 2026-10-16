@@ -10,11 +10,16 @@ On the owner's Mac, after a tester's window uploaded its recordings
 On a computer that uploads (once; the window does the rest by itself):
 
     PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py setup --machine du
+    # the owner's Mac (through the Google Drive desktop folder, from this day on):
+    PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py setup --machine peng \\
+        --player peng --since 20261016
     PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py status
     PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py push   # upload now
+    PYTHONPATH=src:. .venv/bin/python tools/flywheel_sync.py push --recording <录像文件夹>
 
 ``pull`` reads ``<source>/<机器名>/<录像文件夹名>/`` and copies each recording
-whose ``upload.json`` is there (written last by the uploader) into
+whose ``upload.json`` is there (written last by the uploader), except this
+computer's own machine folder (its recordings are here already), into
 ``<root>/<机器名>-<录像文件夹名>/`` (default root
 ``PokerSense_private/aa-mac-recordings``), only the files that are missing or
 of another size, and checks every file's size against ``upload.json``. A
@@ -149,12 +154,7 @@ class RcloneSource:
 
 def drive_folder(folder=aa_upload.FOLDER, cloud=CLOUD):
     """The Google Drive desktop copy of the cloud folder, if this Mac has one."""
-    for account in sorted(Path(cloud).expanduser().glob("GoogleDrive-*")):
-        for mine in ("我的云端硬盘", "My Drive"):
-            path = account / mine / folder
-            if path.is_dir():
-                return path
-    return None
+    return aa_upload.drive_folder(folder, cloud)
 
 
 def choose_source(text, settings, *, which=shutil.which, run=aa_upload.run_process,
@@ -216,7 +216,22 @@ def pull_one(source, machine, name, root, ledger, *, report=True):
             shutil.rmtree(dest)     # what an older version left half done
         os.replace(into, dest)
     note = ledger_line(dest, machine, ledger, report=report)
+    if report:
+        note += package_line(dest)
     return "pulled", f"{machine}/{name} → {dest.name}（{note}）"
+
+
+def package_line(dest):
+    """The session package of a pulled recording that came without one."""
+    if (dest / fly.FOLDER / "package.json").exists() or not (
+            dest / "frames.jsonl").exists():
+        return ""
+    from tools import session_package
+    try:
+        session_package.make(dest)
+    except Exception as exc:          # the sheet and the files are here anyway
+        return f"；场次包没做成：{exc}"
+    return "；场次包在这里做好"
 
 
 def ledger_line(dest, machine, ledger, *, report=True):
@@ -241,10 +256,12 @@ def ledger_line(dest, machine, ledger, *, report=True):
     return "体检单在这里做好，已记账"
 
 
-def pull(source, root, ledger, *, report=True, out=print):
+def pull(source, root, ledger, *, report=True, out=print, own=None):
+    """Every finished recording of the other machines (not ``own``: this
+    computer's uploads are here already)."""
     counts = {}
     for machine in source.dirs():
-        if safe_name(machine) is None:
+        if safe_name(machine) is None or machine == own:
             continue
         for name in source.dirs(machine):
             if safe_name(name) is None:
@@ -274,8 +291,13 @@ def main(argv=None):
     setup.add_argument("--folder")
     setup.add_argument("--bwlimit")
     setup.add_argument("--rclone")
+    setup.add_argument("--player")
+    setup.add_argument("--drive")
+    setup.add_argument("--since")
     commands.add_parser("status")
-    commands.add_parser("push")
+    send = commands.add_parser("push")
+    send.add_argument("--recording", type=Path, action="append",
+                      help="只传这个录像文件夹（不管 since）")
     for command in (setup, commands.choices["status"], commands.choices["push"]):
         command.add_argument("--root", type=Path)
     args = parser.parse_args(argv)
@@ -290,18 +312,20 @@ def main(argv=None):
             return 2
         print(f"从 {source} 拉到 {root}")
         ledger = None if args.no_ledger else (args.ledger or fly.default_ledger())
-        counts = pull(source, root, ledger, report=not args.no_report)
+        counts = pull(source, root, ledger, report=not args.no_report,
+                      own=uploader.settings()["machine"])
         return 1 if counts.get("failed") or counts.get("bad") else 0
     if args.command == "setup":
         try:
             stored = json.loads(uploader.settings_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             stored = {}
-        for key in ("machine", "remote", "folder", "bwlimit", "rclone"):
+        for key in ("machine", "remote", "folder", "bwlimit", "rclone", "player",
+                    "drive", "since"):
             value = getattr(args, key)
             if value is not None:
-                stored[key] = (aa_upload.machine_name(value) if key == "machine"
-                               else value)
+                stored[key] = (aa_upload.machine_name(value)
+                               if key in ("machine", "player") else value)
         if not stored.get("rclone"):
             # The full path: a window started before rclone was on the
             # PATH finds it anyway. Not the link's target: Homebrew and
@@ -314,10 +338,12 @@ def main(argv=None):
     if args.command == "push":
         settings = uploader.settings()
         if not uploader._check(settings):
-            print(f"未配置上传：没有 rclone，或 rclone 里没有 {settings['remote']}。")
+            print(f"未配置上传：没有 rclone 的 {settings['remote']}，"
+                  "也没有 Google Drive 桌面版的云盘文件夹。")
             return 2
         settings["enabled"] = True        # asked for by hand: the switch aside
-        ok = all(uploader.upload(folder, settings) for folder in uploader.pending())
+        folders = args.recording or uploader.pending()
+        ok = all(uploader.upload(folder, settings) for folder in folders)
         print("都传好了。" if ok else f"没传完：{uploader.last_error}")
     status = uploader.status()
     status["waiting"] = len(uploader.pending())

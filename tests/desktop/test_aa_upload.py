@@ -1,5 +1,7 @@
-"""Recordings uploaded with rclone, with a stand-in for rclone and the cloud."""
+"""Recordings uploaded with rclone or into a synced cloud folder, with
+stand-ins for rclone and the cloud."""
 
+from fnmatch import fnmatch
 import json
 import os
 from pathlib import Path
@@ -40,7 +42,12 @@ class FakeRclone:
             return 1, ("2026/10/14 Failed to copy: dial tcp: lookup www.googleapis.com:"
                        " no such host\nrefresh token: secret-should-not-show\n")
         if command == "copy":
-            shutil.copytree(args[2], self.where(args[3]), dirs_exist_ok=True)
+            source, target = Path(args[2]), self.where(args[3])
+            for path in sorted(source.rglob("*")):
+                rel = path.relative_to(source).as_posix()
+                if path.is_file() and passes(args, rel):
+                    (target / rel).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(path, target / rel)
             return 0, ""
         if command == "dedupe":
             check_dedupe(args)
@@ -54,6 +61,26 @@ class FakeRclone:
 
     def copies(self):
         return [args for args in self.calls if args[1] in ("copy", "copyto")]
+
+
+def passes(args, rel):
+    """rclone's ``--include`` / ``--exclude``: the first rule that matches
+    decides, and with any ``--include`` a file no rule matches is left out
+    (a leading "/" anchors the rule at the folder's top)."""
+    rules = [(args[at], args[at + 1]) for at in range(len(args) - 1)
+             if args[at] in ("--include", "--exclude")]
+    for flag, rule in rules:
+        anchored = rule.startswith("/")
+        rule = rule.lstrip("/")
+        if (fnmatch(rel, rule) if anchored and "/" not in rule or "/" in rel
+                and anchored else fnmatch(rel.rsplit("/", 1)[-1], rule)):
+            return flag == "--include"
+    return not any(flag == "--include" for flag, _ in rules)
+
+
+def cloud_files(folder):
+    return sorted(path.relative_to(folder).as_posix() for path in folder.rglob("*")
+                  if path.is_file()) if folder.is_dir() else []
 
 
 # What rclone's ``dedupe --dedupe-mode`` accepts (fs/operations/dedupe.go,
@@ -82,6 +109,7 @@ def recording(root, name, *, finished=True, sheet=True):
     if sheet:
         (folder / "flywheel").mkdir()
         (folder / "flywheel" / "体检单.txt").write_text("体检单\n", encoding="utf-8")
+        (folder / "flywheel" / "package.json").write_text("{}", encoding="utf-8")
     return folder
 
 
@@ -91,6 +119,7 @@ def uploader(tmp_path, rclone, **options):
     settings = base / "settings.json"
     if not settings.exists():
         settings.write_text(json.dumps({"machine": "du"}), encoding="utf-8")
+    options.setdefault("cloud", tmp_path / "no-cloud-app")
     return aa_upload.Uploader(tmp_path / "recordings", base=base, run=rclone,
                               which=lambda name: "rclone", **options)
 
@@ -103,13 +132,16 @@ def test_a_finished_recording_goes_up_whole_with_its_list_last(tmp_path):
     assert up.upload_all() is True
     there = tmp_path / "cloud" / "PokerSense 同事数据" / "du" / folder.name
     assert sorted(p.relative_to(there).as_posix() for p in there.rglob("*")
-                  if p.is_file()) == ["flywheel/体检单.txt", "frames.jsonl",
-                                      "recording.json", "segment_0000.mp4",
-                                      "segments.csv", "upload.json"]
+                  if p.is_file()) == ["flywheel/package.json", "flywheel/体检单.txt",
+                                      "frames.jsonl", "recording.json",
+                                      "segment_0000.mp4", "segments.csv",
+                                      "upload.json"]
     marker = json.loads((there / "upload.json").read_text(encoding="utf-8"))
     assert marker["machine"] == "du" and marker["folder"] == folder.name
     assert marker["files"] == aa_upload.manifest(folder)["files"]
-    copy, last = rclone.copies()
+    *copies, last = rclone.copies()
+    assert len(copies) == 3                   # the package first, the video last
+    copy = copies[-1]
     assert copy[3] == f"pokersense-upload:PokerSense 同事数据/du/{folder.name}"
     assert "--checksum" in copy and copy[copy.index("--bwlimit") + 1] == "1M"
     assert last[1] == "copyto" and last[3].endswith("/upload.json")
@@ -119,7 +151,7 @@ def test_a_finished_recording_goes_up_whole_with_its_list_last(tmp_path):
     assert status["configured"] and status["uploaded"] == 1
     assert status["message"].startswith("录像自动上传：开")
     up.upload_all()                           # nothing new: nothing sent
-    assert len(rclone.copies()) == 2
+    assert len(rclone.copies()) == 4
 
 
 def test_same_named_folders_are_merged_before_the_list_is_written(tmp_path):
@@ -142,7 +174,7 @@ def test_same_named_folders_are_merged_before_the_list_is_written(tmp_path):
     up = uploader(tmp_path, rclone)
     assert up.upload_all() is True
     order = [args[1] for args in rclone.calls if args[1] != "listremotes"]
-    assert order == ["copy", "dedupe", "copyto"]
+    assert order == ["copy", "copy", "copy", "dedupe", "copyto"]
     dedupe = next(args for args in rclone.calls if args[1] == "dedupe")
     # Down to <folder>/<machine>/<recording>/flywheel; "skip" merges folders
     # (only "list" does not) and leaves files that differ alone.
@@ -228,7 +260,7 @@ def test_the_next_start_sends_what_the_last_one_did_not(tmp_path):
     rclone.calls.clear()
     assert again.upload_all() is True
     assert [args[2] for args in rclone.copies() if args[1] == "copy"] == [
-        str(done), str(cut)]
+        str(done)] * 3 + [str(cut)] * 3
     assert again.pending() == []
 
 
@@ -240,7 +272,8 @@ def test_without_rclone_or_its_remote_the_window_only_says_so(tmp_path):
     status = up.status()
     assert status["configured"] is False and status["message"].startswith("未配置上传")
     none = aa_upload.Uploader(tmp_path / "recordings", base=tmp_path / "upload",
-                              run=rclone, which=lambda name: None)
+                              run=rclone, which=lambda name: None,
+                              cloud=tmp_path / "no-cloud-app")
     assert none.status()["configured"] is False and none.upload_all() is True
 
 
@@ -254,7 +287,7 @@ def test_the_switch_is_kept_and_turning_it_on_sends_what_waits(tmp_path):
     assert up.upload_all() is True and rclone.copies() == []
     assert up.set_enabled(True)["enabled"] is True
     up.upload_all()
-    assert len(rclone.copies()) == 2
+    assert len(rclone.copies()) == 4
 
 
 def test_settings_default_and_bad_values(tmp_path):
@@ -290,57 +323,187 @@ def test_the_upload_waits_for_the_check_up_sheet(tmp_path):
                                            uploader=up)
     assert isinstance(got, Sheet)
     up.upload_all()
-    assert order == [("sheet", aa_upload.REPORT_WAIT), ("copy", str(folder))]
+    assert order == [("sheet", aa_upload.REPORT_WAIT)] + [("copy", str(folder))] * 3
 
 
-def test_the_video_goes_up_while_the_sheet_is_still_being_written(tmp_path):
-    """Upload starts the moment the recording stops: the video first, then
-    the sheet's files, and ``upload.json`` only once everything is there."""
-    folder = recording(tmp_path / "recordings", "20261015-102047-live", sheet=False)
-    order = []
+def test_the_package_and_the_log_go_up_before_the_video(tmp_path):
+    """The sheet and the session package are written first; then they and the
+    other small files go up, the window's log next, the video segments last,
+    and ``upload.json`` once everything is there."""
+    folder = recording(tmp_path / "recordings", "20261016-102047-live", sheet=False)
+    (folder / "segment_0001.mp4").write_bytes(b"\0" * 10)
     cloud = tmp_path / "cloud" / aa_upload.FOLDER / "du" / folder.name
+    seen = []
 
     class Sheet:
-        def poll(self):
-            return None                         # still writing
-
         def wait(self, timeout):
-            order.append("sheet")
+            seen.append(["sheet"])
             (folder / "flywheel").mkdir()
             (folder / "flywheel" / "体检单.txt").write_bytes("体检单\n".encode())
+            (folder / "flywheel" / "package.json").write_text("{}", encoding="utf-8")
 
     class Rclone(FakeRclone):
         def __call__(self, args, timeout):
+            answer = super().__call__(args, timeout)
             if args[1] in ("copy", "copyto"):
-                order.append(args[1])
-            return super().__call__(args, timeout)
+                seen.append(cloud_files(cloud))
+            return answer
 
     up = uploader(tmp_path, Rclone(tmp_path / "cloud"))
     up.submit(folder, wait_for=Sheet())
     assert up.upload_all() is True
-    assert order == ["copy", "sheet", "copy", "copyto"]
-    assert (cloud / "segment_0000.mp4").exists()
-    assert (cloud / "flywheel" / "体检单.txt").exists()
+    small = ["flywheel/package.json", "flywheel/体检单.txt", "recording.json",
+             "segments.csv"]
+    assert seen == [["sheet"], small, sorted(small + ["frames.jsonl"]),
+                    sorted(small + ["frames.jsonl", "segment_0000.mp4",
+                                    "segment_0001.mp4"]),
+                    sorted(small + ["frames.jsonl", "segment_0000.mp4",
+                                    "segment_0001.mp4", aa_upload.MARKER])]
     marker = json.loads((cloud / aa_upload.MARKER).read_text(encoding="utf-8"))
-    assert ["flywheel/体检单.txt", len("体检单\n".encode())] in marker["files"]
+    assert ["flywheel/package.json", 2] in marker["files"]
 
 
-def test_a_failed_first_copy_waits_for_the_next_pass(tmp_path):
-    folder = recording(tmp_path / "recordings", "20261015-102047-live", sheet=False)
-    rclone = FakeRclone(tmp_path / "cloud")
-    rclone.failing = True
+def test_which_pass_a_file_goes_up_in():
+    assert aa_upload.upload_pass("flywheel/package.json") == 0
+    assert aa_upload.upload_pass("recording.json") == 0
+    assert aa_upload.upload_pass("frames.jsonl") == 1
+    assert aa_upload.upload_pass("segment_0012.mp4") == 2
+    assert aa_upload.upload_pass("flywheel/segment_0000.mp4") == 0
+    assert aa_upload.upload_pass("flywheel/frames.jsonl") == 0
 
-    class Sheet:
-        def poll(self):
-            return None
 
-        def wait(self, timeout):
-            raise AssertionError("not waited for before the video is up")
+def test_a_failed_pass_stops_before_the_video_and_the_list(tmp_path):
+    folder = recording(tmp_path / "recordings", "20261016-102047-live")
+    cloud = tmp_path / "cloud" / aa_upload.FOLDER / "du" / folder.name
 
-    up = uploader(tmp_path, rclone)
-    up.submit(folder, wait_for=Sheet())
+    class Rclone(FakeRclone):
+        def __call__(self, args, timeout):
+            if args[1] == "copy" and "--include" in args:
+                return 1, "Failed to copy: dial tcp: i/o timeout\n"
+            return super().__call__(args, timeout)
+
+    up = uploader(tmp_path, Rclone(tmp_path / "cloud"))
     assert up.upload_all() is False
-    assert "no such host" in up.last_error and "secret" not in up.last_error
+    assert "i/o timeout" in up.last_error
+    assert cloud_files(cloud) == ["flywheel/package.json", "flywheel/体检单.txt",
+                                  "recording.json", "segments.csv"]
+    assert up.pending() == [folder]           # tried again later
+
+
+def drive(tmp_path, account="GoogleDrive-peng@example.com", mine="我的云端硬盘"):
+    """A Google Drive for desktop folder the way macOS keeps it."""
+    folder = tmp_path / "CloudStorage" / account / mine / aa_upload.FOLDER
+    (folder / "du").mkdir(parents=True)
+    return folder
+
+
+def test_without_rclone_the_macs_google_drive_folder_is_used(tmp_path):
+    """The owner's Mac: no rclone remote, but Google Drive for desktop keeps
+    the cloud folder in sync; the recording is copied into ``peng/`` there in
+    the same three passes, ``upload.json`` last, and no new sign-in."""
+    synced = drive(tmp_path)
+    folder = recording(tmp_path / "recordings", "20261016-201500-live")
+    (tmp_path / "upload").mkdir()
+    (tmp_path / "upload" / "settings.json").write_text(
+        json.dumps({"machine": "peng", "player": "peng"}), encoding="utf-8")
+    order = []
+    real = aa_upload.copy_slowly
+
+    def copy(source, target, limit, sleep=time.sleep, clock=time.monotonic):
+        order.append(Path(target).relative_to(synced / "peng" / folder.name)
+                     .as_posix())
+        real(source, target, limit, sleep=sleep, clock=clock)
+
+    rclone = FakeRclone(tmp_path / "cloud", remotes=())
+    up = uploader(tmp_path, rclone, cloud=tmp_path / "CloudStorage",
+                  sleep=lambda seconds: None)
+    try:
+        aa_upload.copy_slowly = copy
+        assert up.upload_all() is True
+    finally:
+        aa_upload.copy_slowly = real
+    assert rclone.copies() == []
+    there = synced / "peng" / folder.name
+    assert order == ["flywheel/package.json", "flywheel/体检单.txt", "recording.json",
+                     "segments.csv", "frames.jsonl", "segment_0000.mp4"]
+    marker = json.loads((there / aa_upload.MARKER).read_text(encoding="utf-8"))
+    assert marker["machine"] == "peng"
+    assert marker["files"] == aa_upload.manifest(folder)["files"]
+    assert not list(there.rglob("*.part"))
+    status = up.status()
+    assert status["configured"] and status["way"] == "folder"
+    assert status["destination"] == str(synced / "peng")
+    assert up.pending() == []
+    assert aa_upload.drive_folder(cloud=tmp_path / "CloudStorage") == synced
+    assert aa_upload.drive_folder(cloud=tmp_path / "nothing") is None
+
+
+def test_the_synced_folder_can_be_named_and_a_bad_one_is_not_used(tmp_path):
+    named = tmp_path / "elsewhere" / aa_upload.FOLDER
+    named.parent.mkdir()
+    recording(tmp_path / "recordings", "20261016-201500-live")
+    (tmp_path / "upload").mkdir()
+    settings = tmp_path / "upload" / "settings.json"
+    settings.write_text(json.dumps({"machine": "peng", "drive": str(named)}),
+                        encoding="utf-8")
+    up = uploader(tmp_path, FakeRclone(tmp_path / "cloud", remotes=()),
+                  sleep=lambda seconds: None)
+    assert up.upload_all() is True
+    assert (named / "peng" / "20261016-201500-live" / aa_upload.MARKER).is_file()
+    settings.write_text(json.dumps({"machine": "peng",
+                                    "drive": str(tmp_path / "gone" / "x" / "y")}),
+                        encoding="utf-8")
+    again = uploader(tmp_path, FakeRclone(tmp_path / "cloud", remotes=()))
+    assert again.status()["configured"] is False
+
+
+def test_rclone_with_its_remote_comes_before_the_synced_folder(tmp_path):
+    synced = drive(tmp_path)
+    folder = recording(tmp_path / "recordings", "20261016-201500-live")
+    rclone = FakeRclone(tmp_path / "cloud")
+    up = uploader(tmp_path, rclone, cloud=tmp_path / "CloudStorage")
+    assert up.upload_all() is True
+    assert up.status()["way"] == "rclone" and len(rclone.copies()) == 4
+    assert not (synced / "du" / folder.name).exists()
+
+
+def test_recordings_before_since_stay_on_this_computer(tmp_path):
+    root = tmp_path / "recordings"
+    recording(root, "20261015-235900-live")
+    new = recording(root, "20261016-090000-live")
+    (tmp_path / "upload").mkdir()
+    (tmp_path / "upload" / "settings.json").write_text(
+        json.dumps({"machine": "peng", "since": "20261016"}), encoding="utf-8")
+    up = uploader(tmp_path, FakeRclone(tmp_path / "cloud"))
+    assert up.pending() == [new]
+
+
+def test_the_copy_into_a_synced_folder_keeps_to_the_speed_limit(tmp_path):
+    source = tmp_path / "big.mp4"
+    source.write_bytes(b"x" * (3 * aa_upload.CHUNK + 5))
+    now, slept = [0.0], []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        now[0] += seconds
+
+    target = tmp_path / "out" / "big.mp4"
+    aa_upload.copy_slowly(source, target, aa_upload.CHUNK, sleep=sleep,
+                          clock=lambda: now[0])
+    assert target.read_bytes() == source.read_bytes()
+    assert now[0] >= 3.0 and len(slept) == 4      # one chunk a second
+    assert not (tmp_path / "out" / "big.mp4.part").exists()
+    slept.clear()
+    aa_upload.copy_slowly(source, target, 0, sleep=sleep)
+    assert slept == []
+
+
+def test_the_speed_limit_reads_like_rclones():
+    assert aa_upload.rate("1M") == 1024 ** 2
+    assert aa_upload.rate("512K") == 512 * 1024
+    assert aa_upload.rate("100") == 100 * 1024     # rclone's unit is KiB/s
+    assert aa_upload.rate("0") == 0 and aa_upload.rate("") == 0
+    assert aa_upload.rate("08:00,512k 12:00,off") == 0
 
 
 def test_a_configured_rclone_that_is_gone_is_passed_over(tmp_path):
