@@ -371,10 +371,21 @@ def priced(item, observation, share):
     return chips({**item, "action": action}, observation, share)
 
 
+def turn_key(item, before):
+    """(hand id, street, how many turns on that street of that hand come
+    before it in ``before``: earlier items, or keys already made)."""
+    if isinstance(before, dict):
+        count = sum(key[:2] == (item["hand_id"], item["street"]) for key in before)
+    else:
+        count = sum((other["hand_id"], other["street"])
+                    == (item["hand_id"], item["street"]) for other in before)
+    return item["hand_id"], item["street"], count
+
+
 def replay_log(name, rows, solver=False, cached=None):
     """Every one of your turns in one log: the window's and the rule's answers.
     ``cached``: the window's answers from an earlier run of this log
-    ({(hand id, street, video seconds): answer}), used instead of its own
+    ({(hand id, street, n-th turn on it): answer}), used instead of its own
     (the window still follows the log, without solving)."""
     rows = [row for row in rows if row.get("fields")]
     found = turns(rows)
@@ -409,9 +420,9 @@ def replay_log(name, rows, solver=False, cached=None):
         ready = [answer(reports[i], street) for i in indexes
                  if reports[i].get("status") == "ready"]
         item["window"] = ready[-1] if ready else None
-        key = (hand_id, street, item["video_seconds"])
-        if cached is not None and key in cached:
-            item["window"] = cached[key]
+        if cached is not None:
+            key = turn_key(item, items)
+            item["window"] = cached.get(key, item["window"])
         if hero and street in STREETS:
             try:
                 advice, source, why = simple_answer(
@@ -520,10 +531,12 @@ def summarize(items, hands=None):
 
 
 def _first_folds(items, key):
-    """Per hand, the first turn where ``key`` said fold and you put chips in."""
+    """Per hand, the first turn where ``key`` said fold to a bet and you put
+    chips in."""
     found = {}
     for item in items:
         if (_act(item, key) == "fold" and item.get("you_did") in WENT_ON
+                and item.get("button") != "check"
                 and item.get("fold_keeps_bb") is not None):
             found.setdefault((item["log"], item["hand_id"]), item)
     return found
@@ -578,9 +591,9 @@ def main(argv=None):
         cached = None
         earlier = args.window / f"{name}.jsonl" if args.window else None
         if earlier is not None and earlier.exists():
-            cached = {(item["hand_id"], item["street"], item["video_seconds"]):
-                      item["window"] for item in map(json.loads, earlier.open(
-                          encoding="utf-8")) if item.get("window") is not None}
+            cached = {}
+            for item in map(json.loads, earlier.open(encoding="utf-8")):
+                cached[turn_key(item, cached)] = item.get("window")
         found = replay_log(name, load(path), solver=args.solver and cached is None,
                            cached=cached)
         items += found

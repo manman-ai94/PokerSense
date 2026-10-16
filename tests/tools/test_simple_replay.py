@@ -110,3 +110,10 @@ def test_a_bet_the_actions_missed_is_still_read():
                              Decimal(145), Decimal(388), ("Th", "7s", "2d"), "flop")
     assert (raised.seat, raised.kind, raised.spot) == (0, "r", "facing_bet")
     assert abs(raised.size - 206 / 182) < 1e-9
+
+
+def test_the_window_answers_of_an_earlier_run_can_stand_in():
+    cached = {("hand_1", "preflop", 0): {"kind": "preflop", "action": "fold"}}
+    (item,) = replay_log("log", rows(), cached=cached)
+    assert item["window"] == {"kind": "preflop", "action": "fold"}
+    assert item["simple"]["source"] == "table"
