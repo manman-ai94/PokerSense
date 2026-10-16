@@ -55,6 +55,7 @@ REQUIRED_RESOURCES = (
     "ui/aa-live/hand_input.js", "ui/aa-live/analysis_records.js",
     "ui/aa-live/signal.html", "ui/aa-live/signal.js", "ui/aa-live/signal_view.js",
     "ui/aa-live/signal.css", "ui/aa-live/update_banner.js", "ui/aa-live/upload.js",
+    "ui/aa-live/strategy.js",
     "configs/strategy/examples/terminal-multiway-river-manual.json",
     "configs/strategy/examples/threeway-river-response-manual.json",
 )
@@ -273,7 +274,8 @@ def create_app(args):
         **video_options(args), allow_capture=args.allow_capture,
         bundle_sha256=args.bundle_sha256, idle_stop_seconds=args.idle_stop or None,
         rules_path=args.rules_path or state / "table-rules.json",
-        records_dir=args.records_dir or state / "records")
+        records_dir=args.records_dir or state / "records",
+        strategy_path=state / "advice-strategy.json")
 
     @app.get("/api/build")
     def build_identity():

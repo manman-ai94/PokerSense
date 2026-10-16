@@ -146,6 +146,13 @@ work timed on the cloud: the range rule over 1.5 s at 13 of your turns, at
 any other hand after the flop; the report's ``bomb_pot`` is each player's
 post. The advice comes from a model of how people play and is for study
 only; nothing here acts on the client.
+
+With the window's switch on ``plain`` (``strategy``; the default is still
+``classic``, all of the above) every frame goes to ``aa_plain_advice``
+instead: the one-page rules of 《一页纸打法 v3.1》 (``scoreboard.plain_policy``)
+from the frame's fields and a state kept per hand, worked out once per
+decision on the frame's own thread. No replay, no solver, no range rule, no
+rough rule, no background worker; nothing of the above runs.
 """
 
 from __future__ import annotations
@@ -179,6 +186,7 @@ from poker_engine.scoreboard.style_rules import LIVE as STYLE_RULES
 from poker_engine.scoreboard.style_rules import adjust as style_adjust
 from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
+from .aa_plain_advice import AAPlainAdvice
 from .aa_reads import AAReads
 from .aa_session import frame_summary
 from .aa_solver_input import (RULES_PATH, bomb_post, hand_facts,
@@ -246,6 +254,7 @@ BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 POSTFLOP = ("flop", "turn", "river")
 IN_HAND = ("active", "all_in")
 VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
+STRATEGIES = ("classic", "plain")   # the window's switch: classic until plain passes
 
 
 def _switch_quickly():
@@ -690,7 +699,12 @@ class AASolverAdvice:
     """Per-frame advice status; the solver runs on one background thread."""
 
     def __init__(self, bot=None, executor=None, preflop=None, model=None,
-                 rough_executor=None, clock=time.monotonic, warm_executor=None):
+                 rough_executor=None, clock=time.monotonic, warm_executor=None,
+                 strategy="classic"):
+        if strategy not in STRATEGIES:
+            raise ValueError(f"strategy must be one of {STRATEGIES}")
+        self.strategy = strategy
+        self._plain = AAPlainAdvice(clock=clock)
         self._bot = bot
         self._executor = executor
         # The rough rule's own worker; an executor given for the solve serves
@@ -721,12 +735,25 @@ class AASolverAdvice:
     def __call__(self, payload, frame):
         return self.observe(payload, frame)
 
+    def set_strategy(self, strategy):
+        """The window's switch: ``classic`` or ``plain``. Either starts on the
+        frames from now on: the other one's hand and decisions are dropped."""
+        if strategy not in STRATEGIES:
+            raise ValueError(f"strategy must be one of {STRATEGIES}")
+        if strategy != self.strategy:
+            self.strategy = strategy
+            self._jobs, self._quick, self._rough = {}, {}, {}
+            self._plain.reset()
+        return self.strategy
+
     def settled(self):
         """This hand's id and its decisions so far: {(decision, street):
         outcome}, None while still being worked out. A solve that finishes
         after you acted is here too, for grading what you did; where the
         window showed the range rule's action instead (the solve could not
         answer) or the rough rule's, that is the outcome."""
+        if self.strategy == "plain":
+            return self._plain.settled()
         return self._hand_id, {key: self._shown(key) for key in list(self._jobs)}
 
     def observe(self, payload, frame):
@@ -735,6 +762,8 @@ class AASolverAdvice:
     def observe_fields(self, fields, frame):
         """The same from a frame's summary (``frame_summary``), as the
         measurement log keeps it: advice can be replayed from a log."""
+        if self.strategy == "plain":
+            return self._plain.observe_fields(fields, frame)
         history = fields.get("actions_v1")
         if not history:
             return self._report("idle", "no_hand")
@@ -782,6 +811,8 @@ class AASolverAdvice:
     def stakes(self):
         """The stakes of the hand being followed (``aa_stakes``): what it
         showed before its first action, else what earlier hands settled on."""
+        if self.strategy == "plain":
+            return self._plain.stakes()
         rows = self._rows
         acted = bool(rows and ((rows[-1]["fields"].get("actions_v1") or {})
                                .get("actions")))
@@ -1168,5 +1199,5 @@ class AASolverAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "advice_rows", "decision_key", "multiway_row",
-           "range_report"]
+__all__ = ["AASolverAdvice", "STRATEGIES", "advice_rows", "decision_key",
+           "multiway_row", "range_report"]

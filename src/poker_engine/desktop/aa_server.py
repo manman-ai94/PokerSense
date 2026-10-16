@@ -20,7 +20,7 @@ from . import aa_upload
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession, EncodedJSON
 from .aa_grading import AAGrades
-from .aa_solver_advice import AASolverAdvice
+from .aa_solver_advice import STRATEGIES, AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
 from .aa_math import AATableMath
 from .aa_sources import CameraList, late_card, source_factory
@@ -117,6 +117,21 @@ def ui_root():
     return root / "ui" / "aa-live"
 
 
+def load_strategy(path):
+    """The advice switch kept in ``path``; ``classic`` when there is none."""
+    if path is None:
+        return STRATEGIES[0]
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8")).get("strategy")
+    except (OSError, ValueError, AttributeError):
+        return STRATEGIES[0]
+    return value if value in STRATEGIES else STRATEGIES[0]
+
+
+def save_strategy(path, strategy):
+    aa_upload.write_json(path, {"strategy": strategy})
+
+
 def create_app(profile_path, *, replay_pool=None, replay_first=None,
                replay_last=None, replay_playlist=None, allow_capture=False,
                replay_video=None, replay_video_start=0.0, replay_video_exclude=(),
@@ -125,7 +140,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
                recordings_dir=None,
                analysis_service=None, review_service=None, study_service=None,
                hand_input_service=None, analysis_records_service=None,
-               camera_list=None, uploader=None):
+               camera_list=None, uploader=None, strategy_path=None):
     profile_path = Path(profile_path)
     recordings_root = (Path(recordings_dir) if recordings_dir
                        else private_root() / "aa-mac-recordings")
@@ -135,7 +150,8 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         uploader = aa_upload.Uploader(recordings_root)
     # The cameras macOS lists, for the window to say whether the card is there.
     cameras = (camera_list or CameraList()) if allow_capture else None
-    advice = AASolverAdvice()
+    # The advice switch (classic / plain), kept in ``strategy_path`` when given.
+    advice = AASolverAdvice(strategy=load_strategy(strategy_path))
     service = session or AARecognitionSession(
         source_factory(profile_path, replay_pool=replay_pool,
                        replay_first=replay_first, replay_last=replay_last,
@@ -231,6 +247,10 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     def update_banner_script():
         return FileResponse(ui_root() / "update_banner.js",
                             media_type="text/javascript")
+
+    @app.get("/strategy.js")
+    def strategy_script():
+        return FileResponse(ui_root() / "strategy.js", media_type="text/javascript")
 
     @app.get("/upload.js")
     def upload_script():
@@ -630,6 +650,36 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         except OSError as exc:
             raise HTTPException(409, f"没有保存上传开关：{exc}") from None
 
+    def strategy_state():
+        return {"strategy": chooser.strategy, "choices": list(STRATEGIES),
+                "default": STRATEGIES[0], "saved": strategy_path is not None}
+
+    # The session's advice (a session passed in, as tests do, is left alone).
+    chooser = advice
+
+    @app.get("/api/strategy")
+    def strategy_status():
+        """Which rules the advice follows: the old ones (classic) or the one
+        page of 《一页纸打法 v3.1》 (plain)."""
+        return strategy_state()
+
+    @app.post("/api/strategy")
+    async def strategy_switch(request: Request):
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "无法读取 JSON") from None
+        if (not isinstance(body, dict) or set(body) != {"strategy"}
+                or body["strategy"] not in STRATEGIES):
+            raise HTTPException(400, "策略开关字段不受支持")
+        chooser.set_strategy(body["strategy"])
+        if strategy_path is not None:
+            try:
+                await run_in_threadpool(save_strategy, strategy_path, body["strategy"])
+            except OSError as exc:
+                raise HTTPException(409, f"开关已切换，但没有保存：{exc}") from None
+        return strategy_state()
+
     @app.post("/api/stop")
     def stop():
         with controls_lock:
@@ -768,7 +818,8 @@ def main(argv=None):
                      **video_options(args),
                      rules_path=args.rules_path, records_dir=args.records_dir,
                      bundle_sha256=args.bundle_sha256,
-                     allow_capture=args.allow_capture)
+                     allow_capture=args.allow_capture,
+                     strategy_path=private_root() / "advice-strategy.json")
     if args.open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(
             f"http://127.0.0.1:{args.port}")).start()

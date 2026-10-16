@@ -24,7 +24,11 @@ review of ``tools/aa_strategy_review.py`` and writes into
 * ``summary.json`` and ``体检单.txt``: the code that played (``code`` on the
   log's first line), the levels, hands and decisions, how many got advice,
   stalls, results in big blinds per 100 hands with a 95% interval, normal
-  hands and bomb pots apart, and the spots that lost the most;
+  hands and bomb pots apart, and the spots that lost the most; with the
+  advice of 《一页纸打法》 (``plain``) also the rule hits (``rules``,
+  "规则命中统计"): for each rule that decided an answer you were shown, how
+  many times, how often you did what it said, and the big blinds of those
+  hands; and the decisions the page does not cover (``unspecified``);
 * a line in the ledger (default ``PokerSense_private/flywheel/ledger.jsonl``;
   the recording's folder name is the label, a session reported again replaces
   its line; ``machine`` is the computer that recorded it: "本机" here, or the
@@ -211,6 +215,7 @@ def session_hands(name, rows):
         mine = turns.get(hand["hand_id"]) or []
         hands.append({
             "log": name, "hand_id": hand["hand_id"],
+            "rules": [hit for hit in map(rule_hit, mine) if hit],
             "video_seconds": hand["video_seconds"], "your_cards": hand["your_cards"],
             "players": hand["players"], "stakes": stakes_label(level),
             "stakes_sure": level["source"] != "unsure",
@@ -226,6 +231,40 @@ def session_hands(name, rows):
             "end_seconds": None if hand["video_seconds"] is None else round(
                 hand["video_seconds"] + hand["end_pts"] - hand["start_pts"], 2)})
     return report["summary"], hands
+
+
+def rule_hit(turn):
+    """The 《一页纸打法》 rule that decided the last answer of a turn, whether
+    you did what it said, and the case the page does not cover; None for
+    other advice."""
+    last = turn["answers"][-1] if turn["answers"] else None
+    if last is None or not last.get("rule"):
+        return None
+    return {"rule": last["rule"], "followed": turn.get("followed"),
+            "unspecified": last.get("unspecified")}
+
+
+def rule_stats(hands):
+    """规则命中统计: {rule: hits, followed / of the hits where your action was
+    read, big blinds of the hands it decided a step of (each hand once)},
+    the most hit first; and {case not covered: decisions}."""
+    rules, unspecified = {}, Counter()
+    for hand in hands:
+        for rule in {hit["rule"] for hit in hand.get("rules") or ()}:
+            rules.setdefault(rule, {"hits": 0, "followed": 0, "followed_of": 0,
+                                    "hands": 0, "bb": 0.0})
+            rules[rule]["hands"] += 1
+            rules[rule]["bb"] = round(rules[rule]["bb"] + hand["bb"], 2)
+        for hit in hand.get("rules") or ():
+            item = rules[hit["rule"]]
+            item["hits"] += 1
+            if hit["followed"] is not None:
+                item["followed_of"] += 1
+                item["followed"] += bool(hit["followed"])
+            if hit.get("unspecified"):
+                unspecified[hit["unspecified"]] += 1
+    ordered = dict(sorted(rules.items(), key=lambda pair: (-pair[1]["hits"], pair[0])))
+    return ordered, dict(unspecified.most_common())
 
 
 MISREADS = (("your_cards_readings", lambda n: n > 1, "你的牌认成两种"),
@@ -298,7 +337,8 @@ def session_summary(name, code, summary, hands):
             "no_advice_causes": summary["no_advice_causes"],
             "all": result(normal + bombs), "normal": result(normal),
             "bomb_pot": result(bombs),
-            "lost_most": ranking(hands, TOP)}
+            "lost_most": ranking(hands, TOP),
+            **dict(zip(("rules", "unspecified"), rule_stats(hands)))}
 
 
 def sheet(item):
@@ -336,6 +376,7 @@ def sheet(item):
                         f"{group['lost_bb']} 个大盲（这类共 {group['hands']} 手，净 "
                         f"{group['net_bb']:+}；照建议 {group['followed']}/"
                         f"{group['followed_of']}）看录像：{worst}")
+    text += rule_lines(item.get("rules"), item.get("unspecified"))
     look = item.get("to_look_at")
     if look and look["hands"]:
         text.append(f"要看的手 {look['hands']} 手（输 {LOOK_LOSS} 个大盲以上或认错），"
@@ -344,6 +385,23 @@ def sheet(item):
     if look and look["misreads"]:
         counts = look["misreads"].items()
         text.append("认错：" + "、".join(f"{label} {count} 手" for label, count in counts))
+    return text
+
+
+def rule_lines(rules, unspecified):
+    """规则命中统计 on the sheet: one line a rule (《一页纸打法》 advice only)."""
+    if not rules:
+        return []
+    from poker_engine.scoreboard.plain_policy import RULES, UNSPECIFIED
+    text = ["规则命中统计（一页纸打法）："]
+    for rule, item in rules.items():
+        text.append(f"  {rule} {RULES.get(rule, '')}：命中 {item['hits']} 次，照做 "
+                    f"{item['followed']}/{item['followed_of']}，这些手 {item['hands']} 手共 "
+                    f"{item['bb']:+} 个大盲")
+    if unspecified:
+        text.append("v3.1 没写的情形（按铁律 5）：" + "、".join(
+            f"{UNSPECIFIED.get(case, case)} {count} 次"
+            for case, count in unspecified.items()))
     return text
 
 
