@@ -108,7 +108,7 @@ PYTHONPATH=src:. .venv/bin/python tools/replay_aa_action_history.py --frames <�
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_session.py report --recording <录像文件夹>   # 或 rank [--since 日期] / ledger
 # 改动上 Mac 前的三道关：和 main 比，录像日志重放（建议覆盖不降；卡顿要按原速重放才量得出）、模拟每个牌桌 2 批牌（不能明显变差）、相关测试和 flake8
 PYTHONPATH=src:. .venv/bin/python tools/flywheel_gates.py --frames <录像文件夹>/frames.jsonl [...] --pools aa_real,noisy --out <目录>
-# 装新版前的复查（给杜或 Mac 装之前，合并后的 main 和装着的那版比一次，主人不打牌时在 Mac 上跑）：测试、录像日志重放（建议变了几处、为什么）、按原速重放（覆盖率、卡顿，旧版有缓存）、杜的 P30 验收，出一页复查单；先加 --plan 看要多久
+# 装新版前的复查（给杜或 Mac 装之前，合并后的 main 和装着的那版比一次，主人不打牌时在 Mac 上跑）：测试、录像日志重放（建议变了几处、为什么）、按原速重放（覆盖率、卡顿；两版都在这次复查里放一遍，不用以前量的）、杜的 P30 验收，出一页复查单；先加 --plan 看要多久
 PYTHONPATH=src:. .venv/bin/python tools/release_check.py <装着的版本> <新版> --recording <录像文件夹> [...] --measure <三星录像文件夹> --p30 <杜的录像文件夹> --out <目录>
 ```
 

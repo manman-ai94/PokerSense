@@ -32,8 +32,17 @@ the steps are the existing tools, not new ones:
    (``p30_acceptance.field_coverage``), stalls over 2 s, dropped frames,
    latency and the advice in real time are set side by side; it fails when
    the new version is clearly worse (the margins are ``*_MARGIN`` below).
-   A version measured before on the same recording is reused from
-   ``--cache`` (default ``PokerSense_private/release-check/measure-cache``).
+   Both versions are played in this check, one after the other, so the two
+   runs meet the same machine; the order alternates from one recording to
+   the next. A run from an earlier check is not reused: the same recognition
+   code read the dealer button on 93.8% of the Samsung recording's frames in
+   one check and on 89.1% in the next (986f986 and ab44f8f differ only in
+   ``aa_solver_input.py``). The runs are kept in ``--cache`` (default
+   ``PokerSense_private/release-check/measure-cache``), so a check cut short
+   and run again with the same versions and ``--out`` picks up the runs it
+   finished; a new ``--out`` plays both again. A version checked against
+   itself is played twice: the gap between its two runs is the run-to-run
+   noise.
 3. Second seat (``--p30``): ``tools/p30_acceptance.py run`` of the new
    version on its measured log. Fails unless the verdict is 通过.
 
@@ -71,7 +80,9 @@ HOLDOUT = {"aa_phone_record_20260909_031030_54322c62": ((300.0, 820.0),)}
 WINDOW_PORT = 8771
 FLAKE8_PATHS = ("src", "tests", "tools", "research/hu_root", "research/coverage_bridge")
 # Played at recorded pace, two runs of one version differ a little (which
-# frames get dropped). Worse than these is the new version's doing.
+# frames get dropped); these are for two runs one after the other in one
+# check (checking a version against itself shows the gap). Worse than these
+# is the new version's doing.
 FRAME_MARGIN = 0.01        # a field's coverage over frames
 SHARE_MARGIN = 0.03        # hands or decisions advised in real time
 COUNT_MARGIN = 2           # ... and never less than this many of them
@@ -417,11 +428,13 @@ def recorded_minutes(folder, windows=()):
     return round((seconds - cut) / 60, 1)
 
 
-def measure_dir(cache, commit, folder, windows):
+def measure_dir(cache, commits, label, folder, windows, out):
+    """Where the ``label`` version's run of ``folder`` is kept in the check of
+    these two ``commits`` writing to ``out``: another check never finds it."""
     key = json.dumps([str(Path(folder).resolve()), [list(w) for w in windows],
-                      "advice"])
+                      "advice", commits["old"], commits["new"], label, str(out)])
     tag = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
-    return cache / commit[:12] / f"{Path(folder).name}-{tag}"
+    return cache / commits[label][:12] / f"{Path(folder).name}-{tag}"
 
 
 def measured(target):
@@ -434,11 +447,12 @@ def measured(target):
         target / "frames.jsonl").is_file()
 
 
-def measure(tree, commit, folder, windows, cache, log):
-    """Play ``folder`` at recorded pace with ``tree``'s code (or reuse an
-    earlier run of this commit): (folder of the run, reused)."""
+def measure(tree, commits, label, folder, windows, cache, out):
+    """Play ``folder`` at recorded pace with ``tree``'s code (or reuse this
+    check's finished run of it): (folder of the run, reused)."""
     from tools.flywheel_gates import run_tool
-    target = measure_dir(cache, commit, folder, windows)
+    target = measure_dir(cache, commits, label, folder, windows, out)
+    log = out / f"measure-{Path(folder).name}-{label}.log"
     if measured(target):
         return target, True
     if target.exists():                    # an earlier run cut short
@@ -531,22 +545,31 @@ def field_labels():
             for key, label, _ in getattr(p30_acceptance, name, ())}
 
 
+def finished_at(target):
+    try:
+        return time.strftime("%m-%d %H:%M", time.localtime(
+            (target / "summary.json").stat().st_mtime))
+    except OSError:
+        return None
+
+
 def measure_step(trees, commits, folders, extra, cache, out):
     labels, recordings, reasons = field_labels(), [], []
-    for folder in folders:
+    for index, folder in enumerate(folders):
         windows = windows_for(folder, extra)
         runs, reused = {}, {}
-        for label in ("old", "new"):
+        for label in ("old", "new") if index % 2 == 0 else ("new", "old"):
             print(f"按原速重放 {Path(folder).name}（{'旧' if label == 'old' else '新'}版"
                   f" {commits[label][:7]}）……", flush=True)
-            target, reused[label] = measure(
-                trees[label], commits[label], folder, windows, cache,
-                out / f"measure-{Path(folder).name}-{label}.log")
+            target, reused[label] = measure(trees[label], commits, label, folder,
+                                            windows, cache, out)
             runs[label] = target
         item = {"recording": Path(folder).name,
                 "minutes": recorded_minutes(folder, windows),
                 "skipped_windows": [list(w) for w in windows], "reused": reused,
-                "runs": {label: str(path) for label, path in runs.items()}}
+                "runs": {label: str(runs[label]) for label in ("old", "new")},
+                "finished_at": {label: finished_at(runs[label])
+                                for label in ("old", "new")}}
         if not all(measured(path) for path in runs.values()):
             item["reasons"] = ["没放完（见 measure-*.log）"]
         else:
@@ -675,7 +698,10 @@ def page(result):
     for item in (result["steps"].get("measure") or {}).get("recordings", []):
         if not item.get("rows"):
             continue
+        done = item.get("finished_at") or {}
         lines += ["", f"## 按原速重放：{item['recording']}", "",
+                  f"两版都在这次复查里放：旧版 {done.get('old') or '—'}、新版 "
+                  f"{done.get('new') or '—'} 放完。", "",
                   "| 项目 | 旧版 | 新版 | |", "|---|---|---|---|"]
         lines += [f"| {row['what']} | {_text(row['old'])} | {_text(row['new'])} | "
                   f"{'变差' if row['worse'] else ''} |" for row in item["rows"]]
@@ -707,10 +733,13 @@ def measure_plan(args, commits, cache):
         windows = windows_for(folder, args.exclude)
         minutes = recorded_minutes(folder, windows)
         todo = [label for label in ("old", "new")
-                if not measured(measure_dir(cache, commits[label], folder, windows))]
+                if not measured(measure_dir(cache, commits, label, folder, windows,
+                                            args.out))]
         total += (minutes or 0) * len(todo)
+        done = (f"（另 {2 - len(todo)} 版这次复查已经放完）" if len(todo) < 2
+                else "")
         lines.append(f"按原速重放 {Path(folder).name}：{_text(minutes)} 分钟 × "
-                     f"{len(todo)} 版（另 {2 - len(todo)} 版用缓存）")
+                     f"{len(todo)} 版{done}")
     lines.append(f"按原速重放合计约 {round(total)} 分钟"
                  + ("，另加 P30 离线座位检查几分钟" if args.p30 else ""))
     return lines
@@ -780,8 +809,8 @@ def main(argv=None):
             steps["measure"] = measure_step(trees, commits, folders, args.exclude,
                                             args.cache, args.out)
             if args.p30:
-                new_run = measure_dir(args.cache, commits["new"], args.p30,
-                                      windows_for(args.p30, args.exclude))
+                new_run = measure_dir(args.cache, commits, "new", args.p30,
+                                      windows_for(args.p30, args.exclude), args.out)
                 steps["p30"] = (
                     p30_step(trees["new"], args.p30, new_run / "frames.jsonl",
                              args.exclude, args.out) if measured(new_run) else

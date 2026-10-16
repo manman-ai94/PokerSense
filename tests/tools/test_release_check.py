@@ -1,6 +1,7 @@
 """The release check on synthetic logs and runs (no recording, no solver)."""
 
 import json
+from pathlib import Path
 
 from tools import release_check as check
 from tools.flywheel_gates import git
@@ -159,24 +160,85 @@ def _measured_run(folder, items, status="ENDED", dropped=0.01):
             "latency_ms": {"arrival_to_published": {"p95": 120.0}}}}))
 
 
-def test_runs_measured_before_are_reused_and_compared(tmp_path, monkeypatch):
-    folder = tmp_path / "20261008-153114-live"
+def _recording(tmp_path, name):
+    folder = tmp_path / name
     folder.mkdir()
     (folder / "recording.json").write_text(json.dumps({"recorded_seconds": 600}))
-    commits = {"old": "a" * 40, "new": "b" * 40}
-    for label in ("old", "new"):
-        _measured_run(check.measure_dir(tmp_path / "cache", commits[label], folder, ()),
-                      rows())
-    monkeypatch.setattr("tools.flywheel_gates.run_tool",
-                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("ran")))
-    result = check.measure_step({"old": None, "new": None}, commits, [folder], (),
-                                tmp_path / "cache", tmp_path)
+    return folder
+
+
+def _played(monkeypatch):
+    """Play no recording: each run at recorded pace writes a short finished
+    log. The (version, recording) of each run, in the order played."""
+    played = []
+
+    def run_tool(tree, args, log):
+        _measured_run(Path(args[args.index("--out") + 1]), rows())
+        played.append((tree, Path(args[args.index("--video") + 1]).name))
+        return 0
+
+    monkeypatch.setattr("tools.flywheel_gates.run_tool", run_tool)
+    return played
+
+
+A, B, C = "a" * 40, "b" * 40, "c" * 40
+
+
+def test_both_versions_are_played_in_the_same_check(tmp_path, monkeypatch):
+    played = _played(monkeypatch)
+    folder = _recording(tmp_path, "20261008-153114-live")
+    cache = tmp_path / "cache"
+    check.measure_step({"old": "a", "new": "b"}, {"old": A, "new": B}, [folder], (),
+                       cache, tmp_path)
+    # b was the new version last time and is the old one now: that run met
+    # another day's machine, so b is played again next to c.
+    played.clear()
+    result = check.measure_step({"old": "b", "new": "c"}, {"old": B, "new": C},
+                                [folder], (), cache, tmp_path)
+    assert played == [("b", folder.name), ("c", folder.name)]
+    [item] = result["recordings"]
+    assert item["reused"] == {"old": False, "new": False}
+    assert set(item["finished_at"]) == {"old", "new"}
+
+
+def test_a_check_cut_short_picks_up_its_own_runs(tmp_path, monkeypatch):
+    played = _played(monkeypatch)
+    folder = _recording(tmp_path, "20261008-153114-live")
+    args = ({"old": "a", "new": "b"}, {"old": A, "new": B}, [folder], (),
+            tmp_path / "cache", tmp_path)
+    check.measure_step(*args)
+    played.clear()
+    result = check.measure_step(*args)
     assert result["passed"], result["reasons"]
+    assert played == []
     [item] = result["recordings"]
     assert item["reused"] == {"old": True, "new": True} and item["minutes"] == 10.0
     pot = next(row for row in item["rows"] if row["what"] == "底池")
     assert pot["old"] == pot["new"] == 1.0
     assert any(row["what"] == "卡顿超过 2 秒" for row in item["rows"])
+    text = check.page({"old": A, "new": B, "finished": "", "minutes": 1.0,
+                       "not_run": {}, "steps": {"measure": result}})
+    assert "两版都在这次复查里放：旧版 " in text
+    # The same two versions checked again into a new folder: played again.
+    (tmp_path / "again").mkdir()
+    check.measure_step(*args[:5], tmp_path / "again")
+    assert played == [("a", folder.name), ("b", folder.name)]
+
+
+def test_the_order_alternates_and_a_version_against_itself_plays_twice(
+        tmp_path, monkeypatch):
+    played = _played(monkeypatch)
+    first, second = _recording(tmp_path, "rec-1"), _recording(tmp_path, "rec-2")
+    cache = tmp_path / "cache"
+    check.measure_step({"old": "a", "new": "b"}, {"old": A, "new": B},
+                       [first, second], (), cache, tmp_path)
+    assert played == [("a", "rec-1"), ("b", "rec-1"), ("b", "rec-2"), ("a", "rec-2")]
+    played.clear()
+    result = check.measure_step({"old": "a", "new": "a"}, {"old": A, "new": A},
+                                [first], (), cache, tmp_path)
+    assert played == [("a", "rec-1"), ("a", "rec-1")]
+    [item] = result["recordings"]
+    assert item["runs"]["old"] != item["runs"]["new"]
 
 
 def test_the_plan_says_how_long_the_slow_part_takes(tmp_path, capsys):
