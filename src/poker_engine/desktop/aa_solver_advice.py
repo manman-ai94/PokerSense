@@ -378,9 +378,14 @@ def _rule_set():
 
 
 def _bets(fields):
-    """The chips in front of the players on this street, as read."""
-    return sum((_decimal(value) or Decimal(0)
-                for value in (fields.get("street_wagers") or {}).values()), Decimal(0))
+    """The chips in front of the players on this street: each seat's as read,
+    or as its action history has them (``put_in``) where that is more (a
+    shove read only from the stack drop, the chips in front unread)."""
+    wagers = {seat: _decimal(value) or Decimal(0)
+              for seat, value in (fields.get("street_wagers") or {}).items()}
+    for seat, chips in put_in(fields, fields.get("street")).items():
+        wagers[seat] = max(wagers.get(seat, Decimal(0)), chips)
+    return sum(wagers.values(), Decimal(0))
 
 
 def pot_on_screen(fields, rows=()):
@@ -388,8 +393,11 @@ def pot_on_screen(fields, rows=()):
     unread for 10 seconds while a player went all in before the flop and it
     came to you): the pot last read in this hand (``rows``, oldest first)
     with the chips in front of the players then taken out on the same street,
-    plus the chips in front of them now. The pot on screen counts the chips
-    in front (before the flop it was those plus 16 in almost every frame).
+    plus the chips in front of them now (a shove the history has from the
+    stack drop counts: a code check on 10/16 found one left out of the pot
+    and the rough rule calling it with any two cards). The pot on screen
+    counts the chips in front (before the flop it was those plus 16 in
+    almost every frame).
     Before the flop with no pot read yet, the chips in front alone. None
     after the flop with no pot read in the hand."""
     pot = _decimal(fields.get("pot"))
@@ -553,13 +561,16 @@ def rough_winnable(wagers, mine, pot, to_call, stakes=None):
     """The chips a call can win, after rake (``side_pots``): the pot and your
     call, less the chips in front of others above what you will have in (all
     in for less, the rest of a bet is not yours) and less the table's rake
-    (5%, at most 5 big blinds)."""
+    (5%, at most 5 big blinds); at least your call."""
     level = mine + to_call
     over = sum((max(Decimal(0), chips - level) for seat, chips in wagers.items()
                 if seat != str(HERO)), Decimal(0))
     matched = pot + to_call - over
     rules = {**_rule_set(), "big_blind": str(big_blind(stakes))}
-    return matched - Decimal(str(rake({"rules": rules}, float(matched))))
+    kept = matched - Decimal(str(rake({"rules": rules}, float(max(matched, 0)))))
+    # Never less than your call: a pot worked out from a screen that missed
+    # chips must not make the price negative (every hand calls) or infinite.
+    return max(kept, to_call)
 
 
 def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
