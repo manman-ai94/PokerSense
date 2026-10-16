@@ -552,7 +552,7 @@ assert.equal(stopped({seconds: 3600, stopped_reason: "low_disk_space", megabytes
   "已存好 · 磁盘快满了，自动停 · 1.5 GB");
 assert.equal(stopped({seconds: 3, error: "the H.264 encoder did not open"}).note,
   "录像出错：the H.264 encoder did not open");
-// 《一页纸打法 v3.1》 (plain): the action, the one-sentence reason, the three numbers,
+// 《一页纸打法》 (plain): the action, the one-sentence reason, the three numbers,
 // the rule that decided with its number and where the answer flips.
 const page = (row, plain, extra = {}) => base({solver_advice_v1: {status: "ready", kind: "plain",
   advice: [row], to_call: "28", pot: "85", seconds: 0.2, plain, ...extra}});
@@ -569,7 +569,7 @@ assert.deepEqual(view.numbers.map(item => [item.label, item.value]),
 assert.equal(view.numbers[1].note, "中对 C 档");
 assert.deepEqual(view.basis, ["定生死的那一条：F.C 面对下注·C 档 · 0.2 秒算完",
   "翻转条件：转牌、河牌再被下注就弃", "只显示建议，不替你点"]);
-// A bet with its size, the rules hit on the way, and iron law 5 where v3.1 says nothing.
+// A bet with its size, the rules hit on the way, and iron law 5 where the page says nothing.
 view = signalView(running(page({action: "raise", frequency: 1.0, chips: "60", to: "60"},
   {...foldPlain, action: "raise", rule: "J3", rule_label: "直接全下·A 档加注 ≥ 剩余筹码 40%",
     hits: ["F.A", "J3"], tier: "D_strong", equity: null})), 0, {});
@@ -579,7 +579,16 @@ assert.equal(view.numbers[1].value, "—");
 assert.equal(view.numbers[1].note, "中对 D-强 档");
 view = signalView(running(page({action: "fold", frequency: 1.0},
   {...foldPlain, rule: "I5", rule_label: "铁律 5·拿不准就弃", hits: ["I5"], unspecified: "blind_unopened"})), 0, {});
-assert.ok(view.basis.includes("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人"));
+assert.ok(view.basis.includes("本页没写这种情形：按铁律 5 先弃或过牌，记下来给主人"));
+// The deciding rule's record so far (v3.3 section 6): its hits, and the hands it
+// decided in the sessions before; nothing before yet says so.
+view = signalView(running(page({action: "fold", frequency: 1.0},
+  {...foldPlain, record: {hits: 12, session: 3, sessions: 4, hands: 9, bb: 34.25}})), 0, {});
+assert.deepEqual(view.basis.slice(0, 2), ["定生死的那一条：F.C 面对下注·C 档 · 0.2 秒算完",
+  "这一条至今命中 12 次（本场 3 次）；战绩：之前 4 场它定过的 9 手共 +34.3 个大盲"]);
+view = signalView(running(page({action: "fold", frequency: 1.0},
+  {...foldPlain, record: {hits: 1, session: 1, sessions: 0, hands: 0, bb: 0}})), 0, {});
+assert.equal(view.basis[1], "这一条至今命中 1 次（本场 1 次）；战绩：之前的场次还没有");
 // The small labels: how it was read, the defaults taken; a new price worked out again
 // with the old answer beside it; never "已更新" within a decision.
 view = signalView(running(page({action: "call", frequency: 1.0},

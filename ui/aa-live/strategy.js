@@ -1,6 +1,6 @@
 "use strict";
 // "建议用哪套打法" in the settings view: the switch between the old advice
-// (classic) and the one page of 《一页纸打法 v3.1》 (plain), /api/strategy.
+// (classic) and the one page of 《一页纸打法》 (plain), /api/strategy.
 (function () {
   const HEADERS = {"Content-Type": "application/json", "X-AA-Live": "1"};
 

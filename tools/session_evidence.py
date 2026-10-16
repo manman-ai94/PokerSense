@@ -29,6 +29,24 @@ or an AI, not for a person.
   number with other wording or numbers is another line, never added up.
 * Shown hands corrected by a later frame, shown by choice, or from a hand
   not seen whole never count for the ranges (``calibrates`` in the package).
+* The 分量账本 (block 11) is added up per one-page version of the replay:
+  for each of the page's three groups, what you got from the first
+  divergence on less the fold line, with the plain 95% interval and the one
+  that stays right however often it is looked at (``luck.always_valid``),
+  raw and with the luck of the cards after an all-in taken out; and for
+  each of v3.3's two loosenings the test to withdraw it (plain 95% interval
+  of the luck-out numbers holds 0, top under +4 big blinds a hand; it is
+  meant to be read once, after 1000-1500 hands). Packages from before
+  block 11 are counted as having none.
+
+* Each preflop class shows the mean place of its shown hands (median
+  beside it), the share outside its preflop range and whether it has the
+  shown hands the page wants (``plain_live_report.ENOUGH``), as the page's
+  section 7 has 范围校准.
+* 遵从率 (block 12) is added up over the packages that have it, all advice
+  and the page's and the older advice's apart; the sessions under 80%,
+  which the page does not count in results, are named (their results are
+  still in the results line).
 
 The packages hold other players' hands: this reads them where they are and
 prints counts; nothing is written.
@@ -42,6 +60,12 @@ import json
 from pathlib import Path
 import statistics
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from poker_engine.scoreboard.luck import always_valid, interval  # noqa: E402
+from tools.plain_live_report import ENOUGH  # noqa: E402
 
 CLASSES = ("limp", "raise", "call_raise", "three_bet", "call_three_bet")
 CLASS_WORD = {"limp": "平跟", "raise": "加注", "call_raise": "跟加注",
@@ -65,6 +89,20 @@ OUTCOME_WORD = {"showdown": "普通摊牌", "allin_showdown": "全下摊牌",
                 "voluntary": "主动亮", "corrected": "被纠正", "mucked": "盖牌",
                 "folded": "弃", "won_uncontested": "没摊牌赢", "late": "没从头看到",
                 "unfinished": "录像停在半手"}
+STRATEGY_WORD = {"plain": "一页纸", "old": "旧策略"}
+GROUP_WORD = {"a_preflop_old_in": "a 翻前旧进、本页弃",
+              "b_postflop_plain_fold": "b 翻后本页弃、旧继续",
+              "c_old_allin": "c 旧策略建议全下（有效筹码 ≥ 50 个大盲）"}
+ENTER_WORD = {"a_preflop_old_in": "没弃", "b_postflop_plain_fold": "没弃",
+              "c_old_allin": "加注了"}
+GROUPS = (*GROUP_WORD, "other")       # as session_shadow.GROUPS
+LOOSE_WORD = {"late_limp": "晚位平跟", "bb_complete": "大盲补齐", "sb_complete": "小盲补齐"}
+WITHDRAW_TOP = 4.0
+COMPLIANCE_WORD = {"all": "全部", "plain": "一页纸", "old": "旧策略"}
+COMPLIANCE_KEYS = ("counted", "complied", "looser", "tighter", "no_advice", "unknown",
+                   "you_unread")
+COMPLIANCE_ENOUGH = ENOUGH["compliance"]  # decisions the page wants for it
+SHOWN_ENOUGH = ENOUGH["shown_class"]      # shown hands a class wants
 DEVIATIONS_SHOWN = 30
 MAX_MISREAD = 0.2
 AGREE = 0.05
@@ -201,10 +239,14 @@ def range_lines(packages):
         places = sorted((item["range"] or {}).get("percentile") for item in used
                         if (item["range"] or {}).get("percentile") is not None)
         counts = seats.get(cls, Counter())
-        where = f"，真牌位置中位数 {statistics.median(places):.0%}" if places else ""
+        where = (f"，真牌位置均值 {sum(places) / len(places):.0%}（中位数 "
+                 f"{statistics.median(places):.0%}）" if places else "")
+        enough = "够" if len(used) >= SHOWN_ENOUGH else "不够"
         text.append(
             f"  {CLASS_WORD.get(cls, cls)}：校准用 {len(used)} 个，翻前范围里 "
-            f"{share(before, len(used))}，缩窄后范围里 {share(after, len(used))}{where}；"
+            f"{share(before, len(used))}，缩窄后范围里 {share(after, len(used))}，"
+            f"落在翻前范围外 {share(len(used) - before, len(used))}{where}，"
+            f"{SHOWN_ENOUGH} 个才稳：{enough}；"
             f"分母 {counts.get('seats', 0)} 个座位" + "".join(
                 f"（{'、'.join(ends)}）" for ends in [[
                     f"{OUTCOME_WORD[key]} {counts[key]}" for key in OUTCOMES
@@ -250,6 +292,116 @@ def timing_lines(packages):
     return text
 
 
+def _booked(values):
+    """'+x bb，每手 +m（95% 区间 [lo, hi]；随时看都算数 ±h）' over these values."""
+    if not values:
+        return "没有"
+    mean, half = interval(values)
+    text = f"{sum(values):+.1f} bb，每手 {mean:+.2f}"
+    if half is not None:
+        steady = always_valid(values)[1]
+        text += (f"（95% 区间 [{mean - half:+.2f}, {mean + half:+.2f}]；"
+                 f"随时看都算数 ±{steady:.2f}）")
+    return text
+
+
+def withdraw_line(values):
+    """v3.3's test for its two loosenings: the interval holds 0 and its top is
+    under +4 big blinds a hand."""
+    mean, half = interval(values)
+    if half is None:
+        return "还算不出区间"
+    low, high = mean - half, mean + half
+    meets = low <= 0 <= high and high < WITHDRAW_TOP
+    return ("区间含 0 且上限 < +4：是（到复核时还是这样就收回）" if meets
+            else "区间含 0 且上限 < +4：否")
+
+
+def shadow_lines(packages):
+    """分量账本 (block 11), per one-page version of the replay."""
+    groups, without = {}, 0
+    for package in packages:
+        shadow = package.get("shadow")
+        if not shadow or "groups" not in shadow.get("summary", {}):
+            without += 1
+            continue
+        version = shadow["summary"].get("page_version") or "无"
+        groups.setdefault(version, []).append((package, shadow))
+    text = ["分量账本（一页纸第七节：本页和旧策略都按录像离线重放，每手只记第一个分歧，"
+            "弃 = 0；数字是你投进去的实得减弃牌线，正数是比弃好；只记账，不给打牌的人看）："]
+    for version, found in sorted(groups.items()):
+        tops = [shadow["summary"] for _, shadow in found]
+        items = [item for _, shadow in found for item in shadow["decisions"]]
+        hands = sum((package.get("session") or {}).get("hands") or 0
+                    for package, _ in found)
+        shown_by = Counter()
+        for top in tops:
+            shown_by.update(top.get("shown_by") or {})
+        showed = "、".join(f"{STRATEGY_WORD.get(name, name)} {count}"
+                          for name, count in shown_by.most_common()) or "无"
+        same = sum(top["replay_matches_shown"]["same"] for top in tops)
+        checked = sum(top["replay_matches_shown"]["n"] for top in tops)
+        text.append(
+            f"  按一页纸 {version} 重放：{len(found)} 场 {hands} 手，决策 "
+            f"{sum(top['decisions'] for top in tops)}，两边都有建议 "
+            f"{sum(top['compared'] for top in tops)}，分歧 "
+            f"{sum(top['diverged'] for top in tops)}（每手第一个 "
+            f"{sum(top['first_divergences'] for top in tops)}）；窗口当时显示 "
+            f"{showed}，重放和窗口说的一样 {same}/{checked}")
+        for name in GROUPS:
+            mine = [item for item in items
+                    if item.get("first_divergence") and item["group"] == name]
+            if name == "other":
+                text.append(f"    其他分歧 {len(mine)} 手（不在三组里，只数不记）")
+                continue
+            went = [item for item in mine if item["entered"]]
+            raw = [item["in_minus_fold_bb"] for item in went
+                   if item["in_minus_fold_bb"] is not None]
+            lucky = [item["in_minus_fold_luck_out_bb"] for item in went
+                     if item["in_minus_fold_luck_out_bb"] is not None]
+            text.append(f"    {GROUP_WORD[name]}：{len(mine)} 手，你{ENTER_WORD[name]} "
+                        f"{len(went)}（另 {len(mine) - len(went)} 手你没走这条线，只数不记）；"
+                        f"记上账 {len(raw)} 手 {_booked(raw)}；扣全下后发牌运气 "
+                        f"{len(lucky)} 手 {_booked(lucky)}")
+        text.append("    放宽复核（v3.3 新加的牌；1000–1500 手后区间含 0 且上限 < +4 bb/手"
+                    f" → 收回；现在 {hands} 手）：")
+        for name, word in LOOSE_WORD.items():
+            mine = [item for item in items if item.get("loosened") == name]
+            went = [item for item in mine if item["entered"]]
+            lucky = [item["in_minus_fold_luck_out_bb"] for item in went
+                     if item["in_minus_fold_luck_out_bb"] is not None]
+            raw = [item["in_minus_fold_bb"] for item in went
+                   if item["in_minus_fold_bb"] is not None]
+            enters = sum((item.get("plain") or {}).get("action") not in (None, "fold")
+                         for item in mine)
+            text.append(f"      {word}：碰到 {len(mine)} 次，本页说进 {enters}，你进了 "
+                        f"{len(went)}；扣运气 {len(lucky)} 手 {_booked(lucky)}，"
+                        f"{withdraw_line(lucky)}；不扣运气 {_booked(raw)}")
+        shown = sum(top["by_shown"]["n"] for top in tops)
+        shown_bb = sum(top["by_shown"]["plain_minus_old_bb"] for top in tops)
+        booked = sum(top["booked"]["n"] for top in tops)
+        booked_bb = sum(top["booked"]["plain_minus_old_bb"] for top in tops)
+        folds = sum(top["fold_check"]["n"] for top in tops)
+        off = sum(top["fold_check"]["off"] for top in tops)
+        text.append(f"    另两种算法（不和上面相加）：两条线都算得出的分歧 {booked} 次，本页减旧 "
+                    f"{booked_bb:+.1f} bb；按亮牌算 {shown} 次，本页减旧 {shown_bb:+.1f} bb")
+        p3 = [top.get("plain_fold_shown") for top in tops]
+        p3 = [entry for entry in p3 if entry]
+        if p3:
+            text.append(
+                f"    P3：翻后本页说弃、还在的对手后来都亮了牌 {sum(e['n'] for e in p3)} 次，"
+                f"其中对手亮的是一对或更差（一对、诈唬） {sum(e['weak'] for e in p3)} 次；"
+                f"是分歧的 {sum(e['diverged'] for e in p3)} 次（一对或更差 "
+                f"{sum(e['diverged_weak'] for e in p3)}）")
+        text.append(f"    你弃牌时“从这一步起”不是 0 的 {off}/{folds}（筹码读错的迹象）；"
+                    "旧策略重放时单挑转牌河牌用范围规则代替求解器")
+    if not groups:
+        text.append("  没有可比的决策")
+    if without:
+        text.append(f"  没有分量账本的场次 {without} 场（场次包格式 1，或这一块没做成）")
+    return text
+
+
 def coverage_lines(packages):
     decisions = all_decisions(packages)
     advised = sum(item.get("advice") is not None for item in decisions)
@@ -284,11 +436,47 @@ def results_line(packages):
     return line
 
 
+def compliance_lines(packages):
+    """遵从率 (block 12) and the sessions under 80%, which the page does not
+    count in results."""
+    found = [package for package in packages if package.get("compliance")]
+    without = len(packages) - len(found)
+    if not found:
+        return [f"遵从率：没有（{without} 场的场次包是格式 1–2）"]
+    parts, total = [], None
+    for name, word in COMPLIANCE_WORD.items():
+        tallies = [package["compliance"][name] for package in found
+                   if name in package["compliance"]]
+        added = {key: sum(tally[key] for tally in tallies) for key in COMPLIANCE_KEYS}
+        if name == "all":
+            total = added
+        elif not added["counted"]:
+            continue
+        parts.append(f"{word} {share(added['complied'], added['counted'])}，偏松 "
+                     f"{added['looser']}、偏紧 {added['tighter']}")
+    enough = "够" if total["counted"] >= COMPLIANCE_ENOUGH else "不够"
+    text = ["遵从率（动作和建议一样、加注尺寸 ±25%，除以不是 UNKNOWN 的建议）："
+            + "；".join(parts),
+            f"  不算的：没有建议 {total['no_advice']}、UNKNOWN {total['unknown']}、"
+            f"没读到你的动作 {total['you_unread']}；{total['counted']} 次决策"
+            f"（{COMPLIANCE_ENOUGH} 次才稳：{enough}）"]
+    low = [package for package in found
+           if package["compliance"]["all"].get("results_count") is False]
+    if low:
+        text.append("  低于 80% 的场次（本页规定不计成绩）：" + "、".join(
+            f"{package['session'].get('machine')} {package['session']['label']}"
+            f"（{package['compliance']['all']['rate']:.0%}）" for package in low))
+    if without:
+        text.append(f"  没有遵从率的场次 {without} 场（场次包格式 1–2）")
+    return text
+
+
 def body(packages):
     """The sections every page has, over these packages."""
     decisions = all_decisions(packages)
     text = [results_line(packages)]
     text += coverage_lines(packages)
+    text += compliance_lines(packages)
     text += iron5_lines(decisions)
     text.append("规则命中排行（按一页纸版本和规则哈希分开）：")
     text += rule_lines(packages)
@@ -296,6 +484,7 @@ def body(packages):
     text += range_lines(packages)
     text += misread_lines(packages)
     text += timing_lines(packages)
+    text += shadow_lines(packages)
     return text
 
 

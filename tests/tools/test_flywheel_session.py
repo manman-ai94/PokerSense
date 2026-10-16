@@ -80,7 +80,8 @@ def test_the_sheet_counts_the_rules_of_the_one_page_advice(tmp_path):
     # The same session, advised by 《一页纸打法》: the call was table 2's row,
     # and the second hand's turn was a blind the page says nothing about.
     plain = {"status": "ready", "kind": "plain", "advice": [{"action": "call"}],
-             "plain": {"rule": "T2.call", "hits": ["T2.call"]}}
+             "plain": {"rule": "T2.call", "hits": ["T2.call"],
+                       "rule_key": "T2.call#0123456789abcdef"}}
     folder = session(tmp_path)
     rows = [json.loads(line) for line in (folder / "frames.jsonl").read_text(
         encoding="utf-8").splitlines()[:-1]]
@@ -94,7 +95,8 @@ def test_the_sheet_counts_the_rules_of_the_one_page_advice(tmp_path):
                 "plain": {"rule": "I5", "unspecified": "blind_unopened"}}
     (folder / "frames.jsonl").write_text("\n".join(json.dumps(item) for item in rows)
                                          + "\n", encoding="utf-8")
-    text = fly.report(folder, None)
+    ledger = tmp_path / "ledger.jsonl"
+    text = fly.report(folder, ledger)
     summary = json.loads((folder / "flywheel" / "summary.json").read_text(
         encoding="utf-8"))
     assert summary["rules"]["T2.call"] == {"hits": 1, "followed": 1, "followed_of": 1,
@@ -104,8 +106,13 @@ def test_the_sheet_counts_the_rules_of_the_one_page_advice(tmp_path):
     at = text.index("规则命中统计（一页纸打法）：")
     assert ("  T2.call 表 2·跟注（不限筹码）：命中 1 次，照做 1/1，"
             "这些手 1 手共 -20.0 个大盲") in text[at + 1:at + 3]
-    assert any(line.startswith("v3.1 没写的情形（按铁律 5）：盲位前面全弃")
+    assert any(line.startswith("本页没写的情形（按铁律 5）：盲位前面全弃")
                for line in text)
+    # The ledger keeps the hits by rule key (编号#条文哈希); I5 was logged
+    # without one (older code), so it is left out rather than added up.
+    [line] = fly.read_ledger(ledger)
+    assert line["rules"] == {"T2.call#0123456789abcdef":
+                             {"hits": 1, "hands": 1, "bb": -20.0}}
     assert "规则命中统计（一页纸打法）：" not in fly.sheet(
         {**summary, "rules": {}, "unspecified": {}})
 

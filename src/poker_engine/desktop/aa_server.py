@@ -20,6 +20,7 @@ from . import aa_upload
 from .aa_reader import AA8Reader, preflight_profile
 from .aa_session import AARecognitionSession, EncodedJSON
 from .aa_grading import AAGrades
+from .aa_rule_record import RuleRecord
 from .aa_solver_advice import STRATEGIES, AASolverAdvice
 from .aa_turn_runtime import observation_runtime_status
 from .aa_math import AATableMath
@@ -163,6 +164,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         lambda: AA8Reader(profile_path, bundle_sha256=bundle_sha256),
         interval_seconds=0.03, table_math=AATableMath().compute,
         solver_advice=advice, grades=AAGrades(advice), frame_log=frame_log,
+        rule_record=RuleRecord(),
     )
     rules = AATableConfigStore(rules_path)
     analysis = analysis_service or AAConditionalAnalysis()
@@ -660,7 +662,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     @app.get("/api/strategy")
     def strategy_status():
         """Which rules the advice follows: the old ones (classic) or the one
-        page of 《一页纸打法 v3.2》 (plain)."""
+        page of 《一页纸打法 v3.3》 (plain)."""
         return strategy_state()
 
     @app.post("/api/strategy")
