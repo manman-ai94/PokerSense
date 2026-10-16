@@ -428,6 +428,9 @@ def frame_summary(payload):
         "scene_supported": payload.get("scene_supported"),
         "hero": cards.get("hero"),
         "board": cards.get("board_slots"),
+        # Cards read differently from the hand's reading and held back
+        # (``aa_card_check``): {"hero": [..] or None, "board": {slot: card}}.
+        "cards_held_back": (payload.get("card_check_v1") or {}).get("held_back"),
         "street": ((payload.get("street_v1") or {}).get("street")
                    if "street_v1" in payload else observed.get("street_candidate")),
         "street_legacy": observed.get("street_candidate"),
