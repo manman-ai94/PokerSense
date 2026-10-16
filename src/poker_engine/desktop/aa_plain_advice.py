@@ -59,7 +59,7 @@ READY_FRAMES = 20               # 没有时钟可看时按帧数（约 10 帧一
 SIDE_BY_SIDE = 2.0              # 要跟的金额变了：旧建议在旁边留 2 秒
 OPENING_FRAMES = 300            # 认级别、庄位用的开局帧，最多留这么多
 EPSILON = 1e-9
-BASIS = "一页纸打法 v3.2（plain）：只按这一页的规则；只显示建议，不替你点"
+BASIS = "一页纸打法 v3.3（plain）：只按这一页的规则；只显示建议，不替你点"
 
 # 就绪条件没满足时缺的是什么（窗口上写“缺 X”）。
 MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没稳",
@@ -68,8 +68,8 @@ MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没�
            "stack": "你的筹码", "dealer": "庄位", "seat": "你的座位",
            "actions": "这手的动作对不上"}
 # 盲位没人加注时表里的规则（铁律 5 不适用，画面没读稳也照表）。
-BLIND_RULES = frozenset({"T1.a", "T1.a.fold", "T1.b", "T1.c", "T1.straddle", "T1.iso2",
-                         "M.iso"})
+BLIND_RULES = frozenset({"T1.a", "T1.a.fold", "T1.b", "T1.c", "T1.straddle", "T1.str",
+                         "T1.iso2", "M.iso"})
 # 按默认补上的缺项（窗口上的小标签）。
 DEFAULTS = {"opponent_stack": "缺对手筹码→按最深已读",
             "carried_stack": "对手筹码按上次读数往前带",

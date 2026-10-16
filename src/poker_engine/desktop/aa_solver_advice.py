@@ -149,7 +149,7 @@ only; nothing here acts on the client.
 
 With the window's switch on ``plain`` (``strategy``; the default is still
 ``classic``, all of the above) every frame goes to ``aa_plain_advice``
-instead: the one-page rules of 《一页纸打法 v3.2》 (``scoreboard.plain_policy``)
+instead: the one-page rules of 《一页纸打法 v3.3》 (``scoreboard.plain_policy``)
 from the frame's fields and a state kept per hand, worked out once per
 decision on the frame's own thread. No replay, no solver, no range rule, no
 rough rule, no background worker; nothing of the above runs.

@@ -660,7 +660,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
     @app.get("/api/strategy")
     def strategy_status():
         """Which rules the advice follows: the old ones (classic) or the one
-        page of 《一页纸打法 v3.2》 (plain)."""
+        page of 《一页纸打法 v3.3》 (plain)."""
         return strategy_state()
 
     @app.post("/api/strategy")
