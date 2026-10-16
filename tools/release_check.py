@@ -24,7 +24,10 @@ the steps are the existing tools, not new ones:
    the opponents still in showed their cards both answers are valued in
    chips against those cards. The heads-up solve is taken as done at once
    here (check or call, as in ``aa_session_report``) unless ``--solver``;
-   stalls cannot be seen in a log replay (they are the log's own).
+   a changed decision where that stand-in answered is listed apart and
+   labelled, not counted or valued as changed advice (10/16: a rough fold
+   that turned into "solver call, equity 0%" was nearly taken for a bug).
+   Stalls cannot be seen in a log replay (they are the log's own).
 2. Played at recorded pace (``--measure``, ``--p30``): each version plays the
    recording through the live session with advice on, solver included
    (``tools/measure_aa_realtime.py --advice``), so recognition changes,
@@ -32,8 +35,17 @@ the steps are the existing tools, not new ones:
    (``p30_acceptance.field_coverage``), stalls over 2 s, dropped frames,
    latency and the advice in real time are set side by side; it fails when
    the new version is clearly worse (the margins are ``*_MARGIN`` below).
-   A version measured before on the same recording is reused from
-   ``--cache`` (default ``PokerSense_private/release-check/measure-cache``).
+   Both versions are played in this check, one after the other, so the two
+   runs meet the same machine; the order alternates from one recording to
+   the next. A run from an earlier check is not reused: the same recognition
+   code read the dealer button on 93.8% of the Samsung recording's frames in
+   one check and on 89.1% in the next (986f986 and ab44f8f differ only in
+   ``aa_solver_input.py``). The runs are kept in ``--cache`` (default
+   ``PokerSense_private/release-check/measure-cache``), so a check cut short
+   and run again with the same versions and ``--out`` picks up the runs it
+   finished; a new ``--out`` plays both again. A version checked against
+   itself is played twice: the gap between its two runs is the run-to-run
+   noise.
 3. Second seat (``--p30``): ``tools/p30_acceptance.py run`` of the new
    version on its measured log. Fails unless the verdict is 通过.
 
@@ -71,7 +83,9 @@ HOLDOUT = {"aa_phone_record_20260909_031030_54322c62": ((300.0, 820.0),)}
 WINDOW_PORT = 8771
 FLAKE8_PATHS = ("src", "tests", "tools", "research/hu_root", "research/coverage_bridge")
 # Played at recorded pace, two runs of one version differ a little (which
-# frames get dropped). Worse than these is the new version's doing.
+# frames get dropped); these are for two runs one after the other in one
+# check (checking a version against itself shows the gap). Worse than these
+# is the new version's doing.
 FRAME_MARGIN = 0.01        # a field's coverage over frames
 SHARE_MARGIN = 0.03        # hands or decisions advised in real time
 COUNT_MARGIN = 2           # ... and never less than this many of them
@@ -83,6 +97,7 @@ KINDS = {"preflop": "翻前", "solver": "求解器", "multiway": "范围规则",
 ACTIONS = {"fold": "弃牌", "check": "过牌", "call": "跟注", "raise": "加注", None: "无"}
 STREETS = {"preflop": "翻前", "flop": "翻牌", "turn": "转牌", "river": "河牌"}
 EXAMPLES = 8                    # changed decisions written out on the page
+STAND_IN = "求解器替身（不是真实建议）"
 STEPS = (("tests", "测试和代码检查"), ("replay", "录像日志重放"),
          ("measure", "按原速重放"), ("p30", "杜的 P30 验收"))
 
@@ -313,24 +328,41 @@ def changed_decisions(name, rows, old, new):
     return found
 
 
-def why(changes):
+def stand_in(answer, solver):
+    """Whether ``answer`` came from the stand-in for TexasSolver: without
+    ``--solver`` every heads-up solve comes back at once as check or call
+    against a made-up range, so its action and share mean nothing."""
+    return not solver and (answer or {}).get("kind") == "solver"
+
+
+def why(changes, solver=True):
     """The changes grouped by street and the rule that answered before and
     after, most first: [(text, count)]."""
+    def kind(answer):
+        return ("替身" if stand_in(answer, solver) else
+                (answer or {}).get("kind"))
+
+    def action(answer):
+        if stand_in(answer, solver):
+            return "替身"
+        value = (answer or {}).get("action")
+        return ACTIONS.get(value, value)
+
     groups = {}
     for item in changes:
         if item["size_only"]:
             continue
         before, after = item["before"] or {}, item["after"] or {}
-        key = (item["street"], before.get("kind"), after.get("kind"))
+        key = (item["street"], kind(before), kind(after))
         group = groups.setdefault(key, Counter())
-        move = (f"{ACTIONS.get(before.get('action'), before.get('action'))}→"
-                f"{ACTIONS.get(after.get('action'), after.get('action'))}")
+        move = f"{action(before)}→{action(after)}"
         if not after and item.get("reason_after"):
             move += f"（{item['reason_after']}）"
         group[move] += 1
     order = sorted(groups.items(), key=lambda pair: -sum(pair[1].values()))
-    return [(f"{STREETS.get(street, street)} · {KINDS.get(old, old)} → "
-             f"{KINDS.get(new, new)}：" + "、".join(
+    names = {**KINDS, "替身": "求解器替身"}
+    return [(f"{STREETS.get(street, street)} · {names.get(old, old)} → "
+             f"{names.get(new, new)}：" + "、".join(
                  f"{move} {n}" for move, n in moves.most_common()),
              sum(moves.values())) for (street, old, new), moves in order]
 
@@ -349,9 +381,10 @@ def priced(changes):
             "chips_after": round(sum(v["after"] for v in values), 1)}
 
 
-def compare_replays(logs, old, new):
+def compare_replays(logs, old, new, solver=False):
     """The verdict on the recording logs: numbers side by side, and every
-    changed decision. ``logs`` gives (name, rows) in the replays' order."""
+    changed decision. ``logs`` gives (name, rows) in the replays' order;
+    ``solver``: whether the replays ran TexasSolver or its stand-in."""
     numbers, reasons = [], []
     for path, label in REPLAY_LIMITS:
         before, after = _get(old["summary"], path), _get(new["summary"], path)
@@ -362,6 +395,13 @@ def compare_replays(logs, old, new):
     for (name, rows), was, now in zip(logs, old["logs"], new["logs"]):
         changes += changed_decisions(name, rows, _reports(was, len(rows)),
                                      _reports(now, len(rows)))
+    for item in changes:
+        item["stand_in"] = any(stand_in(item[label], solver)
+                               for label in ("before", "after"))
+        if item["stand_in"]:
+            item["note"] = STAND_IN
+    real = [item for item in changes if not item["stand_in"]]
+    standing = [item for item in changes if item["stand_in"]]
     summary = new["summary"]
     return {"passed": not reasons, "reasons": reasons, "numbers": numbers,
             "logs": len(new["logs"]),
@@ -369,9 +409,10 @@ def compare_replays(logs, old, new):
             "decisions": summary.get("your_decisions"),
             "solver_taken_as_done": (summary.get("advised_by_kind") or {}).get(
                 "solver", 0),
-            "changed": sum(not item["size_only"] for item in changes),
-            "size_only": sum(item["size_only"] for item in changes),
-            "why": why(changes), "priced": priced(changes), "changes": changes}
+            "changed": sum(not item["size_only"] for item in real),
+            "size_only": sum(item["size_only"] for item in real),
+            "stand_in": len(standing), "stand_in_why": why(standing, solver),
+            "why": why(real), "priced": priced(real), "changes": changes}
 
 
 def replay_step(trees, paths, extra, out, solver):
@@ -396,7 +437,7 @@ def replay_step(trees, paths, extra, out, solver):
     rows = ((item["name"], [row for row in load(item["path"]) if row.get("fields")])
             for item in logs)                    # one log at a time
     try:
-        result = compare_replays(rows, runs["old"], runs["new"])
+        result = compare_replays(rows, runs["old"], runs["new"], solver)
     except ValueError as error:                  # the replays do not line up
         return {"passed": False, "reasons": [str(error)]}
     result["skipped"] = skipped
@@ -417,11 +458,13 @@ def recorded_minutes(folder, windows=()):
     return round((seconds - cut) / 60, 1)
 
 
-def measure_dir(cache, commit, folder, windows):
+def measure_dir(cache, commits, label, folder, windows, out):
+    """Where the ``label`` version's run of ``folder`` is kept in the check of
+    these two ``commits`` writing to ``out``: another check never finds it."""
     key = json.dumps([str(Path(folder).resolve()), [list(w) for w in windows],
-                      "advice"])
+                      "advice", commits["old"], commits["new"], label, str(out)])
     tag = hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
-    return cache / commit[:12] / f"{Path(folder).name}-{tag}"
+    return cache / commits[label][:12] / f"{Path(folder).name}-{tag}"
 
 
 def measured(target):
@@ -434,11 +477,12 @@ def measured(target):
         target / "frames.jsonl").is_file()
 
 
-def measure(tree, commit, folder, windows, cache, log):
-    """Play ``folder`` at recorded pace with ``tree``'s code (or reuse an
-    earlier run of this commit): (folder of the run, reused)."""
+def measure(tree, commits, label, folder, windows, cache, out):
+    """Play ``folder`` at recorded pace with ``tree``'s code (or reuse this
+    check's finished run of it): (folder of the run, reused)."""
     from tools.flywheel_gates import run_tool
-    target = measure_dir(cache, commit, folder, windows)
+    target = measure_dir(cache, commits, label, folder, windows, out)
+    log = out / f"measure-{Path(folder).name}-{label}.log"
     if measured(target):
         return target, True
     if target.exists():                    # an earlier run cut short
@@ -531,22 +575,31 @@ def field_labels():
             for key, label, _ in getattr(p30_acceptance, name, ())}
 
 
+def finished_at(target):
+    try:
+        return time.strftime("%m-%d %H:%M", time.localtime(
+            (target / "summary.json").stat().st_mtime))
+    except OSError:
+        return None
+
+
 def measure_step(trees, commits, folders, extra, cache, out):
     labels, recordings, reasons = field_labels(), [], []
-    for folder in folders:
+    for index, folder in enumerate(folders):
         windows = windows_for(folder, extra)
         runs, reused = {}, {}
-        for label in ("old", "new"):
+        for label in ("old", "new") if index % 2 == 0 else ("new", "old"):
             print(f"按原速重放 {Path(folder).name}（{'旧' if label == 'old' else '新'}版"
                   f" {commits[label][:7]}）……", flush=True)
-            target, reused[label] = measure(
-                trees[label], commits[label], folder, windows, cache,
-                out / f"measure-{Path(folder).name}-{label}.log")
+            target, reused[label] = measure(trees[label], commits, label, folder,
+                                            windows, cache, out)
             runs[label] = target
         item = {"recording": Path(folder).name,
                 "minutes": recorded_minutes(folder, windows),
                 "skipped_windows": [list(w) for w in windows], "reused": reused,
-                "runs": {label: str(path) for label, path in runs.items()}}
+                "runs": {label: str(runs[label]) for label in ("old", "new")},
+                "finished_at": {label: finished_at(runs[label])
+                                for label in ("old", "new")}}
         if not all(measured(path) for path in runs.values()):
             item["reasons"] = ["没放完（见 measure-*.log）"]
         else:
@@ -609,14 +662,19 @@ def advice_text(answer):
 
 def example(item):
     """One changed decision in a line, to look up in the recording."""
+    def said(answer):
+        if item.get("stand_in") and (answer or {}).get("kind") == "solver":
+            return STAND_IN
+        return advice_text(answer)
+
     seconds = item.get("video_seconds")
     where = (f"，录像第 {seconds:.0f} 秒" if isinstance(seconds, (int, float))
              else "")
     board = f"｜{item['board']}" if item.get("board") else ""
     did = ACTIONS.get(item.get("you_did"), item.get("you_did")) or "不知道"
     return (f"{item['log']} {item['hand_id']}{where}：{STREETS.get(item['street'], '')}"
-            f" {item.get('hero') or '?'}{board}，{advice_text(item['before'])} → "
-            f"{advice_text(item['after'])}，你{did}")
+            f" {item.get('hero') or '?'}{board}，{said(item['before'])} → "
+            f"{said(item['after'])}，你{did}")
 
 
 def headline(step, result):
@@ -627,7 +685,9 @@ def headline(step, result):
     if step == "replay" and "numbers" in result:
         parts = [f"{row['what']} {_text(row['old'])} → {_text(row['new'])}"
                  for row in result["numbers"]]
-        parts.append(f"建议变了 {result['changed']} 处")
+        parts.append(f"建议变了 {result['changed']} 处" + (
+            f"（另 {result['stand_in']} 处是求解器替身，不算）"
+            if result.get("stand_in") else ""))
         return f"{result['logs']} 段、{result['hands']} 手、{result['decisions']} 个决策；" \
             + "；".join(parts)
     if step == "measure":
@@ -658,7 +718,7 @@ def page(result):
         word = "通过" if step["passed"] else "没过：" + "；".join(step["reasons"])
         lines.append(f"| {name} | {word} | {headline(key, step)} |")
     replay_result = result["steps"].get("replay") or {}
-    if replay_result.get("why"):
+    if replay_result.get("why") or replay_result.get("stand_in"):
         lines += ["", f"## 建议变了的 {replay_result['changed']} 处（按哪条规则给的）", ""]
         lines += [f"- {text}" for text, _ in replay_result["why"]]
         if replay_result.get("size_only"):
@@ -669,13 +729,24 @@ def page(result):
                 f"- 对手亮了牌、能事后估值的 {value['decisions']} 处：新版好 "
                 f"{value['better']}、差 {value['worse']}；这几处合计 {value['chips_before']}"
                 f" → {value['chips_after']} 积分（只是这几手的事后估值，不是胜率结论）")
-        shown = [item for item in replay_result["changes"] if not item["size_only"]]
+        if replay_result.get("stand_in"):
+            lines.append(
+                f"- 另有 {replay_result['stand_in']} 处一边是{STAND_IN}：这次重放没真跑"
+                "求解器，替身面对下注就跟、没下注就过，牌力也是编的，所以没算进上面，"
+                "也不估值；要看真实建议，加 --solver 重跑：")
+            lines += [f"  - {text}" for text, _ in replay_result["stand_in_why"]]
+        shown = sorted((item for item in replay_result["changes"]
+                        if not item["size_only"]),
+                       key=lambda item: bool(item.get("stand_in")))
         lines += ["", f"例子（前 {min(len(shown), EXAMPLES)} 处，全部在 release_check.json）："]
         lines += [f"- {example(item)}" for item in shown[:EXAMPLES]]
     for item in (result["steps"].get("measure") or {}).get("recordings", []):
         if not item.get("rows"):
             continue
+        done = item.get("finished_at") or {}
         lines += ["", f"## 按原速重放：{item['recording']}", "",
+                  f"两版都在这次复查里放：旧版 {done.get('old') or '—'}、新版 "
+                  f"{done.get('new') or '—'} 放完。", "",
                   "| 项目 | 旧版 | 新版 | |", "|---|---|---|---|"]
         lines += [f"| {row['what']} | {_text(row['old'])} | {_text(row['new'])} | "
                   f"{'变差' if row['worse'] else ''} |" for row in item["rows"]]
@@ -707,10 +778,13 @@ def measure_plan(args, commits, cache):
         windows = windows_for(folder, args.exclude)
         minutes = recorded_minutes(folder, windows)
         todo = [label for label in ("old", "new")
-                if not measured(measure_dir(cache, commits[label], folder, windows))]
+                if not measured(measure_dir(cache, commits, label, folder, windows,
+                                            args.out))]
         total += (minutes or 0) * len(todo)
+        done = (f"（另 {2 - len(todo)} 版这次复查已经放完）" if len(todo) < 2
+                else "")
         lines.append(f"按原速重放 {Path(folder).name}：{_text(minutes)} 分钟 × "
-                     f"{len(todo)} 版（另 {2 - len(todo)} 版用缓存）")
+                     f"{len(todo)} 版{done}")
     lines.append(f"按原速重放合计约 {round(total)} 分钟"
                  + ("，另加 P30 离线座位检查几分钟" if args.p30 else ""))
     return lines
@@ -780,8 +854,8 @@ def main(argv=None):
             steps["measure"] = measure_step(trees, commits, folders, args.exclude,
                                             args.cache, args.out)
             if args.p30:
-                new_run = measure_dir(args.cache, commits["new"], args.p30,
-                                      windows_for(args.p30, args.exclude))
+                new_run = measure_dir(args.cache, commits, "new", args.p30,
+                                      windows_for(args.p30, args.exclude), args.out)
                 steps["p30"] = (
                     p30_step(trees["new"], args.p30, new_run / "frames.jsonl",
                              args.exclude, args.out) if measured(new_run) else
