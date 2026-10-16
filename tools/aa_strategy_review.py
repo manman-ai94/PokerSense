@@ -138,11 +138,16 @@ def decision(name, hand_id, turn, actions):
         if report.get("status") != "ready":
             continue
         kind, action, share = answer(report, street)
-        if (kind, action) != seen:
+        page = report.get("plain") or {}          # 《一页纸打法》: the rule that decided
+        if (kind, action, page.get("rule")) != seen:
             seconds = round(row["pts_seconds"] - start["pts_seconds"], 2)
             answers.append({"seconds": seconds, "kind": kind, "action": action,
                             "share": share})
-            seen = kind, action
+            if page.get("rule"):
+                answers[-1]["rule"] = page["rule"]
+                if page.get("unspecified"):
+                    answers[-1]["unspecified"] = page["unspecified"]
+            seen = kind, action, page.get("rule")
     done = next((item for item in actions if str(item["slot"]) == HERO
                  and item["street"] == street and item["frame"] >= start["processed"]),
                 None)

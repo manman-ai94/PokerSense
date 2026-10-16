@@ -552,6 +552,36 @@ assert.equal(stopped({seconds: 3600, stopped_reason: "low_disk_space", megabytes
   "已存好 · 磁盘快满了，自动停 · 1.5 GB");
 assert.equal(stopped({seconds: 3, error: "the H.264 encoder did not open"}).note,
   "录像出错：the H.264 encoder did not open");
+// 《一页纸打法 v3.1》 (plain): the action, the one-sentence reason, the three numbers,
+// the rule that decided with its number and where the answer flips.
+const page = (row, plain, extra = {}) => base({solver_advice_v1: {status: "ready", kind: "plain",
+  advice: [row], to_call: "28", pot: "85", seconds: 0.2, plain, ...extra}});
+const foldPlain = {action: "fold", rule: "F.C", rule_label: "面对下注·C 档", hits: ["F.C"],
+  reason: "河牌单挑被下注 1/3 底池；他翻前跟注了加注、翻牌加注，范围前 31% 去掉前 6%×10%；我中对 C 档，胜率 22%，需要 25%；面对下注·C 档——弃。",
+  flip: "转牌、河牌再被下注就弃", range: "前 31% 去掉前 6%×10%", equity: 0.22, need: 0.248,
+  tier: "C", hand: "中对"};
+view = signalView(running(page({action: "fold", frequency: 1.0}, foldPlain)), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.kind], ["fold", "弃牌", "plain"]);
+assert.equal(view.verdict.note, foldPlain.reason);
+assert.ok(view.tags.includes("一页纸"));
+assert.deepEqual(view.numbers.map(item => [item.label, item.value]),
+  [["对手范围", "前 31% 去掉前 6%×10%"], ["我的胜率", "22%"], ["所需胜率", "25%"]]);
+assert.equal(view.numbers[1].note, "中对 C 档");
+assert.deepEqual(view.basis, ["定生死的那一条：F.C 面对下注·C 档 · 0.2 秒算完",
+  "翻转条件：转牌、河牌再被下注就弃", "只显示建议，不替你点"]);
+// A bet with its size, the rules hit on the way, and iron law 5 where v3.1 says nothing.
+view = signalView(running(page({action: "raise", frequency: 1.0, chips: "60", to: "60"},
+  {...foldPlain, action: "raise", rule: "J3", rule_label: "直接全下·A 档加注 ≥ 剩余筹码 40%",
+    hits: ["F.A", "J3"], tier: "D_strong", equity: null})), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.size], ["加注到", "60"]);
+assert.equal(view.basis[1], "一路命中：F.A → J3");
+assert.equal(view.numbers[1].value, "—");
+assert.equal(view.numbers[1].note, "中对 D-强 档");
+view = signalView(running(page({action: "fold", frequency: 1.0},
+  {...foldPlain, rule: "I5", rule_label: "铁律 5·拿不准就弃", hits: ["I5"], unspecified: "blind_unopened"},
+  {provisional: true})), 0, {});
+assert.ok(view.basis.includes("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人"));
+assert.ok(view.basis.includes("来不及算完：先按铁律 5，算完会换"));
 // The table's level shows beside the table, from the advice's reading of it.
 const atStakes = stakes => signalView(running(base({solver_advice_v1: {status: "idle", stakes}})), 0, {}).stakes;
 assert.equal(atStakes({label: "2/4/8(4)", source: "table"}), "级别 2/4/8(4)");

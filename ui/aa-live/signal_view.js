@@ -286,7 +286,29 @@
       ...(verdict.mix ? {mix: verdict.mix.slice(0, 1)} : {})};
   }
 
+  // 《一页纸打法 v3.1》 (plain): one action, the one-sentence reason under it.
+  function pageVerdict(advice, controls, stack) {
+    const row = (advice.advice || [])[0];
+    if (!row) return null;
+    const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
+    return {...label, kind: "plain", note: advice.plain?.reason || ""};
+  }
+
+  // What decided a plain answer: the rule with its number, where the answer
+  // flips, and why it is the iron law 5 fold or check when it is one.
+  function pageBasis(advice) {
+    const page = advice.plain || {};
+    const basis = [`定生死的那一条：${page.rule || "?"} ${page.rule_label || ""}`.trim()];
+    if (Array.isArray(page.hits) && page.hits.length > 1)
+      basis.push(`一路命中：${page.hits.join(" → ")}`);
+    if (page.flip) basis.push(`翻转条件：${page.flip}`);
+    if (page.unspecified) basis.push("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
+    if (advice.provisional) basis.push("来不及算完：先按铁律 5，算完会换");
+    return basis;
+  }
+
   function plainVerdict(advice, controls, stack) {
+    if (advice.kind === "plain") return pageVerdict(advice, controls, stack);
     if (advice.kind === "rough") return roughVerdict(advice, controls, stack);
     if (advice.kind === "multiway") return multiwayVerdict(advice, controls, stack);
     if (Array.isArray(advice.options) && advice.options.length) {
@@ -489,6 +511,17 @@
   }
 
   function numbers(math, advice) {
+    if (advice?.kind === "plain" && advice.plain) {
+      // The page's three numbers: the opponents' range, your equity, the equity needed.
+      const page = advice.plain;
+      return [
+        {label: "对手范围", value: page.range || "—", note: "翻前最后一个动作定范围，翻后每条街缩一次"},
+        {label: "我的胜率", value: isNumber(page.equity) ? sharePct(page.equity) : "—",
+          note: [page.hand, page.tier ? `${page.tier.replace("_strong", "-强")} 档` : ""].filter(Boolean).join(" ")},
+        {label: "所需胜率", value: isNumber(page.need) ? pct(Number(page.need)) : "—",
+          note: "跟注 ÷（底池 + 跟注）"},
+      ];
+    }
     const list = [];
     const odds = math?.pot_odds;
     if (odds?.available) {
@@ -707,7 +740,8 @@
     if (advice?.status === "ready") {
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
-        const basis = verdict.kind === "rough" ? ["粗略建议：只看价格和大概的胜率",
+        const basis = verdict.kind === "plain" ? pageBasis(advice)
+          : verdict.kind === "rough" ? ["粗略建议：只看价格和大概的胜率",
           `${reasonText(advice.rough_for)}，先按价格粗略给一个`,
           "对手的牌按 AA 真人常玩的前 40% 算，下注、加注给你的人按前 20%"]
           : verdict.kind === "preflop" ? ["翻前算法", "后面的人按 AA 真人翻前打法推算"]
@@ -736,7 +770,8 @@
         if (num(advice.inferred_actions) > 0)
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
         basis.push("只显示建议，不替你点");
-        const tags = verdict.kind === "rough" ? [...view.tags, "粗略"] : [...view.tags];
+        const tags = verdict.kind === "rough" ? [...view.tags, "粗略"]
+          : verdict.kind === "plain" ? [...view.tags, "一页纸"] : [...view.tags];
         if (advice.guard) {
           tags.push("护栏");
           const was = advice.guard.was;

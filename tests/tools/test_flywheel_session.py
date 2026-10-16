@@ -76,6 +76,40 @@ def test_report_writes_the_sheet_and_the_ledger(tmp_path):
     assert len(fly.read_ledger(ledger)) == 1
 
 
+def test_the_sheet_counts_the_rules_of_the_one_page_advice(tmp_path):
+    # The same session, advised by 《一页纸打法》: the call was table 2's row,
+    # and the second hand's turn was a blind the page says nothing about.
+    plain = {"status": "ready", "kind": "plain", "advice": [{"action": "call"}],
+             "plain": {"rule": "T2.call", "hits": ["T2.call"]}}
+    folder = session(tmp_path)
+    rows = [json.loads(line) for line in (folder / "frames.jsonl").read_text(
+        encoding="utf-8").splitlines()[:-1]]
+    for item in rows:
+        if item["fields"]["solver_advice"].get("kind") == "preflop":
+            item["fields"]["solver_advice"] = plain
+        if item["processed"] == 9:
+            item["fields"]["hero_controls"]["visible"] = True
+            item["fields"]["solver_advice"] = {
+                "status": "ready", "kind": "plain", "advice": [{"action": "fold"}],
+                "plain": {"rule": "I5", "unspecified": "blind_unopened"}}
+    (folder / "frames.jsonl").write_text("\n".join(json.dumps(item) for item in rows)
+                                         + "\n", encoding="utf-8")
+    text = fly.report(folder, None)
+    summary = json.loads((folder / "flywheel" / "summary.json").read_text(
+        encoding="utf-8"))
+    assert summary["rules"]["T2.call"] == {"hits": 1, "followed": 1, "followed_of": 1,
+                                           "hands": 1, "bb": -20.0}
+    assert summary["rules"]["I5"]["hits"] == 1
+    assert summary["unspecified"] == {"blind_unopened": 1}
+    at = text.index("规则命中统计（一页纸打法）：")
+    assert ("  T2.call 表 2·跟注（不限筹码）：命中 1 次，照做 1/1，"
+            "这些手 1 手共 -20.0 个大盲") in text[at + 1:at + 3]
+    assert any(line.startswith("v3.1 没写的情形（按铁律 5）：盲位前面全弃")
+               for line in text)
+    assert "规则命中统计（一页纸打法）：" not in fly.sheet(
+        {**summary, "rules": {}, "unspecified": {}})
+
+
 def test_levels_follow_the_table_hand_by_hand(monkeypatch):
     seen = iter([{"big_blind": "4", "source": "table"},
                  {"big_blind": "4", "source": "carried"},
