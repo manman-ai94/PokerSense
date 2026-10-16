@@ -449,3 +449,41 @@ def test_population_leaves_every_testers_own_seat_out(tmp_path, monkeypatch, cap
     assert seen["minutes"] == {"mac-1": 30, "du-a": 18.2}
     assert json.loads(out.read_text(encoding="utf-8"))["hands_counted"] == 2
     assert "共 2 手能用（0.8 小时录像），其中同事录像 1 手" in capsys.readouterr().out
+
+
+def test_advice_comes_from_the_window_log_beside_a_log_measured_again(tmp_path):
+    """10/17: peng's hands of 10/09-10/10 were reviewed from logs measured
+    again from the video, which hold no advice, so every one of his turns
+    counted as unadvised; the window's own log of the session has it."""
+    ready = {"status": "ready", "kind": "preflop", "advice": [{"action": "CALL"}]}
+    window = ([row(f) for f in range(3)]
+              + [row(f, actions=RAISED) for f in range(3, 5)]
+              + [row(f, turn=True, advice=ready, actions=RAISED) for f in range(5, 8)])
+    for item in window:
+        item["video_seconds"] = item["pts_seconds"]
+        item["pts_seconds"] += 450.0        # the window's own clock
+    measured = ([row(f) for f in range(3)]
+                + [row(f, actions=RAISED) for f in range(3, 5)]
+                + [row(f, turn=True, actions=RAISED) for f in range(5, 8)])
+    for item in measured:
+        del item["fields"]["solver_advice"]
+    folder = recording(tmp_path, "20261009-210618-live", machine="mac", rows=measured)
+    (folder / "upload.json").unlink()
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    first = review.identify(folder, "peng")
+    alone, *_ = review.review(folder, baseline, "peng")
+    assert (alone["advice"]["turns"], alone["advice"]["advised"]) == (1, 0)
+    (folder / review.WINDOW).write_text(
+        "\n".join(json.dumps(item) for item in window) + "\n", encoding="utf-8")
+    beside, *_ = review.review(folder, baseline, "peng")
+    assert (beside["advice"]["turns"], beside["advice"]["advised"]) == (1, 1)
+    # Its digest changes, so a run reviews it again.
+    assert review.identify(folder, "peng")[2] != first[2]
+    # A row with advice of its own keeps it; one with no window frame in the
+    # second before it gets none.
+    own = {"status": "abstain", "reason": "players_3"}
+    late = row(40, turn=True)
+    del late["fields"]["solver_advice"]
+    rows = review.window_advice([row(6, turn=True, advice=own), late], window)
+    assert rows[0]["fields"]["solver_advice"] == own
+    assert "solver_advice" not in rows[1]["fields"]
