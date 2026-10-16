@@ -654,9 +654,8 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         return {"strategy": chooser.strategy, "choices": list(STRATEGIES),
                 "default": STRATEGIES[0], "saved": strategy_path is not None}
 
-    chooser = getattr(service, "_solver_advice", None)
-    if not hasattr(chooser, "set_strategy"):
-        chooser = advice
+    # The session's advice (a session passed in, as tests do, is left alone).
+    chooser = advice
 
     @app.get("/api/strategy")
     def strategy_status():
