@@ -645,7 +645,7 @@ def test_the_rough_rule_is_asked_again_when_the_screen_was_not_ready(monkeypatch
     call = {"kind": "rough", "advice": [{"action": "call", "frequency": 1.0}]}
     answers = iter([None, call])
     monkeypatch.setattr(aa_solver_advice, "rough_advice",
-                        lambda fields, cards, street, pot=None, stakes=None:
+                        lambda fields, cards, street, pot=None, stakes=None, bomb=False:
                         next(answers))
     advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
                             rough_executor=Inline(), clock=still)
@@ -676,13 +676,13 @@ def test_the_rough_rule_shows_in_the_frame_that_asks_for_it(monkeypatch):
     # turn's last, and the rough rule, done a moment later, never showed.
     gate = threading.Event()
 
-    def answer(fields, cards, street, pot=None, stakes=None):
+    def answer(fields, cards, street, pot=None, stakes=None, bomb=False):
         gate.wait(5)
         return ROUGH_CALL
 
     asked = []
     monkeypatch.setattr(aa_solver_advice, "rough_advice",
-                        lambda fields, cards, street, pot=None, stakes=None: ROUGH_CALL)
+                        lambda *args: ROUGH_CALL)
     monkeypatch.setattr(aa_solver_advice, "wait", frame_wait(True, asked))
     with ThreadPoolExecutor(max_workers=1) as own:
         advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline(finish=False),
@@ -713,7 +713,7 @@ def test_the_rough_rule_shows_in_that_frame_at_real_pace(monkeypatch):
     # The live window relies on this: a rough rule that is done well inside
     # ROUGH_WAIT (live it takes under 0.1 s) shows in the frame that asked, on
     # a real worker thread; one that is slow holds the frames up no longer.
-    def quick(fields, cards, street, pot=None, stakes=None):
+    def quick(fields, cards, street, pot=None, stakes=None, bomb=False):
         time.sleep(0.03)
         return ROUGH_CALL
 
@@ -732,7 +732,7 @@ def test_the_rough_rule_shows_in_that_frame_at_real_pace(monkeypatch):
             missed = ["a 0.03 s rough rule did not show in the frame that asked"]
         gate = threading.Event()
 
-        def answer(fields, cards, street, pot=None, stakes=None):
+        def answer(fields, cards, street, pot=None, stakes=None, bomb=False):
             gate.wait(5)
             return ROUGH_CALL
 
@@ -950,8 +950,10 @@ def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines()
     # only knew check, call and fold and said check (twice, turn and river).
     trips = aa_solver_advice.rough_advice(_rough_fields("check"), ["5s", "6h"], "turn")
     assert trips["range_equity"]["value"] >= 0.55
+    # Two thirds of the pot is played as the range rule plays it on the
+    # scoreboard's table: half the pot, the closest size it offers.
     assert trips["advice"] == [{"action": "bet", "frequency": 1.0,
-                                "chips": "89", "to": "89"}]
+                                "chips": "67", "to": "67"}]
     # Facing a bet of 40 with the same hand: a pot-sized raise after calling.
     raised = aa_solver_advice.rough_advice(
         _rough_fields("call", "40", {"2": "40"}), ["5s", "6h"], "turn")
@@ -972,6 +974,56 @@ def test_after_the_flop_the_rough_rule_bets_and_raises_by_the_range_rule_lines()
     assert aa_solver_advice.rough_aggression(
         row, 0.5, 3, Decimal(120), Decimal(0), Decimal(0), Decimal(0),
         Decimal(500))["to"] == "120"
+
+
+def test_a_rough_bet_that_would_leave_little_behind_is_all_in():
+    # A bet of two thirds of 120 is 80; with 90 behind that left 10. The
+    # range rule's table offers half the pot (60), the pot (all of the 90)
+    # or all in: all in is the closest.
+    row = {"action": "check", "frequency": 1.0}
+    bet = aa_solver_advice.rough_aggression(
+        row, 0.9, 1, Decimal(120), Decimal(0), Decimal(0), Decimal(0), Decimal(90))
+    assert (bet["action"], bet["to"]) == ("bet", "90")
+    # With deep stacks the same bet is half the pot.
+    deep = aa_solver_advice.rough_aggression(
+        row, 0.9, 1, Decimal(120), Decimal(0), Decimal(0), Decimal(0), Decimal(900))
+    assert deep["to"] == "60"
+
+
+def _history(*actions):
+    return {"hand_id": "hand_1", "actions": [
+        [frame, street, slot, kind, None, "read"]
+        for frame, (street, slot, kind) in enumerate(actions)]}
+
+
+def test_the_rough_rule_remembers_a_bet_on_an_earlier_street():
+    # An opponent who bet the flop and checks the turn was read as any of
+    # his top 40% of hands, as if he had never bet.
+    fields = {**_rough_fields("check"), "board": ["Jd", "8c", "4s", "Ah", None]}
+    quiet = aa_solver_advice.rough_advice(
+        {**fields, "actions_v1": _history(("flop", 2, "check"), ("flop", 4, "check"),
+                                          ("turn", 2, "check"))}, ["Qs", "Jc"], "turn")
+    bet = aa_solver_advice.rough_advice(
+        {**fields, "actions_v1": _history(("flop", 2, "raise"), ("flop", 4, "call"),
+                                          ("turn", 2, "check"))}, ["Qs", "Jc"], "turn")
+    assert bet["range_equity"]["value"] < quiet["range_equity"]["value"]
+    hands = [advice["range_equity"]["hands_each"]["2"] for advice in (bet, quiet)]
+    assert hands[0] < hands[1]
+    assert aa_solver_advice.aggressors(
+        {"actions_v1": _history(("preflop", 2, "raise"), ("flop", 3, "all_in"),
+                                ("turn", 5, "raise"))}, "turn") == {"3"}
+    assert aa_solver_advice.aggressors({}, "flop") == set()
+
+
+def test_in_a_bomb_pot_the_rough_rule_takes_any_two_cards():
+    # In a bomb pot everyone holds a random hand; read as the top 40% of
+    # hands, a made flush came out far weaker than it is.
+    fields = {**_rough_fields("check"), "board": ["2h", "9h", "Kc", "5h", None]}
+    normal = aa_solver_advice.rough_advice(fields, ["Jh", "2c"], "turn")
+    bomb = aa_solver_advice.rough_advice(fields, ["Jh", "2c"], "turn", bomb=True)
+    hands = [advice["range_equity"]["hands_each"]["2"] for advice in (bomb, normal)]
+    assert hands[0] > hands[1]
+    assert bomb["range_equity"]["value"] > normal["range_equity"]["value"]
 
 
 class FirstOnly(Inline):

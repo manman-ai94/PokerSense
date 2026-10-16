@@ -89,7 +89,16 @@ frame that asks waits up to ``ROUGH_WAIT`` for it (it takes under 0.1 s):
 two of those turns ended on the frame after a stall that made it due. Each
 opponent still in holds the top ``CALLER_SHARE`` of starting hands, the one
 with the most chips in on this street the top ``BETTOR_SHARE`` when that is
-a bet or raise to you; your share of the pot against them (worked out
+a bet or raise to you, and so does one who bet or raised on an earlier
+street after the flop (``aggressors``; a bet on the flop was forgotten on
+the turn). In a bomb pot no one chose to play, so both shares are taken
+over all hands instead of the top ``CALLER_SHARE`` (any two cards, and half
+of them for a bettor). A bet or raise is sized as the range rule's is on
+the scoreboard table (``rough_size``): half the pot, the pot or all in,
+whichever is closest, so one that would leave little behind is all in, and
+the size does not change when the range rule's answer replaces it (on the
+recordings of 10/07-10/10 it matched the range rule's size at 27 of 56 of
+its bets and raises, 44 after). Your share of the pot against them (worked out
 from the pot last read and the chips in front when the screen's is not:
 ``pot_on_screen``; on 10/09 a turn facing an all-in before the flop got
 nothing for that), against the price on your button (after the flop, when
@@ -137,7 +146,7 @@ only; nothing here acts on the client.
 from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from functools import lru_cache
 from itertools import combinations
 import json
@@ -165,8 +174,8 @@ from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
 from .aa_reads import AAReads
 from .aa_session import frame_summary
-from .aa_solver_input import (RULES_PATH, hand_facts, solver_observation,
-                              table_observation)
+from .aa_solver_input import (RULES_PATH, bomb_post, hand_facts,
+                              solver_observation, table_observation)
 from .aa_stakes import settle_stakes, stakes_report
 
 
@@ -219,11 +228,13 @@ BETTOR_SHARE = 0.2              # and the top 20% for the one who bet or raised 
 PREFLOP_REALIZE = 0.8           # before the flop: aa_preflop's out-of-position realize
 ROUGH_TRIALS = 1500              # under 0.1 s with seven opponents
 ROUGH_BASIS = ("your share of the pot against fixed ranges (each opponent's top 40% of "
-               "starting hands, the top 20% for the one who bet or raised to you) "
+               "starting hands, the top 20% for one who bet or raised in this hand "
+               "after the flop or to you; any two cards in a bomb pot) "
                "against the price on your button, and after the flop against the "
                "range rule's lines for a bet or a raise, from the screen alone: a "
                "rough rule for when the hand cannot be worked out; for study only")
 BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
+POSTFLOP = ("flop", "turn", "river")
 IN_HAND = ("active", "all_in")
 VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
 
@@ -415,12 +426,23 @@ def put_in(fields, street):
     return put
 
 
-def rough_advice(fields, cards, street, pot=None, stakes=None):
+def aggressors(fields, street):
+    """The seats that bet, raised or went all in after the flop on a street
+    before ``street``, from the action history."""
+    if street not in POSTFLOP:
+        return set()
+    before = POSTFLOP[:POSTFLOP.index(street)]
+    return {str(action[2]) for action in (fields.get("actions_v1") or {}).get("actions")
+            or () if action[1] in before and action[3] in ("raise", "all_in")}
+
+
+def rough_advice(fields, cards, street, pot=None, stakes=None, bomb=False):
     """The rough rule's action for your turn, from the screen alone: your
     share of the pot against fixed ranges, against the price on your button.
     ``pot`` is the pot worked out when the screen's is not read
     (``pot_on_screen``); the chips in front not read are taken from the
-    action history (``put_in``); ``stakes``: the table's (``aa_stakes``).
+    action history (``put_in``); ``stakes``: the table's (``aa_stakes``);
+    ``bomb``: the hand is a bomb pot (``aa_solver_input.bomb_post``).
     None when the board, the players still in or the price are not read."""
     board = [card for card in fields.get("board") or () if card]
     if street not in BOARD_CARDS or len(board) != BOARD_CARDS[street]:
@@ -434,14 +456,15 @@ def rough_advice(fields, cards, street, pot=None, stakes=None):
     pot = read if read is not None else pot
     if not opponents or pot is None:
         return None
-    advice = _rough_for(fields, cards, street, board, opponents, pot, read, stakes)
+    advice = _rough_for(fields, cards, street, board, opponents, pot, read, stakes,
+                        bomb)
     if advice is None or not unknown:
         return advice
     # A seat not read may still be in the hand (audit 10/14, P-02: one
     # opponent known and six seats unknown was answered as heads-up): the
     # advice stands only when it is the same with them all in, else none.
     every = _rough_for(fields, cards, street, board, sorted(opponents + unknown),
-                       pot, read, stakes)
+                       pot, read, stakes, bomb)
     if every is None or _rough_action(every) != _rough_action(advice):
         return None
     return {**advice, "unknown_seats": len(unknown)}
@@ -453,7 +476,7 @@ def _rough_action(advice):
     return advice["advice"][0]["action"]
 
 
-def _rough_for(fields, cards, street, board, opponents, pot, read, stakes):
+def _rough_for(fields, cards, street, board, opponents, pot, read, stakes, bomb=False):
     """``rough_advice`` against ``opponents``."""
     wagers = {seat: _decimal(value) or Decimal(0)
               for seat, value in (fields.get("street_wagers") or {}).items()}
@@ -477,8 +500,11 @@ def _rough_for(fields, cards, street, board, opponents, pot, read, stakes):
         to_call = stack
     raised = to_call > 0 and top > mine and (
         street != "preflop" or top > open_level(stakes))
-    ranges = {seat: top_range(BETTOR_SHARE if raised and wagers.get(seat) == top
-                              else CALLER_SHARE) for seat in opponents}
+    earlier = aggressors(fields, street)
+    widen = 1 / CALLER_SHARE if bomb else 1     # a bomb pot: no one chose to play
+    ranges = {seat: top_range(widen * (
+        BETTOR_SHARE if (raised and wagers.get(seat) == top) or seat in earlier
+        else CALLER_SHARE)) for seat in opponents}
     value, counts = ranges_equity(cards, board, ranges, trials=ROUGH_TRIALS)
     if value is None:
         return None
@@ -525,14 +551,25 @@ def rough_aggression(row, value, opponents, pot, to_call, mine, top, stack):
     bet_at = MULTIWAY_LINES["hu_bet" if heads_up else "bet"]
     raise_at = MULTIWAY_LINES["hu_raise" if heads_up else "raise"]
     if to_call == 0 and value >= bet_at:
-        size = Decimal(str(MULTIWAY_LINES["size3" if opponents >= 3 else "size"]))
-        action, to = "bet", mine + (pot * size).quantize(Decimal(1))
+        action = "bet"
+        size = MULTIWAY_LINES["size3" if opponents >= 3 else "size"]
     elif to_call > 0 and value >= raise_at and stack > to_call:
-        action, to = "raise", top + (pot + to_call).quantize(Decimal(1))
+        action, size = "raise", MULTIWAY_LINES["raise_size"]
     else:
         return row
-    to = min(to, mine + stack)
+    to = rough_size(Decimal(str(size)), pot, to_call, max(mine, top), mine + stack)
     return {"action": action, "frequency": 1.0, "chips": str(to - mine), "to": str(to)}
+
+
+def rough_size(size, pot, to_call, current, most):
+    """What a bet or raise of ``size`` of the pot after calling makes your
+    bet, picked as the range rule's (``bots.raise_toward``) from what the
+    scoreboard table offers: half the pot, the pot or all in (``most``)."""
+    after = pot + to_call
+    target = current + size * after
+    offered = {min(most, current + (after / 2).quantize(Decimal(1), ROUND_FLOOR)),
+               min(most, current + after), most}
+    return min(sorted(offered), key=lambda to: abs(to - target))
 
 
 def rough_guard(row, quiet, cards, board, street, pot, mine, stakes=None):
@@ -960,8 +997,9 @@ class AASolverAdvice:
         job, asked = self._rough.get(key, (None, None))
         if job is None or (job.done() and self._rough_done(key) is None
                            and frame >= asked + RETRY):
-            job = self._submit_rough(rough_advice, fields, cards, street,
-                                     pot_on_screen(fields, self._rows), self.stakes())
+            job = self._submit_rough(self._rough_job, fields, cards, street,
+                                     pot_on_screen(fields, self._rows), self.stakes(),
+                                     list(self._rows))
             self._rough[key] = job, frame
             wait([job], timeout=ROUGH_WAIT)
         rough = self._rough_done(key)
@@ -970,6 +1008,15 @@ class AASolverAdvice:
         rough.pop("status")
         return self._report("ready", None, street=street, decision=key[0],
                             rough_for=report.get("reason") or report["status"], **rough)
+
+    def _rough_job(self, fields, cards, street, pot, stakes, rows):
+        """``rough_advice``, on its worker: whether the hand is a bomb pot
+        (``bomb_post``) is worked out there too, from the hand's ``rows``."""
+        try:
+            bomb = bomb_post(hand_facts(rows, self._stakes)) is not None
+        except Exception:                  # read as a normal hand
+            bomb = False
+        return rough_advice(fields, cards, street, pot, stakes, bomb)
 
     def _answer(self, key):
         """The decision's outcome, None while the solve runs: the range rule's
