@@ -182,17 +182,19 @@ def shown_value(rows, indexes, item):
     return result
 
 
-def shown_spot(rows, indexes, hand):
+def shown_spot(rows, indexes, hand, elsewhere=None):
     """(the table at the start of your turn, holding the cards read for you,
     your share of the pot against the cards the opponents still in showed,
     those cards), or None when one of them did not show, your cards were not
-    read or the hand does not replay."""
+    read or the hand does not replay. ``elsewhere`` ({seat: two cards}, read
+    for this hand in another reading of the recording) stands in when the
+    hand's own rows read none."""
     start = next(i for i in range(indexes[0], -1, -1)
                  if ((rows[i]["fields"].get("actions_v1") or {}).get("hand_id")
                      != hand) or i == 0)
     hand_rows = [row for row in rows[start:] if
                  (row["fields"].get("actions_v1") or {}).get("hand_id") == hand]
-    shown = shown_cards(hand_rows)
+    shown = shown_cards(hand_rows) or elsewhere
     if not shown:
         return None
     moment = rows[indexes[0]]["processed"]

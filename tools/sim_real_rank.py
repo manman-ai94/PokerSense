@@ -3,6 +3,7 @@ and does it say what the window's strategy really makes?
 
     PYTHONPATH=src:. .venv/bin/python tools/sim_real_rank.py \\
         --sim <scoreboard>.json [--frames <log>.jsonl.gz ...] \\
+        [--shown <report>.json ...] \\
         [--real-hands <hands.jsonl> ... --real-decisions <decisions.jsonl> ...] \\
         [--live <strategy>] [--workers 4] [--out <dir>]
 
@@ -17,6 +18,16 @@ the reference decide as they would at the table (the hand replayed on the
 simulated table, ``aa_solver_input.table_observation``), and each answer is
 valued in big blinds against those cards as ``tools/aa_compare_advice.py``
 values one. A variant's evidence is its total minus the reference's.
+
+A hand whose log read no cards shown can take them from another reading of
+the same recording (``--shown``: the reports ``tools/aa_session_report.py
+--out`` writes, such as ``psout/*.report.json``): the report's hand of the
+same log that spans your turn (``SLACK`` seconds either side) and holds the
+cards read for you there. The two readings' clocks can start apart (the
+window's log counts from the window's start, a measurement from the
+video's): the gap is the usual one between where each deal of your cards
+starts in both, and with fewer than ``MIN_ALIGNED`` deals agreeing the log
+takes nothing. The table and the board still come from the log.
 
 The check is Kendall's tau of the two orders (the reference at 0 in both):
 "agree" from ``AGREE`` up, else "disagree"; "not enough data" with fewer than
@@ -51,8 +62,10 @@ rest a little either way).
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from decimal import Decimal
+from functools import partial
 import hashlib
 import json
 from pathlib import Path
@@ -66,6 +79,7 @@ from poker_engine.desktop.aa_solver_input import HERO as HERO_SEAT  # noqa: E402
 from poker_engine.scoreboard import luck  # noqa: E402
 from poker_engine.scoreboard.bots import make_policy  # noqa: E402
 from tools.aa_compare_advice import chips, shown_spot, turns  # noqa: E402
+from tools.aa_strategy_review import mode  # noqa: E402
 from tools.replay_aa_action_history import replay  # noqa: E402
 from tools.sim_fidelity import load, log_name  # noqa: E402
 
@@ -75,23 +89,99 @@ MIN_VARIANTS = 8     # besides the reference
 MIN_TURNS = 30
 LIVE = "range_multiway@hu=1+aa_preflop"   # the window's advice, as simulated
 MIN_LEVEL_HANDS = 200
+SLACK = 5.0          # seconds: where a hand starts and ends in two readings
+MIN_ALIGNED = 3      # deals of your cards in both readings, to line them up
 
 
-def log_spots(path):
+def report_shown(paths):
+    """{log: [(start, end, your cards, {seat: two cards})]}: the hands of
+    session reports (``aa_session_report``) with your cards read, and the
+    cards opponents showed in them ({} for none). A hand is filed under its
+    own ``log`` and under the report's file name."""
+    found = {}
+    for path in paths or ():
+        report = json.loads(Path(path).read_text(encoding="utf-8"))
+        for hand in report.get("hands") or ():
+            if (not hand.get("your_cards")
+                    or None in (hand.get("start_pts"), hand.get("end_pts"))):
+                continue
+            seats = {int(item["seat"]): list(item["cards"])
+                     for item in hand.get("shown_cards") or ()
+                     if len(item.get("cards") or ()) == 2 and all(item["cards"])}
+            entry = (float(hand["start_pts"]), float(hand["end_pts"]),
+                     frozenset(hand["your_cards"].split()), seats)
+            names = {log_name(path)} | ({log_name(hand["log"])} if hand.get("log")
+                                        else set())
+            for name in names:
+                found.setdefault(name, []).append(entry)
+    return found
+
+
+def deals(rows):
+    """[(when, your two cards)]: each time the cards read for you change."""
+    found, last = [], None
+    for row in rows:
+        hero = row["fields"].get("hero")
+        if hero and all(hero) and frozenset(hero) != last:
+            last = frozenset(hero)
+            found.append((row["pts_seconds"], last))
+    return found
+
+
+def offset(rows, hands):
+    """Seconds from the report's clock to the log's: the usual gap between
+    where a deal of your cards starts in each, or None when fewer than
+    ``MIN_ALIGNED`` deals agree on it."""
+    gaps = [when - start for when, cards in deals(rows)
+            for start, _, theirs, _ in hands if cards == theirs]
+    if not gaps:
+        return None
+    common = Counter(round(gap) for gap in gaps).most_common(1)[0][0]
+    near = sorted(gap for gap in gaps if abs(gap - common) <= SLACK)
+    return near[len(near) // 2] if len(near) >= MIN_ALIGNED else None
+
+
+def shown_elsewhere(hands, pts, yours):
+    """The cards shown in the one reported hand that spans ``pts`` (on the
+    report's clock) and holds your cards ``yours``, or None."""
+    if not yours:
+        return None
+    match = [seats for start, end, cards, seats in hands
+             if start - SLACK <= pts <= end + SLACK and cards == frozenset(yours)]
+    return match[0] if len(match) == 1 and match[0] else None
+
+
+def log_spots(path, reports=None):
     """``spots`` of one log, its action history rebuilt by the current reader."""
-    return spots(log_name(path), replay(load(path)))
+    name = log_name(path)
+    return spots(name, replay(load(path)), (reports or {}).get(name))
 
 
-def spots(name, rows):
+def spots(name, rows, reported=None):
     """Your turns in a log's rows that the shown cards price:
-    [(where, the table as you saw it, your share against the cards shown)]."""
+    [(where, the table as you saw it, your share against the cards shown)].
+    ``reported``: this log's hands from ``report_shown``, for hands that read
+    no cards themselves (``where["shown"]`` is then "report")."""
     rows = [row for row in rows if row.get("fields")]
+    gap = offset(rows, reported) if reported else None
     found = []
     for indexes in turns(rows):
         fields = rows[indexes[0]]["fields"]
         hand = (rows[indexes[-1]]["fields"].get("actions_v1") or {}).get("hand_id")
         try:
             spot = shown_spot(rows, indexes, hand)
+            source = None
+            if spot is None and gap is not None:
+                yours = mode(" ".join(rows[index]["fields"]["hero"])
+                             for index in indexes
+                             if rows[index]["fields"].get("hero")
+                             and all(rows[index]["fields"]["hero"]))
+                elsewhere = shown_elsewhere(
+                    reported, rows[indexes[0]]["pts_seconds"] - gap,
+                    (yours or "").split())
+                if elsewhere:
+                    spot = shown_spot(rows, indexes, hand, elsewhere=elsewhere)
+                    source = "report"
         except Exception:                 # a hand that does not replay
             spot = None
         if spot is None:
@@ -101,8 +191,10 @@ def spots(name, rows):
             continue
         if Decimal(fields.get("mushroom_pool") or 0) > 0:
             observation = {**observation, "mushroom_pool": fields["mushroom_pool"]}
-        found.append(({"log": name, "hand_id": hand, "row": indexes[0]},
-                      observation, share))
+        where = {"log": name, "hand_id": hand, "row": indexes[0]}
+        if source:
+            where["shown"] = source
+        found.append((where, observation, share))
     return found
 
 
@@ -166,6 +258,8 @@ def rank(sim, found, workers=1):
     else:
         verdict = "agree" if tau >= AGREE else "disagree"
     return {"reference": reference, "pool": sim.get("pool"), "turns": len(found),
+            "turns_from_reports": sum(where.get("shown") == "report"
+                                      for where, _, _ in found),
             "turns_differ": differ, "variants": rows,
             "tau": None if tau is None else round(tau, 3), "same_order": same,
             "other_order": other, "verdict": verdict}
@@ -179,7 +273,8 @@ def summary(result):
     tau = "n/a" if result["tau"] is None else f"{result['tau']:+.2f}"
     lines.append(f"sim vs shown cards: {result['verdict']} (tau {tau}; pairs in the "
                  f"same order {result['same_order']}, other {result['other_order']}; "
-                 f"{result['turns_differ']} of {result['turns']} priced turns differ; "
+                 f"{result['turns_differ']} of {result['turns']} priced turns differ, "
+                 f"{result.get('turns_from_reports', 0)} priced from reports; "
                  f"needs {MIN_VARIANTS} variants and {MIN_TURNS} turns)")
     return "\n".join(lines)
 
@@ -252,6 +347,9 @@ def main(argv=None):
     parser.add_argument("--sim", type=Path, required=True)
     parser.add_argument("--frames", nargs="+", type=Path,
                         help="logs for the order of the variants")
+    parser.add_argument("--shown", nargs="+", type=Path,
+                        help="session reports (aa_session_report --out) with "
+                             "the cards shown in another reading of those logs")
     parser.add_argument("--real-hands", nargs="+", type=Path,
                         help="hand lines (luck_results --lines, tester_review) "
                              "for the level of --live")
@@ -267,8 +365,10 @@ def main(argv=None):
     results = {}
     if args.frames:
         paths = [path for path in args.frames if not HOLDOUT.search(log_name(path))]
+        reports = report_shown(args.shown)
         with ProcessPoolExecutor(args.workers) as executor:
-            found = [spot for part in executor.map(log_spots, paths) for spot in part]
+            found = [spot for part in executor.map(partial(log_spots, reports=reports),
+                                                   paths) for spot in part]
         results["rank"] = rank(sim, found, workers=args.workers)
         print(summary(results["rank"]))
     if args.real_hands:
