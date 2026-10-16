@@ -123,3 +123,18 @@ def test_phh_slopes_come_back_from_counts_made_with_them():
     assert found.keys() == truth.keys()
     for name, value in truth.items():
         assert found[name] == pytest.approx(value, abs=0.02), name
+
+
+def test_the_fit_works_when_its_workers_are_spawned(monkeypatch):
+    """macOS and Windows start worker processes fresh ("spawn"): they do not
+    inherit what ``fit`` set up in this process, so it must hand it over."""
+    from concurrent.futures import ProcessPoolExecutor
+    from functools import partial
+    import multiprocessing
+
+    monkeypatch.setattr(fit_aa_cal, "ProcessPoolExecutor", partial(
+        ProcessPoolExecutor, mp_context=multiprocessing.get_context("spawn")))
+    hand = fit_aa_cal.prepare((heads_up_hand(5), {"v": aa_stats()}))
+    start = fit_aa_cal.total([hand], fit_aa_cal.zero_params(), "v", aa_stats())
+    params, loss = fit_aa_cal.fit([hand], "v", aa_stats(), ("mix",), workers=1)
+    assert loss <= start
