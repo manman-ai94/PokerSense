@@ -1,5 +1,11 @@
 """Advice for your preflop, heads-up turn and river, and multiway decisions.
 
+Since 2026-10-16 the window's default (``classic``) is the old strategy under
+the vision contract (补充二, ``aa_classic_advice``): each decision worked out
+once when the screen is read, never changed, no solver and no rough rule.
+What follows is the engine it ran on before (``legacy``), kept for replays
+that compare against it; the window never offers it.
+
 When it is your turn (your action button is on screen) and both your cards
 are read, the hand so far is replayed on the AA table (``aa_solver_input``).
 
@@ -147,12 +153,12 @@ any other hand after the flop; the report's ``bomb_pot`` is each player's
 post. The advice comes from a model of how people play and is for study
 only; nothing here acts on the client.
 
-With the window's switch on ``plain`` (``strategy``; the default is still
-``classic``, all of the above) every frame goes to ``aa_plain_advice``
-instead: the one-page rules of 《一页纸打法 v3.2》 (``scoreboard.plain_policy``)
-from the frame's fields and a state kept per hand, worked out once per
-decision on the frame's own thread. No replay, no solver, no range rule, no
-rough rule, no background worker; nothing of the above runs.
+With the window's switch on ``plain`` (``strategy``; the default is
+``classic``) every frame goes to ``aa_plain_advice`` instead: the one-page
+rules of 《一页纸打法 v3.2》 (``scoreboard.plain_policy``) from the frame's
+fields and a state kept per hand, worked out once per decision on the
+frame's own thread. No replay, no solver, no range rule, no rough rule, no
+background worker; nothing of the above runs.
 """
 
 from __future__ import annotations
@@ -186,6 +192,7 @@ from poker_engine.scoreboard.style_rules import LIVE as STYLE_RULES
 from poker_engine.scoreboard.style_rules import adjust as style_adjust
 from poker_engine.solver.texassolver import SolverTimeout, amount_of, combo_key
 
+from .aa_classic_advice import AAClassicAdvice, ClassicPolicy
 from .aa_plain_advice import AAPlainAdvice
 from .aa_reads import AAReads
 from .aa_session import frame_summary
@@ -254,7 +261,10 @@ BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 POSTFLOP = ("flop", "turn", "river")
 IN_HAND = ("active", "all_in")
 VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
-STRATEGIES = ("classic", "plain")   # the window's switch: classic until plain passes
+STRATEGIES = ("classic", "plain")   # the window's switch: classic is the default
+# The engine classic ran on before the vision contract (2026-10-16): replays
+# and measurements that compare against it only; the window never offers it.
+LEGACY = "legacy"
 
 
 def _switch_quickly():
@@ -701,10 +711,14 @@ class AASolverAdvice:
     def __init__(self, bot=None, executor=None, preflop=None, model=None,
                  rough_executor=None, clock=time.monotonic, warm_executor=None,
                  strategy="classic"):
-        if strategy not in STRATEGIES:
+        if strategy not in (*STRATEGIES, LEGACY):
             raise ValueError(f"strategy must be one of {STRATEGIES}")
         self.strategy = strategy
         self._plain = AAPlainAdvice(clock=clock)
+        self._classic = AAClassicAdvice(
+            ClassicPolicy(reads=lambda: self.reads.snapshot(), preflop=preflop,
+                          model=model),
+            clock=clock)
         self._bot = bot
         self._executor = executor
         # The rough rule's own worker; an executor given for the solve serves
@@ -742,6 +756,7 @@ class AASolverAdvice:
             raise ValueError(f"strategy must be one of {STRATEGIES}")
         if strategy != self.strategy:
             self.strategy = strategy
+            self._classic.reset()
             self._jobs, self._quick, self._rough = {}, {}, {}
             self._plain.reset()
         return self.strategy
@@ -754,6 +769,8 @@ class AASolverAdvice:
         answer) or the rough rule's, that is the outcome."""
         if self.strategy == "plain":
             return self._plain.settled()
+        if self.strategy == "classic":
+            return self._classic.settled()
         return self._hand_id, {key: self._shown(key) for key in list(self._jobs)}
 
     def observe(self, payload, frame):
@@ -764,6 +781,8 @@ class AASolverAdvice:
         measurement log keeps it: advice can be replayed from a log."""
         if self.strategy == "plain":
             return self._plain.observe_fields(fields, frame)
+        if self.strategy == "classic":
+            return self._classic_fields(fields, frame)
         history = fields.get("actions_v1")
         if not history:
             return self._report("idle", "no_hand")
@@ -808,11 +827,25 @@ class AASolverAdvice:
             return report
         return self._rough_outcome(key, fields, cards, street, frame, report) or report
 
+    def _classic_fields(self, fields, frame):
+        """Classic under the vision contract (``aa_classic_advice``): the reads
+        of each opponent are kept here, from each finished hand's frames."""
+        history = fields.get("actions_v1")
+        if history and history["hand_id"] != self._hand_id:
+            self.reads.add_hand(self._rows, self._classic.stakes())
+            self._rows, self._hand_id = [], history["hand_id"]
+        if history:
+            self._rows.append({"processed": frame, "fields": fields})
+            del self._rows[:-MAX_ROWS]
+        return self._classic.observe_fields(fields, frame)
+
     def stakes(self):
         """The stakes of the hand being followed (``aa_stakes``): what it
         showed before its first action, else what earlier hands settled on."""
         if self.strategy == "plain":
             return self._plain.stakes()
+        if self.strategy == "classic":
+            return self._classic.stakes()
         rows = self._rows
         acted = bool(rows and ((rows[-1]["fields"].get("actions_v1") or {})
                                .get("actions")))
@@ -1199,5 +1232,5 @@ class AASolverAdvice:
                 "advice_emitted": status == "ready", "acts_on_client": False}
 
 
-__all__ = ["AASolverAdvice", "STRATEGIES", "advice_rows", "decision_key",
+__all__ = ["AASolverAdvice", "LEGACY", "STRATEGIES", "advice_rows", "decision_key",
            "multiway_row", "range_report"]

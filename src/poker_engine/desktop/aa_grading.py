@@ -363,7 +363,8 @@ class AAGrades:
                     self._rows.append(row)
 
     def _row(self, spot, outcome, kind, amount):
-        if outcome.get("kind") == "rough":       # advice, too rough to grade by
+        # Advice too rough to grade by, or the iron rule 5 on an unread screen.
+        if outcome.get("kind") in ("rough", "unread"):
             return None
         stack = _decimal(spot["stack"])
         to_call = _decimal(outcome.get("to_call"))

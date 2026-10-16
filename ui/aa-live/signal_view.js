@@ -305,13 +305,40 @@
     if (page.unspecified) basis.push("v3.1 没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
     if (Array.isArray(page.missing) && page.missing.length)
       basis.push("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
-    const before = advice.previous;
-    if (before) {
-      const row = (before.advice || [])[0];
-      const word = row ? short(solverLabel(row, before.to_call, null)) : "—";
-      basis.splice(1, 0, `刚才（要跟 ${chips(before.price)}）是“${word}”；价格变了，重新算`);
-    }
+    const before = previousLine(advice);
+    if (before) basis.splice(1, 0, before);
     return basis;
+  }
+
+  // The answer shown before the price changed, for 2 s beside the new one.
+  function previousLine(advice) {
+    const before = advice.previous;
+    if (!before) return null;
+    const row = (before.advice || [])[0];
+    const word = row ? short(solverLabel(row, before.to_call, null)) : "—";
+    return `刚才（要跟 ${chips(before.price)}）是“${word}”；价格变了，重新算`;
+  }
+
+  // The default strategy under the vision contract: how the answer was read
+  // (就绪 0.6s, or 铁律 5：缺价格), the defaults it took, and a new price
+  // worked out again.
+  function contractTags(advice) {
+    const contract = advice.contract || {};
+    const tags = [];
+    if (contract.tag) tags.push(contract.tag);
+    for (const item of contract.defaults || []) tags.push(item);
+    if (advice.previous) tags.push(isNumber(advice.facing)
+      ? `对手加注到 ${chips(advice.facing)}，重新算` : "价格变了，重新算");
+    return tags;
+  }
+
+  // The screen not steady for 2 s: the iron rule 5 (fold, or check when it is
+  // free), with what was missing.
+  function unreadVerdict(advice, controls, stack) {
+    const row = (advice.advice || [])[0];
+    if (!row) return null;
+    const label = solverLabel(row, advice.to_call ?? controls.call_amount, stack);
+    return {...label, kind: "unread", note: advice.contract?.reason || ""};
   }
 
   // The page's small labels: how the answer was read (就绪 0.6s, or 铁律 5：缺价格),
@@ -329,6 +356,7 @@
   function plainVerdict(advice, controls, stack) {
     if (advice.kind === "plain") return pageVerdict(advice, controls, stack);
     if (advice.kind === "rough") return roughVerdict(advice, controls, stack);
+    if (advice.kind === "unread") return unreadVerdict(advice, controls, stack);
     if (advice.kind === "multiway") return multiwayVerdict(advice, controls, stack);
     if (Array.isArray(advice.options) && advice.options.length) {
       const options = advice.options.map(item => ({...item, label: preflopLabel(item, stack)}));
@@ -760,6 +788,7 @@
       const verdict = readyVerdict(advice, controls, stack);
       if (verdict) {
         const basis = verdict.kind === "plain" ? pageBasis(advice)
+          : verdict.kind === "unread" ? ["画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"]
           : verdict.kind === "rough" ? ["粗略建议：只看价格和大概的胜率",
           `${reasonText(advice.rough_for)}，先按价格粗略给一个`,
           "对手的牌按 AA 真人常玩的前 40% 算，下注、加注给你的人按前 20%"]
@@ -768,6 +797,8 @@
             ? ["按胜率和价格定", `单挑求解器算不了这一步（${reasonText(advice.solver_gave_up)}）；对手范围按 AA 真人打法推算`]
           : verdict.kind === "multiway" && advice.provisional
             ? ["按胜率和价格先给", "单挑求解器还在算，算完换成求解器的打法；对手范围按 AA 真人打法推算"]
+          : verdict.kind === "multiway" && advice.contract && advice.heads_up
+            ? ["按胜率和价格定", "单挑也按对手范围的胜率和价格定，不等求解器；对手范围按 AA 真人打法推算"]
           : verdict.kind === "multiway" ? ["按胜率和价格定", advice.heads_up
             ? "翻牌求解要 40 秒左右，来不及；对手范围按 AA 真人打法推算"
             : "没有多人求解器，对手范围按 AA 真人打法推算"]
@@ -788,17 +819,21 @@
           basis.push("有人筹码没读到，按很深算");
         if (num(advice.inferred_actions) > 0)
           basis.push(`有 ${advice.inferred_actions} 个动作没读到，按牌桌补上`);
+        if (advice.contract && verdict.kind !== "plain" && advice.previous)
+          basis.splice(1, 0, previousLine(advice));
         basis.push("只显示建议，不替你点");
         const tags = verdict.kind === "rough" ? [...view.tags, "粗略"]
-          : verdict.kind === "plain" ? [...view.tags, ...pageTags(advice)] : [...view.tags];
+          : verdict.kind === "plain" ? [...view.tags, ...pageTags(advice)]
+            : advice.contract ? [...view.tags, ...contractTags(advice)] : [...view.tags];
         if (advice.guard) {
           tags.push("护栏");
           const was = advice.guard.was;
           const before = was ? short(solverLabel(was, advice.to_call ?? controls.call_amount, stack)) : null;
           basis.unshift(`护栏改的${before ? `：原来是“${before}”` : ""}；胜率按读出的范围算，范围偏窄、胜率偏高，大底池里只有一对时不下大注、不加注`);
         }
-        // A plain answer never changes within a decision; a new price says so itself.
-        const change = verdict.kind === "plain" ? null
+        // Under the vision contract an answer never changes within a decision;
+        // a new price says so itself.
+        const change = verdict.kind === "plain" || advice.contract ? null
           : changed(memory, stepKey(row, history), verdict.word, now);
         if (change) {
           tags.push(`已更新：刚才是${change.from}`);
@@ -809,10 +844,11 @@
       }
     }
     if (yourTurn && advice?.status === "reading") {
-      // 《一页纸打法》 waits for a steady screen (up to 2 s), then works it out once.
+      // Under the vision contract the advice waits for a steady screen (up to
+      // 2 s), then is worked out once.
       const what = (advice.missing_words || []).join("、");
       return {...view, tone: "info", title: "读画面中",
-        tags: [...view.tags, "一页纸"],
+        tags: advice.kind === "plain" ? [...view.tags, "一页纸"] : [...view.tags],
         note: `读画面中 ${one(Number(advice.waited) || 0)} 秒${what ? `（等：${what}）` : ""}，读稳了马上算，最多等 2 秒。`};
     }
     if (computing) {

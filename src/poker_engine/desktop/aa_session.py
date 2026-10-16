@@ -481,8 +481,8 @@ def _advice(advice):
                                          "mushroom_pool", "reads_hands",
                                          "stacks_assumed", "inferred_actions",
                                          "range_equity", "seconds", "stakes",
-                                         "plain", "provisional", "price",
-                                         "missing", "waited", "facing")
+                                         "plain", "contract", "provisional",
+                                         "price", "missing", "waited", "facing")
             if key in advice}
 
 

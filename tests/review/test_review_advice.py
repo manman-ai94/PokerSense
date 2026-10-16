@@ -1,7 +1,13 @@
 """Review: advice for one decision is not shown again for a later one."""
 
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice
+from functools import partial
+
+from poker_engine.desktop import aa_solver_advice
+from poker_engine.desktop.aa_solver_advice import LEGACY
 from tests.desktop.test_aa_solver_advice import Bot, Inline, payload
+
+# The engine before the vision contract, which these tests are of.
+AASolverAdvice = partial(aa_solver_advice.AASolverAdvice, strategy=LEGACY)
 
 
 def test_a_new_price_on_the_same_street_is_not_answered_with_the_old_advice():

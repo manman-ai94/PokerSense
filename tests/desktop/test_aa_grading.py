@@ -2,12 +2,17 @@
 
 from concurrent.futures import Future
 from decimal import Decimal
+from functools import partial
 
 from poker_engine.desktop.aa_grading import (AAGrades, HeroChips, multiway_grade,
                                              preflop_grade, solver_grade)
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice
+from poker_engine.desktop import aa_solver_advice
+from poker_engine.desktop.aa_solver_advice import LEGACY
 from tests.desktop.test_aa_solver_advice import (Bot, Inline, payload, preflop_turn,
                                                  three_handed)
+
+# The engine before the vision contract, which these tests are of.
+AASolverAdvice = partial(aa_solver_advice.AASolverAdvice, strategy=LEGACY)
 
 MIX = {"CALL": 0.7, "RAISE 30.000000": 0.2, "FOLD": 0.1}
 

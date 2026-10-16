@@ -1,14 +1,19 @@
 """The table's stakes told from the chips on the table, and used everywhere."""
 
 from decimal import Decimal
+from functools import partial
 
 from poker_engine.desktop.aa_grading import AAGrades
-from poker_engine.desktop.aa_solver_advice import AASolverAdvice, open_level
+from poker_engine.desktop import aa_solver_advice
+from poker_engine.desktop.aa_solver_advice import LEGACY, open_level
 from poker_engine.desktop.aa_solver_input import (check_hand, hand_facts, replay_hand,
                                                   solver_observation, starting_stacks)
 from poker_engine.desktop.aa_stakes import (default_stakes, detect_stakes,
                                             settle_stakes, stakes_label,
                                             stakes_report)
+
+# The engine before the vision contract, which these tests are of.
+AASolverAdvice = partial(aa_solver_advice.AASolverAdvice, strategy=LEGACY)
 
 # A 2/4/8(4) table, six players, dealer 5: small blind 0 (2), big blind 1 (4),
 # straddle 2 (8); seat 3 acts first. The hand opens with 6 x 4 + 2 + 4 + 8 = 38.

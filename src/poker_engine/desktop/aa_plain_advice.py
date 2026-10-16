@@ -66,7 +66,8 @@ MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没�
            "hero_cards": "你的手牌", "card_conflict": "牌读出过两种",
            "board": "公共牌", "opponents": "在局对手没稳", "pot": "底池",
            "stack": "你的筹码", "dealer": "庄位", "seat": "你的座位",
-           "actions": "这手的动作对不上"}
+           "actions": "这手的动作对不上", "ranges": "对手范围算不出",
+           "seats": "人数不在 4–8 人"}
 # 盲位没人加注时表里的规则（铁律 5 不适用，画面没读稳也照表）。
 BLIND_RULES = frozenset({"T1.a", "T1.a.fold", "T1.b", "T1.c", "T1.straddle", "T1.iso2",
                          "M.iso"})
@@ -476,16 +477,17 @@ class _Builder:
                    default=Decimal(0))
 
 
-def table_observation(state, fields, stakes):
+def table_observation(state, fields, stakes, fit=True):
     """(观察, 按默认补上的, 缺的)：plain_policy.decide 要的观察（和记分牌牌桌上的
     ``AAFullHandArena.observe`` 一个样），从按手锁存的状态和这一帧拼出来；缺了没法算的
-    时候观察是 None。"""
+    时候观察是 None。``fit=False``：还没轮到你（旧策略趁对手行动先读范围用），不看你的
+    按钮，要跟的金额按注额算，不按价格补动作。"""
     defaults, missing = [], []
     street = fields.get("street")
     seats = state.seats()
     controls = fields.get("hero_controls") or {}
     stack = state.stack_read(HERO)
-    to_call = price(controls, stack)
+    to_call = price(controls, stack) if fit else Decimal(0)
     pot = state.pot if state.pot is not None else _amount(fields.get("pot"))
     if HERO not in seats:
         missing.append("seat")
@@ -544,8 +546,12 @@ def table_observation(state, fields, stakes):
                 builder.put(frame, seat, builder.bets.get(seat, Decimal(0)) + chips)
         if on != street:
             final[on] = dict(builder.bets)
-    _fit_price(builder, state, street, to_call, controls, dealer, seats, folded,
-               straddler is not None)
+    if fit:
+        _fit_price(builder, state, street, to_call, controls, dealer, seats, folded,
+                   straddler is not None)
+    else:
+        owed = builder.top - builder.bets.get(HERO, Decimal(0))
+        to_call = min(stack, max(Decimal(0), owed))
     if builder.inferred:
         defaults.append("inferred")
     ante = Decimal(0) if bomb is not None else Decimal(stakes["ante"])
@@ -710,7 +716,11 @@ def advice_row(advice, observation):
 
 
 class AAPlainAdvice:
-    """每帧的 plain 建议：一个按手锁存的状态，一个决策只算一次，在读帧的线程里算。"""
+    """每帧的 plain 建议：一个按手锁存的状态，一个决策只算一次，在读帧的线程里算。
+    ``aa_classic_advice`` 用同一套合同出旧策略的建议（``kind``、``basis`` 是它的）。"""
+
+    kind = "plain"
+    basis = BASIS
 
     def __init__(self, clock=time.monotonic):
         self._clock = clock
@@ -767,7 +777,7 @@ class AAPlainAdvice:
         waited = self._clock() - since
         late = frame - first >= READY_FRAMES or waited >= READY_SECONDS
         if missing and not late:
-            return self._report("reading", missing[0], street=street, kind="plain",
+            return self._report("reading", missing[0], street=street, kind=self.kind,
                                 waited=round(waited, 1), missing=missing,
                                 missing_words=[MISSING[key] for key in missing])
         started = time.perf_counter()
@@ -916,7 +926,7 @@ class AAPlainAdvice:
 
     def _report(self, status, reason, **extra):
         return {"schema_version": 1, "status": status, "reason": reason,
-                "hand_id": self._hand_id, "basis": BASIS, **extra,
+                "hand_id": self._hand_id, "basis": self.basis, **extra,
                 "stakes": stakes_report(self.stakes()),
                 "advice_emitted": status == "ready", "acts_on_client": False}
 

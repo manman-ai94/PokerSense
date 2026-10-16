@@ -601,6 +601,37 @@ view = signalView(running(base({solver_advice_v1: {status: "reading", kind: "pla
 assert.deepEqual([view.tone, view.title], ["info", "读画面中"]);
 assert.equal(view.note, "读画面中 0.4 秒（等：要跟的金额没稳），读稳了马上算，最多等 2 秒。");
 assert.equal(view.verdict, undefined);
+// The default strategy under the vision contract: heads-up turn and river by
+// the range rule too, how it was read, never "已更新"; a new price beside the old.
+const classic = extra => base({solver_advice_v1: {status: "ready", kind: "multiway",
+  heads_up: true, advice: [{action: "call", frequency: 1.0}], to_call: "28", pot: "85",
+  range_equity: {value: 0.41}, cuts: {call: 0.25}, seconds: 0.05,
+  contract: {tag: "就绪 0.5s", waited: 0.5, defaults: ["缺对手筹码→按最深已读"]}, ...extra}});
+view = signalView(running(classic()), 0, {});
+assert.deepEqual([view.verdict.word, view.verdict.kind], ["跟注", "multiway"]);
+assert.deepEqual(view.tags.slice(-2), ["就绪 0.5s", "缺对手筹码→按最深已读"]);
+assert.ok(!view.tags.includes("一页纸"));
+assert.equal(view.basis[1], "单挑也按对手范围的胜率和价格定，不等求解器；对手范围按 AA 真人打法推算");
+assert.equal(view.changed, null);
+view = signalView(running(classic({advice: [{action: "fold", frequency: 1.0}], facing: "36",
+  previous: {advice: [{action: "call", frequency: 1.0}], to_call: "12", price: "12"}})), 0, {});
+assert.equal(view.tags.at(-1), "对手加注到 36，重新算");
+assert.equal(view.basis[1], "刚才（要跟 12）是“跟注 12”；价格变了，重新算");
+assert.equal(view.changed, null);
+// Two seconds without a steady screen: the iron rule 5, saying what is missing.
+view = signalView(running(base({solver_advice_v1: {status: "ready", kind: "unread",
+  advice: [{action: "fold", frequency: 1.0}], to_call: "28",
+  contract: {tag: "铁律 5：缺你的手牌", waited: 2.0, defaults: [], missing: ["hero_cards"],
+    reason: "画面没读稳：缺你的手牌"}}})), 0, {});
+assert.deepEqual([view.tone, view.verdict.word, view.verdict.kind, view.verdict.note],
+  ["fold", "弃牌", "unread", "画面没读稳：缺你的手牌"]);
+assert.ok(view.tags.includes("铁律 5：缺你的手牌"));
+assert.equal(view.basis[0], "画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
+view = signalView(running(base({solver_advice_v1: {status: "reading", kind: "classic",
+  reason: "price_not_steady", waited: 0.4, missing: ["price_not_steady"],
+  missing_words: ["要跟的金额没稳"]}})), 0, {});
+assert.equal(view.title, "读画面中");
+assert.ok(!view.tags.includes("一页纸"));
 // The table's level shows beside the table, from the advice's reading of it.
 const atStakes = stakes => signalView(running(base({solver_advice_v1: {status: "idle", stakes}})), 0, {}).stakes;
 assert.equal(atStakes({label: "2/4/8(4)", source: "table"}), "级别 2/4/8(4)");

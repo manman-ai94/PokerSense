@@ -1,8 +1,11 @@
 """Advice for your preflop decisions, solver advice for your heads-up turn
-and river decisions in the background, and the range rule's elsewhere."""
+and river decisions in the background, and the range rule's elsewhere: the
+engine before the vision contract (``legacy``), kept for replays; the default
+now runs the old strategy under the contract (``test_aa_classic_live``)."""
 
 from concurrent.futures import Future, ThreadPoolExecutor, wait as real_wait
 from decimal import Decimal
+from functools import partial
 import sys
 import threading
 import time
@@ -13,10 +16,12 @@ from poker_engine.core.enums import Position
 from poker_engine.desktop import aa_solver_advice
 from poker_engine.desktop.aa_session import frame_summary
 from poker_engine.desktop.aa_solver_advice import (
-    AASolverAdvice, multiway_row, pot_on_screen, solver_threads)
+    LEGACY, multiway_row, pot_on_screen, solver_threads)
 from poker_engine.scoreboard.multiway_bot import DEFAULTS
 from poker_engine.scoreboard.solver_bot import Fallback
 from tests.timing import Stopwatch, budget, over, timing, within_budget
+
+AASolverAdvice = partial(aa_solver_advice.AASolverAdvice, strategy=LEGACY)
 
 # Six players, dealer 5 (blinds 0 and 1, straddle 2). You (seat 4) limp, seat 2
 # checks its option; the flop is checked; on the turn seat 2 bets 10 into 23.

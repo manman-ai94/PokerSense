@@ -24,9 +24,12 @@ def test_plain_runs_no_solver_and_no_background_job():
 
 
 def test_classic_stays_the_default_and_the_switch_takes_only_the_two_names():
-    advice = AASolverAdvice(Bot({"CALL": 1.0}), Inline())
+    bot = Bot({"CALL": 1.0})
+    advice = AASolverAdvice(bot, Inline())
     assert advice.strategy == "classic"
-    assert run(advice, range(50))[-1].get("kind") is None       # the solver's
+    report = run(advice, range(50))[-1]
+    assert report["kind"] == "multiway" and "contract" in report    # no solver
+    assert not bot.seen
     with pytest.raises(ValueError):
         advice.set_strategy("solver")
     with pytest.raises(ValueError):
