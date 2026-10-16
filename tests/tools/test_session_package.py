@@ -138,7 +138,7 @@ def built(tmp_path):
 
 def test_the_session_says_who_played_where_and_with_what_code(built):
     folder, found = built
-    assert found["schema"] == "pokersense.session_package" and found["format"] == 1
+    assert found["schema"] == "pokersense.session_package" and found["format"] == 2
     session = found["session"]
     assert session["label"] == folder.name and session["machine"] == "peng-mac"
     assert session["code"] == CODE and session["spectate"] is False
