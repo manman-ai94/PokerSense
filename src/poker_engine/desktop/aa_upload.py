@@ -1,16 +1,34 @@
 """Recordings back to the owner: each finished recording folder, uploaded.
 
 A recording folder (segments, ``frames.jsonl``, ``recording.json``,
-``flywheel/``) goes with ``rclone`` to ``<remote>:<folder>/<machine>/<name>/``
-as soon as the recording stops: the video while its check-up sheet is being
-written (``aa_after_session``), the sheet's files once it is done. The
+``flywheel/``) goes to ``<cloud folder>/<machine>/<name>/`` once the recording
+has stopped and its check-up sheet and session package
+(``flywheel/package.json``, ``tools/session_package.py``) are written, in
+three passes: first the package, the sheet and the other small files, then
+the window's log (``frames.jsonl``), the video segments last: an AI reading
+the cloud folder has a session's evidence long before its video. The
 owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
+
+Two ways up, the same passes and files either way:
+
+* ``rclone`` to ``<remote>:<folder>/<machine>/<name>/`` (a tester's PC: a
+  remote with Google Drive's ``drive.file`` scope);
+* a folder a cloud app keeps in sync on this computer (the owner's Mac:
+  Google Drive for desktop under ``~/Library/CloudStorage``): the files are
+  copied into ``<that folder>/<machine>/<name>/`` at the same limited speed
+  and the app sends them on. Used when rclone has no remote here and the
+  cloud folder is there (``drive`` in the settings, else the Google Drive
+  desktop copy of ``folder`` when it exists); no new sign-in is needed.
 
 * What and where come from a local file (``PokerSense_private/upload/
   settings.json``): ``enabled`` (the window's switch, on by default),
   ``remote`` (an rclone remote, ``pokersense-upload``), ``folder``
   (``PokerSense 同事数据``), ``machine`` (this computer's name in the cloud
-  folder; the host name when not set) and ``bwlimit``. The login itself is
+  folder; the host name when not set), ``player`` (who plays at it, for the
+  session package; the machine's name when not set), ``drive`` (a synced
+  cloud folder to copy into instead of rclone), ``since`` (recordings whose
+  folder name sorts before it stay here: a computer that starts uploading
+  does not send its whole past at once) and ``bwlimit``. The login itself is
   rclone's own config on this computer: no key is in this file, the
   repository or the log.
 * Upload runs on its own thread, one recording at a time, in an rclone
@@ -33,21 +51,23 @@ owner's Mac takes it back with ``tools/flywheel_sync.py pull``.
   bytes, and leaves files that differ alone. Seeing only what this upload
   client created (scope ``drive.file``), it cannot reach anything else.
 * After the files, a small ``upload.json`` (the file list with sizes) is
-  written last: a recording without it, or whose files do not match it, is
-  still on its way and the pull leaves it alone.
+  written last, either way: a recording without it, or whose files do not
+  match it, is still on its way and the pull leaves it alone.
 * rclone is the one in the settings (``rclone``, a full path: ``flywheel_sync.py
   setup`` keeps the one it finds; passed over once it is gone, say after an
   upgrade), else the one on the window's PATH, else
   one in the usual places (on Windows ``C:\\rclone``, winget's links and the
   PATH as it is now in the registry: a window started before rclone was put
   on the PATH does not see it there).
-* Without rclone or without the remote the window says "未配置上传" and
-  looks again every few minutes; nothing else happens. Folders pulled from
-  another machine (with ``pulled.json``) are never uploaded again.
+* Without rclone's remote and without a synced cloud folder the window says
+  "未配置上传" and looks again every few minutes; nothing else happens.
+  Folders pulled from another machine (with ``pulled.json``) are never
+  uploaded again.
 """
 
 from __future__ import annotations
 
+from fnmatch import fnmatch
 import hashlib
 import json
 import os
@@ -75,6 +95,12 @@ IDLE_WAIT = 3600                 # a look now and then
 UNSET_WAIT = 300                 # how often a window without rclone looks again
 CHECK_EVERY = 60.0               # seconds a "configured" answer is kept
 LOG_LIMIT = 1_000_000
+LOG = "frames.jsonl"             # the window's log: the second pass
+VIDEO = "segment_*.mp4"          # the video segments: the last pass
+PASSES = (["--exclude", f"/{LOG}", "--exclude", f"/{VIDEO}"],
+          ["--include", f"/{LOG}"], [])
+CLOUD = Path("~/Library/CloudStorage")   # where Google Drive for desktop syncs
+CHUNK = 1 << 20                  # bytes copied at a time into a synced folder
 
 _CURRENT = None
 
@@ -93,7 +119,7 @@ def machine_name(text):
 def default_settings():
     return {"enabled": True, "remote": REMOTE, "folder": FOLDER,
             "machine": machine_name(socket.gethostname()), "bwlimit": BWLIMIT,
-            "rclone": ""}
+            "rclone": "", "player": "", "drive": "", "since": ""}
 
 
 def load_settings(path):
@@ -109,6 +135,7 @@ def load_settings(path):
             elif key in settings and key != "enabled" and isinstance(value, str):
                 settings[key] = value.strip()
     settings["machine"] = machine_name(settings["machine"] or socket.gethostname())
+    settings["player"] = machine_name(settings["player"]) if settings["player"] else ""
     settings["remote"] = settings["remote"].rstrip(":") or REMOTE
     settings["folder"] = settings["folder"].strip("/") or FOLDER
     return settings
@@ -137,6 +164,56 @@ def manifest(folder):
     digest = hashlib.sha256(json.dumps(files).encode("utf-8")).hexdigest()
     return {"files": files, "bytes": sum(size for _, size in files),
             "digest": digest}
+
+
+def upload_pass(rel):
+    """Which pass a file of a recording goes up in: 0 the package, the sheet
+    and the other small files, 1 the window's log, 2 the video."""
+    if rel == LOG:
+        return 1
+    return 2 if "/" not in rel and fnmatch(rel, VIDEO) else 0
+
+
+def drive_folder(folder=FOLDER, cloud=CLOUD):
+    """The Google Drive desktop copy of the cloud folder, if this computer has
+    one (``~/Library/CloudStorage/GoogleDrive-*/<我的云端硬盘|My Drive>/<folder>``)."""
+    for account in sorted(Path(cloud).expanduser().glob("GoogleDrive-*")):
+        for mine in ("我的云端硬盘", "My Drive"):
+            path = account / mine / folder
+            if path.is_dir():
+                return path
+    return None
+
+
+def rate(text):
+    """Bytes per second of an rclone ``--bwlimit`` ("1M", "512K", "0"); 0 is
+    no limit."""
+    match = re.fullmatch(r"\s*([\d.]+)\s*([KMG]?)i?B?\s*", str(text or "0"), re.I)
+    if not match:
+        return 0
+    scale = {"": 1024, "K": 1024, "M": 1024 ** 2, "G": 1024 ** 3}
+    return int(float(match.group(1)) * scale[match.group(2).upper()])
+
+
+def copy_slowly(source, target, limit, sleep=time.sleep, clock=time.monotonic):
+    """Copy one file at no more than ``limit`` bytes a second (0: as fast as
+    it goes), into ``target`` whole: a cut-off copy leaves only a ``.part``."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + ".part")
+    start, sent = clock(), 0
+    with open(source, "rb") as reading, open(part, "wb") as writing:
+        while True:
+            chunk = reading.read(CHUNK)
+            if not chunk:
+                break
+            writing.write(chunk)
+            sent += len(chunk)
+            if limit:
+                ahead = sent / limit - (clock() - start)
+                if ahead > 0:
+                    sleep(ahead)
+    os.replace(part, target)
 
 
 def finished(folder):
@@ -223,8 +300,10 @@ class Uploader:
 
     def __init__(self, root, *, base=None, run=run_process, which=shutil.which,
                  places=None, delay=START_DELAY, retry_waits=RETRY_WAITS,
-                 report_wait=REPORT_WAIT, clock=time.monotonic):
+                 report_wait=REPORT_WAIT, clock=time.monotonic, cloud=CLOUD,
+                 sleep=time.sleep):
         self.root = Path(root)
+        self.cloud, self.sleep = cloud, sleep
         base = Path(base) if base else private_root() / "upload"
         self.settings_path = base / "settings.json"
         self.state_path = base / "state.json"
@@ -242,6 +321,7 @@ class Uploader:
         self.failures = 0
         self.last_error = None
         self.configured = None
+        self.local = None              # the synced cloud folder, when used
         self.checked = None            # clock of the last "configured" check
         self.thread = None
 
@@ -299,6 +379,7 @@ class Uploader:
         status = {"available": True, "enabled": settings["enabled"],
                   "configured": self.configured, "machine": settings["machine"],
                   "destination": self.destination(settings, ""),
+                  "way": "folder" if self.local is not None else "rclone",
                   "uploading": self.uploading, "waiting": self.waiting,
                   "uploaded": len(state), "last_error": self.last_error}
         status["message"] = self.message(status)
@@ -346,80 +427,69 @@ class Uploader:
         for folder in todo:
             if self.stopped.is_set():
                 return True
-            if self._sheet_running(folder) and not self.send(folder, settings):
-                return False                    # the video now, the sheet after
-            self._wait_for_report(folder)
+            self._wait_for_report(folder)       # the sheet and the package first
             if not self.upload(folder, settings):
                 return False
             self.waiting -= 1
         return True
 
     def pending(self):
-        """Finished recordings whose files are not the ones uploaded."""
+        """Finished recordings whose files are not the ones uploaded (none
+        whose folder name sorts before ``since``)."""
+        since = self.settings()["since"]
         state = self._state()
         with self.lock:
             extra = set(self.extra)
         folders = sorted(set(self.root.glob("*")) | extra, key=lambda path: path.name)
         todo = []
         for folder in folders:
-            if not finished(folder):
+            if not finished(folder) or folder.name[:len(since)] < since:
                 continue
             done = state.get(folder.name)
             if done is None or done.get("digest") != manifest(folder)["digest"]:
                 todo.append(folder)
         return todo
 
-    def _copy(self, folder, settings):
-        """(return code, output) of an rclone copy of the folder as it is now."""
+    def _copy(self, folder, settings, filters=()):
+        """(return code, output) of an rclone copy of the folder as it is now
+        (only the files ``filters`` let through)."""
         return self.run(
             [self._rclone(settings), "copy", str(folder),
-             self.destination(settings, folder.name), "--checksum",
+             self.destination(settings, folder.name), *filters, "--checksum",
              "--transfers", "1", "--checkers", "2", "--retries", "3",
              "--low-level-retries", "10", "--contimeout", "30s",
              "--timeout", "5m", "--bwlimit", settings["bwlimit"] or "0",
              "--stats", "0", "--log-level", "NOTICE"], COPY_TIMEOUT)
 
-    def send(self, folder, settings):
-        """The files there are so far (the video), without ``upload.json``:
-        the pull still waits for the recording. True when they went through."""
-        folder = Path(folder)
-        self.uploading = folder.name
-        try:
-            code, output = self._copy(folder, settings)
-        finally:
-            self.uploading = None
-        if code != 0:
-            self.last_error = scrub(output, 1) or f"rclone 退出码 {code}"
-            self._log(f"{folder.name} 没传完（{code}）\n{scrub(output)}")
-            return False
-        self._log(f"{folder.name} 录像已传，等体检单写完再补传")
+    def _put(self, folder, settings, files):
+        """The files into the synced cloud folder, in the three passes; True
+        when all went through."""
+        target = self.local / settings["machine"] / folder.name
+        limit = rate(settings["bwlimit"])
+        for which in range(len(PASSES)):
+            for rel, size in files:
+                if upload_pass(rel) != which:
+                    continue
+                there = target / rel
+                if there.is_file() and there.stat().st_size == size:
+                    continue
+                copy_slowly(folder / rel, there, limit, sleep=self.sleep)
         return True
 
     def upload(self, folder, settings):
-        """rclone copy of the folder, then its ``upload.json``; True when both
-        went through."""
+        """The folder in its three passes (the package and the sheet, the log,
+        the video), then its ``upload.json``; True when all went through."""
         folder = Path(folder)
-        rclone = self._rclone(settings)
         target = self.destination(settings, folder.name)
         files = manifest(folder)
+        marker = {"machine": settings["machine"], "folder": folder.name,
+                  "files": files["files"], "bytes": files["bytes"]}
         self.uploading = folder.name
         try:
-            code, output = self._copy(folder, settings)
-            if code == 0:
-                self._merge_folders(settings)
-                marker = {"machine": settings["machine"], "folder": folder.name,
-                          "files": files["files"], "bytes": files["bytes"],
-                          "uploaded": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-                with tempfile.TemporaryDirectory() as temp:
-                    local = Path(temp) / MARKER
-                    local.write_text(json.dumps(marker, ensure_ascii=False, indent=1),
-                                     encoding="utf-8")
-                    code, more = self.run([rclone, "copyto", str(local),
-                                           f"{target}/{MARKER}", "--retries", "3",
-                                           "--contimeout", "30s", "--timeout", "5m",
-                                           "--stats", "0", "--log-level", "NOTICE"],
-                                          600)
-                output += more
+            if self.local is not None:
+                code, output = self._put_all(folder, settings, files, marker)
+            else:
+                code, output = self._send_all(folder, settings, marker)
         finally:
             self.uploading = None
         if code != 0:
@@ -437,6 +507,37 @@ class Uploader:
                   f"{files['bytes'] / 1e6:.1f} MB → {target}")
         return True
 
+    def _send_all(self, folder, settings, marker):
+        """rclone: the three passes, the folder merge, ``upload.json``."""
+        output = ""
+        for filters in PASSES:
+            code, more = self._copy(folder, settings, filters)
+            output += more
+            if code != 0:
+                return code, output
+        self._merge_folders(settings)
+        marker["uploaded"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        with tempfile.TemporaryDirectory() as temp:
+            local = Path(temp) / MARKER
+            local.write_text(json.dumps(marker, ensure_ascii=False, indent=1),
+                             encoding="utf-8")
+            code, more = self.run([self._rclone(settings), "copyto", str(local),
+                                   f"{self.destination(settings, folder.name)}/"
+                                   f"{MARKER}", "--retries", "3",
+                                   "--contimeout", "30s", "--timeout", "5m",
+                                   "--stats", "0", "--log-level", "NOTICE"], 600)
+        return code, output + more
+
+    def _put_all(self, folder, settings, files, marker):
+        """The synced cloud folder: the three passes, then ``upload.json``."""
+        try:
+            self._put(folder, settings, files["files"])
+            marker["uploaded"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+            write_json(self.local / settings["machine"] / folder.name / MARKER, marker)
+        except OSError as exc:
+            return 1, f"复制到云盘文件夹没成功：{exc}"
+        return 0, ""
+
     def _merge_folders(self, settings):
         """Same-named folders on the remote merged into one, down to the
         recording folders; a failure is only logged (the pull waits for a
@@ -450,8 +551,10 @@ class Uploader:
             self._log(f"同名文件夹没合并（{code}）\n{scrub(output)}")
         return code == 0
 
-    @staticmethod
-    def destination(settings, name):
+    def destination(self, settings, name):
+        if self.local is not None:
+            path = self.local / settings["machine"]
+            return str(path / name) if name else str(path)
         path = f"{settings['folder']}/{settings['machine']}"
         return f"{settings['remote']}:{path}/{name}" if name else (
             f"{settings['remote']}:{path}")
@@ -460,23 +563,27 @@ class Uploader:
         return find_rclone(settings["rclone"], which=self.which, places=self.places)
 
     def _check(self, settings):
-        """Is rclone here with the remote? Kept for ``CHECK_EVERY`` seconds."""
+        """Is rclone here with the remote, or else a synced cloud folder?
+        Kept for ``CHECK_EVERY`` seconds."""
         rclone = self._rclone(settings)
-        ok = False
+        ok, self.local = False, None
         if rclone:
             code, output = self.run([rclone, "listremotes"], 30)
             ok = code == 0 and f"{settings['remote']}:" in output.split()
+        if not ok:
+            self.local = self._synced(settings)
+            ok = self.local is not None
         self.configured, self.checked = ok, self.clock()
         return ok
 
-    def _sheet_running(self, folder):
-        """Is the check-up sheet of ``folder`` still being written?"""
-        with self.lock:
-            process = self.reports.get(str(folder))
-        try:
-            return process is not None and process.poll() is None
-        except Exception:               # noqa: BLE001 - not a process: done
-            return False
+    def _synced(self, settings):
+        """The synced cloud folder to copy into, or None: ``drive`` from the
+        settings (made when its parent is there), else Google Drive for
+        desktop's copy of ``folder``."""
+        if settings["drive"]:
+            path = Path(settings["drive"]).expanduser()
+            return path if path.is_dir() or path.parent.is_dir() else None
+        return drive_folder(settings["folder"], self.cloud)
 
     def _wait_for_report(self, folder):
         with self.lock:
@@ -507,6 +614,7 @@ class Uploader:
             pass
 
 
-__all__ = ["BWLIMIT", "FOLDER", "MARKER", "PULLED", "REMOTE", "Uploader", "current",
-           "default_settings", "find_rclone", "finished", "load_settings",
-           "machine_name", "manifest", "rclone_places", "run_process", "write_json"]
+__all__ = ["BWLIMIT", "CLOUD", "FOLDER", "MARKER", "PULLED", "REMOTE", "Uploader",
+           "copy_slowly", "current", "default_settings", "drive_folder",
+           "find_rclone", "finished", "load_settings", "machine_name", "manifest",
+           "rate", "rclone_places", "run_process", "upload_pass", "write_json"]

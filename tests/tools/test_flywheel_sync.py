@@ -57,6 +57,29 @@ def test_pull_brings_a_recording_back_whole_and_books_it_by_machine(tmp_path):
     assert not aa_upload.finished(here)
 
 
+def test_this_computers_own_uploads_are_not_pulled_back(tmp_path):
+    """The owner's Mac uploads into ``peng/`` too; its pull takes only the
+    other machines' recordings (its own are here already)."""
+    uploaded(tmp_path)
+    mine = tmp_path / "cloud" / "PokerSense 同事数据" / "peng"
+    shutil.copytree(mine.parent / "du", mine)
+    cloud = sync.LocalSource(mine.parent)
+    counts = sync.pull(cloud, tmp_path / "mac", None, out=[].append, own="peng")
+    assert counts == {"pulled": 1}
+    assert [path.name for path in (tmp_path / "mac").iterdir()
+            if path.name != sync.PULLING] == ["du-20261014-201500-live"]
+
+
+def test_setup_keeps_the_player_the_synced_folder_and_since(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "private_root", lambda: tmp_path / "private")
+    monkeypatch.setattr(sync.shutil, "which", lambda name: None)
+    sync.main(["setup", "--machine", "peng", "--player", "peng", "--since",
+               "20261016", "--root", str(tmp_path / "rec")])
+    settings = json.loads((tmp_path / "private" / "upload" / "settings.json")
+                          .read_text(encoding="utf-8"))
+    assert settings == {"machine": "peng", "player": "peng", "since": "20261016"}
+
+
 def test_a_recording_still_on_its_way_is_left_for_the_next_pull(tmp_path):
     folder = uploaded(tmp_path)
     there = tmp_path / "cloud" / "PokerSense 同事数据" / "du" / folder.name
