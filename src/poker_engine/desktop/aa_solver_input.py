@@ -51,8 +51,9 @@ read, when only one action fits (``inferred``):
   check, nobody bet: every seat before you checked or folded, however many;
 - a street the table has gone past with nobody to call a bet and no chips
   put in after its last action read (the pot read then is the pot read as
-  the next street began, ``street_pots``): the seats still to act on it
-  checked (before the flop, the big blind or straddle checking its option).
+  the next street began, ``street_pots``) and, after the flop, the pot grown
+  on it by what the replay put in: the seats still to act on it checked
+  (before the flop, the big blind or straddle checking its option).
 
 The last two are what the replay has on 杜's computer (Huawei P30): its
 reader never reads the check badge (10/16, 80 hands: none of about 790
@@ -158,7 +159,7 @@ def hand_facts(rows, stakes=None):
             "actions": actions, "board": board, "stacks": stacks,
             "opening_pot": opening_pot,
             "first_actor": _first_actor(opening),
-            "street_pots": _street_pots(rows[start:], fields[start:], actions),
+            "street_pots": _street_pots(rows[start:], fields[start:], actions, board),
             "states": {int(seat): state for seat, state in
                        (latest.get("participants") or {}).items()},
             "wagers": {int(seat): Decimal(value) for seat, value in
@@ -307,11 +308,14 @@ def _first_actor(fields):
     return None
 
 
-def _street_pots(rows, fields, actions):
+def _street_pots(rows, fields, actions, board=()):
     """{street: (pot as it began, pot after its last action read)}: each the
     pot read on two frames in a row while the board shows that street, from
     its first frame and from after its last action read (from its first
-    frame when none was read)."""
+    frame when none was read). Frames whose board disagrees with ``board``
+    (the hand's, ``_board``) are left out: a new hand's first frames can
+    still show the last hand's board while the pot is already this hand's
+    blinds, which would be taken for the pot as this hand's flop began."""
     last = {}
     for action in actions:
         last[action["street"]] = max(last.get(action["street"], 0), action["frame"])
@@ -321,7 +325,9 @@ def _street_pots(rows, fields, actions):
         begun = settled = None
         previous = {"begun": None, "settled": None}
         for row, f in zip(rows, fields):
-            if len([card for card in f.get("board") or () if card]) != count:
+            read = list(f.get("board") or ())
+            if (len([card for card in read if card]) != count
+                    or any(card and card != mine for card, mine in zip(read, board))):
                 continue
             pot = f.get("pot")
             if pot in (None, ""):
@@ -491,16 +497,28 @@ def _ahead(action, arena):
 def _checked_around(arena, table):
     """The checks of the seats still to act on the replay's street when the
     table has gone past it with no chips put in on it and nobody has a bet
-    to call (see the module notes), or None."""
+    to call (see the module notes), or None.
+
+    After the flop the table's pot must also have grown on that street by
+    what the replay put in on it: a bet whose badge was missed and its calls
+    read replays as checks (a call with nothing to call), so the pot after
+    the last action read already holds those chips and still equals the pot
+    as the next street began (nightly code check 10/16: advice from a pot of
+    47 with 77 on the table)."""
     if arena is None or arena.terminal or arena.street == "river" or _to_call(arena):
         return None
     street = arena.street
     later = STREETS[STREETS.index(street) + 1]
     pots = table.get("street_pots") or {}
-    settled = (pots.get(street) or (None, None))[1]
+    begun, settled = pots.get(street) or (None, None)
     if (STREETS.index(_table_street(table)) <= STREETS.index(street)
             or settled is None or settled != (pots.get(later) or (None, None))[0]):
         return None
+    if street != "preflop":
+        put_in = sum(Decimal(value) for value in
+                     arena.observe(arena.actor)["bets"].values())
+        if begun is None or settled - begun != put_in:
+            return None
     checks, probe = [], deepcopy(arena)
     while not probe.terminal and probe.street == street:
         checks.append({"slot": probe.actor, "kind": "check", "street": street,
