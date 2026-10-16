@@ -103,6 +103,31 @@ def test_changed_advice_is_listed_with_the_rule_that_gave_it():
     assert (sized["changed"], sized["size_only"], sized["why"]) == (0, 1, [])
 
 
+def test_answers_of_the_solver_stand_in_are_listed_apart():
+    # Without --solver a heads-up solve comes back at once as check or call
+    # (10/16: a rough fold that became "solver call, equity 0%" was nearly
+    # taken for a bug).
+    logs = [("log", rows())]
+    result = check.compare_replays(logs, _replayed("fold", 1, kind="rough"),
+                                   _replayed("call", 1, kind="solver"))
+    assert result["passed"]
+    assert (result["changed"], result["stand_in"]) == (0, 1)
+    assert result["why"] == [] and result["priced"] is None
+    assert result["stand_in_why"] == [("翻前 · 粗略 → 求解器替身：弃牌→替身 1", 1)]
+    [item] = result["changes"]
+    assert item["stand_in"] and item["note"] == check.STAND_IN
+    text = check.page({"old": A, "new": B, "finished": "", "minutes": 1.0,
+                       "not_run": {}, "steps": {"replay": result}})
+    assert "建议变了 0 处（另 1 处是求解器替身，不算）" in text
+    assert "另有 1 处一边是求解器替身（不是真实建议）" in text
+    assert "粗略弃牌 → 求解器替身（不是真实建议），你跟注" in text
+    # With --solver its answers are the solver's own.
+    real = check.compare_replays(logs, _replayed("fold", 1, kind="rough"),
+                                 _replayed("call", 1, kind="solver"), solver=True)
+    assert (real["changed"], real["stand_in"]) == (1, 0)
+    assert real["why"] == [("翻前 · 粗略 → 求解器：弃牌→跟注 1", 1)]
+
+
 def _gone():
     gone = _replayed("call", 0)
     gone["logs"][0]["reports"] = {

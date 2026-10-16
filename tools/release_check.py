@@ -24,7 +24,10 @@ the steps are the existing tools, not new ones:
    the opponents still in showed their cards both answers are valued in
    chips against those cards. The heads-up solve is taken as done at once
    here (check or call, as in ``aa_session_report``) unless ``--solver``;
-   stalls cannot be seen in a log replay (they are the log's own).
+   a changed decision where that stand-in answered is listed apart and
+   labelled, not counted or valued as changed advice (10/16: a rough fold
+   that turned into "solver call, equity 0%" was nearly taken for a bug).
+   Stalls cannot be seen in a log replay (they are the log's own).
 2. Played at recorded pace (``--measure``, ``--p30``): each version plays the
    recording through the live session with advice on, solver included
    (``tools/measure_aa_realtime.py --advice``), so recognition changes,
@@ -94,6 +97,7 @@ KINDS = {"preflop": "翻前", "solver": "求解器", "multiway": "范围规则",
 ACTIONS = {"fold": "弃牌", "check": "过牌", "call": "跟注", "raise": "加注", None: "无"}
 STREETS = {"preflop": "翻前", "flop": "翻牌", "turn": "转牌", "river": "河牌"}
 EXAMPLES = 8                    # changed decisions written out on the page
+STAND_IN = "求解器替身（不是真实建议）"
 STEPS = (("tests", "测试和代码检查"), ("replay", "录像日志重放"),
          ("measure", "按原速重放"), ("p30", "杜的 P30 验收"))
 
@@ -324,24 +328,41 @@ def changed_decisions(name, rows, old, new):
     return found
 
 
-def why(changes):
+def stand_in(answer, solver):
+    """Whether ``answer`` came from the stand-in for TexasSolver: without
+    ``--solver`` every heads-up solve comes back at once as check or call
+    against a made-up range, so its action and share mean nothing."""
+    return not solver and (answer or {}).get("kind") == "solver"
+
+
+def why(changes, solver=True):
     """The changes grouped by street and the rule that answered before and
     after, most first: [(text, count)]."""
+    def kind(answer):
+        return ("替身" if stand_in(answer, solver) else
+                (answer or {}).get("kind"))
+
+    def action(answer):
+        if stand_in(answer, solver):
+            return "替身"
+        value = (answer or {}).get("action")
+        return ACTIONS.get(value, value)
+
     groups = {}
     for item in changes:
         if item["size_only"]:
             continue
         before, after = item["before"] or {}, item["after"] or {}
-        key = (item["street"], before.get("kind"), after.get("kind"))
+        key = (item["street"], kind(before), kind(after))
         group = groups.setdefault(key, Counter())
-        move = (f"{ACTIONS.get(before.get('action'), before.get('action'))}→"
-                f"{ACTIONS.get(after.get('action'), after.get('action'))}")
+        move = f"{action(before)}→{action(after)}"
         if not after and item.get("reason_after"):
             move += f"（{item['reason_after']}）"
         group[move] += 1
     order = sorted(groups.items(), key=lambda pair: -sum(pair[1].values()))
-    return [(f"{STREETS.get(street, street)} · {KINDS.get(old, old)} → "
-             f"{KINDS.get(new, new)}：" + "、".join(
+    names = {**KINDS, "替身": "求解器替身"}
+    return [(f"{STREETS.get(street, street)} · {names.get(old, old)} → "
+             f"{names.get(new, new)}：" + "、".join(
                  f"{move} {n}" for move, n in moves.most_common()),
              sum(moves.values())) for (street, old, new), moves in order]
 
@@ -360,9 +381,10 @@ def priced(changes):
             "chips_after": round(sum(v["after"] for v in values), 1)}
 
 
-def compare_replays(logs, old, new):
+def compare_replays(logs, old, new, solver=False):
     """The verdict on the recording logs: numbers side by side, and every
-    changed decision. ``logs`` gives (name, rows) in the replays' order."""
+    changed decision. ``logs`` gives (name, rows) in the replays' order;
+    ``solver``: whether the replays ran TexasSolver or its stand-in."""
     numbers, reasons = [], []
     for path, label in REPLAY_LIMITS:
         before, after = _get(old["summary"], path), _get(new["summary"], path)
@@ -373,6 +395,13 @@ def compare_replays(logs, old, new):
     for (name, rows), was, now in zip(logs, old["logs"], new["logs"]):
         changes += changed_decisions(name, rows, _reports(was, len(rows)),
                                      _reports(now, len(rows)))
+    for item in changes:
+        item["stand_in"] = any(stand_in(item[label], solver)
+                               for label in ("before", "after"))
+        if item["stand_in"]:
+            item["note"] = STAND_IN
+    real = [item for item in changes if not item["stand_in"]]
+    standing = [item for item in changes if item["stand_in"]]
     summary = new["summary"]
     return {"passed": not reasons, "reasons": reasons, "numbers": numbers,
             "logs": len(new["logs"]),
@@ -380,9 +409,10 @@ def compare_replays(logs, old, new):
             "decisions": summary.get("your_decisions"),
             "solver_taken_as_done": (summary.get("advised_by_kind") or {}).get(
                 "solver", 0),
-            "changed": sum(not item["size_only"] for item in changes),
-            "size_only": sum(item["size_only"] for item in changes),
-            "why": why(changes), "priced": priced(changes), "changes": changes}
+            "changed": sum(not item["size_only"] for item in real),
+            "size_only": sum(item["size_only"] for item in real),
+            "stand_in": len(standing), "stand_in_why": why(standing, solver),
+            "why": why(real), "priced": priced(real), "changes": changes}
 
 
 def replay_step(trees, paths, extra, out, solver):
@@ -407,7 +437,7 @@ def replay_step(trees, paths, extra, out, solver):
     rows = ((item["name"], [row for row in load(item["path"]) if row.get("fields")])
             for item in logs)                    # one log at a time
     try:
-        result = compare_replays(rows, runs["old"], runs["new"])
+        result = compare_replays(rows, runs["old"], runs["new"], solver)
     except ValueError as error:                  # the replays do not line up
         return {"passed": False, "reasons": [str(error)]}
     result["skipped"] = skipped
@@ -632,14 +662,19 @@ def advice_text(answer):
 
 def example(item):
     """One changed decision in a line, to look up in the recording."""
+    def said(answer):
+        if item.get("stand_in") and (answer or {}).get("kind") == "solver":
+            return STAND_IN
+        return advice_text(answer)
+
     seconds = item.get("video_seconds")
     where = (f"，录像第 {seconds:.0f} 秒" if isinstance(seconds, (int, float))
              else "")
     board = f"｜{item['board']}" if item.get("board") else ""
     did = ACTIONS.get(item.get("you_did"), item.get("you_did")) or "不知道"
     return (f"{item['log']} {item['hand_id']}{where}：{STREETS.get(item['street'], '')}"
-            f" {item.get('hero') or '?'}{board}，{advice_text(item['before'])} → "
-            f"{advice_text(item['after'])}，你{did}")
+            f" {item.get('hero') or '?'}{board}，{said(item['before'])} → "
+            f"{said(item['after'])}，你{did}")
 
 
 def headline(step, result):
@@ -650,7 +685,9 @@ def headline(step, result):
     if step == "replay" and "numbers" in result:
         parts = [f"{row['what']} {_text(row['old'])} → {_text(row['new'])}"
                  for row in result["numbers"]]
-        parts.append(f"建议变了 {result['changed']} 处")
+        parts.append(f"建议变了 {result['changed']} 处" + (
+            f"（另 {result['stand_in']} 处是求解器替身，不算）"
+            if result.get("stand_in") else ""))
         return f"{result['logs']} 段、{result['hands']} 手、{result['decisions']} 个决策；" \
             + "；".join(parts)
     if step == "measure":
@@ -681,7 +718,7 @@ def page(result):
         word = "通过" if step["passed"] else "没过：" + "；".join(step["reasons"])
         lines.append(f"| {name} | {word} | {headline(key, step)} |")
     replay_result = result["steps"].get("replay") or {}
-    if replay_result.get("why"):
+    if replay_result.get("why") or replay_result.get("stand_in"):
         lines += ["", f"## 建议变了的 {replay_result['changed']} 处（按哪条规则给的）", ""]
         lines += [f"- {text}" for text, _ in replay_result["why"]]
         if replay_result.get("size_only"):
@@ -692,7 +729,15 @@ def page(result):
                 f"- 对手亮了牌、能事后估值的 {value['decisions']} 处：新版好 "
                 f"{value['better']}、差 {value['worse']}；这几处合计 {value['chips_before']}"
                 f" → {value['chips_after']} 积分（只是这几手的事后估值，不是胜率结论）")
-        shown = [item for item in replay_result["changes"] if not item["size_only"]]
+        if replay_result.get("stand_in"):
+            lines.append(
+                f"- 另有 {replay_result['stand_in']} 处一边是{STAND_IN}：这次重放没真跑"
+                "求解器，替身面对下注就跟、没下注就过，牌力也是编的，所以没算进上面，"
+                "也不估值；要看真实建议，加 --solver 重跑：")
+            lines += [f"  - {text}" for text, _ in replay_result["stand_in_why"]]
+        shown = sorted((item for item in replay_result["changes"]
+                        if not item["size_only"]),
+                       key=lambda item: bool(item.get("stand_in")))
         lines += ["", f"例子（前 {min(len(shown), EXAMPLES)} 处，全部在 release_check.json）："]
         lines += [f"- {example(item)}" for item in shown[:EXAMPLES]]
     for item in (result["steps"].get("measure") or {}).get("recordings", []):
