@@ -725,6 +725,17 @@ def test_top_pair_raised_on_the_flop_is_all_in_or_fold_and_iron_law_1_wins(
     assert advice.action == "fold" and advice.hits == hits
 
 
+@pytest.mark.parametrize("actions, rule", [
+    (HU + " 2c 7r32 2r110", "I1"),                          # 单挑：全下超铁律 1，跟注不超
+    (THREE_WAY + " 1c 2c 7r43 1r110 2c", "R.B"),            # 多人一栏：被加注弃
+])
+def test_top_pair_raised_on_the_flop_never_just_calls(equity_is, actions, rule):
+    # 页上 B 档翻牌被加注只有全下或弃（READINGS r_b_iron1）；以前被铁律降成了跟注
+    equity_is(0.6)
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions, stacks=400)
+    assert (advice.action, advice.rule, advice.all_in) == ("fold", rule, False)
+
+
 # -- SPR 规则 ----------------------------------------------------------------------
 
 def test_low_spr_heads_up_plays_top_pair_like_a_strong_hand():

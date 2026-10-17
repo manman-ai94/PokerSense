@@ -607,3 +607,59 @@ def test_a_price_misread_for_a_frame_does_not_start_the_two_seconds():
     screen.put(5, 36, frames=0)
     report = screen.turn(call=36, frames=1)               # 真的加注了：从现在开始等
     assert report["status"] == "reading"
+
+
+# -- 夜间代码检查 10-17：实时这一路和页上不一致的几处 --------------------------------------
+
+def test_a_raise_that_leaves_your_price_unchanged_is_a_new_decision():
+    # 翻牌 3 人：2 号下 20，你跟 20，5 号加到 40、2 号弃：你的价格又是 20，但这是新的决策
+    pre = "3f 4c 5c 6f 7f 0f 1f 2c"
+    screen = Screen(AAPlainAdvice(clock=Clock()), clock=None, hero=("Kh", "Qd"))
+    screen.deal()
+    screen.fold(3)
+    ready(screen, call=4)
+    screen.put(HERO, 4)
+    screen.acted()
+    screen.put(5, 4)
+    for seat in (6, 7, 0, 1):
+        screen.fold(seat)
+    screen.street("flop", "Ks", "7d", "2c")
+    screen.put(2, 20)
+    first = ready(screen, call=20)
+    assert (first["plain"]["action"], first["plain"]["rule"]) == ("call", "F.B")
+    screen.put(HERO, 20)
+    screen.acted()
+    screen.put(5, 40)
+    screen.fold(2)
+    second = ready(screen, call=20)
+    expected = plain_policy.decide(
+        spot({4: "KhQd"}, "Ks7d2c9h3s", pre + " 2r20 4c 5r40 2f"))
+    assert (expected.action, expected.rule) == ("fold", "R.B")
+    assert (second["plain"]["action"], second["plain"]["rule"]) == ("fold", "R.B")
+
+
+def test_iron_law_5_for_an_unread_price_stays_once_given():
+    # 按钮上的金额没读到：等 2 秒给铁律 5 以后一直给，不再回到“读画面中”
+    clock = Clock()
+    screen = Screen(AAPlainAdvice(clock=clock), clock=clock, hero=("Qs", "Qh"))
+    screen.deal()
+    screen.put(3, 12, badge="raise")
+    unread = {"visible": True, "button": "call", "call_amount": None}
+    reports = [screen.show(1, hero_controls=unread) for _ in range(60)]
+    after = reports[25:]
+    assert all(r["status"] == "ready" for r in after), [r["status"] for r in after]
+    assert all(r["advice"] == [{"action": "fold", "frequency": 1.0}] for r in after)
+
+
+def test_a_new_observation_starts_the_plain_page_afresh():
+    # 换画面来源时手的编号从 0 再来：上一场第一手的建议不能给到这一场同编号的手
+    advice = AASolverAdvice(strategy="plain", clock=Clock())
+    first = Screen(advice, hero=("Qs", "Qh"), hand="hand_0")
+    first.deal()
+    first.put(3, 12, badge="raise")
+    assert ready(first, call=12)["plain"]["action"] == "raise"
+    advice.reset()
+    second = Screen(advice, hero=("7d", "2c"), hand="hand_0")
+    second.deal()
+    second.put(3, 12, badge="raise")
+    assert ready(second, call=12)["plain"]["action"] == "fold"
