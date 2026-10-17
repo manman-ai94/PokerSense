@@ -1,4 +1,4 @@
-"""The window's switch to 《一页纸打法 v3.3b》 (``plain``): the window's
+"""The window's switch to 《一页纸打法 v3.3c》 (``plain``): the window's
 default since 2026-10-17; with it on, every frame goes to the live page
 (``aa_plain_advice``, tested in ``test_aa_plain_live``) and nothing of the
 old path runs; the switch is kept across restarts, and a choice saved
