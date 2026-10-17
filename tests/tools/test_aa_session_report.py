@@ -91,9 +91,12 @@ def busted_rows(after, *, rebuy=None):
     """You (100 chips) go all in and lose: your stack reads 0 to the end of
     the hand. ``after``: "sits out" (a whole hand goes by without you, your
     stack 0, then ``rebuy`` read late in it), "dealt in" (the next hand deals
-    you in with 205) or "ends" (the recording stops)."""
+    you in with 205), "ends" (the recording stops once the pot was paid) or
+    "cut" (the recording stops while you are all in)."""
     rows = ([row(f, f * 0.1, stack="100") for f in range(4)]
             + [row(f, f * 0.1, stack="0", pot=210) for f in range(4, 8)])
+    if after == "ends":
+        rows += [row(f, f * 0.1, stack="0", pot=0) for f in range(8, 10)]
     for item in rows:
         item["fields"]["actions_v1"]["complete"] = True
     if after == "sits out":
@@ -120,9 +123,13 @@ def test_a_bust_costs_your_whole_stack():
     # (10/07: 186 all in, lost, rebought 196, counted +10).
     first = session_report([("log", busted_rows("sits out", rebuy="110"))])["hands"][0]
     assert first["your_chips"] == -100.0
-    # The recording ends after the hand you busted in.
+    # The recording ends after the hand you busted in was paid.
     first = session_report([("log", busted_rows("ends"))])["hands"][0]
     assert first["your_chips"] == -100.0
+    # It stops while you are all in, the pot not paid: not known (until
+    # 10/17 a full bust).
+    first = session_report([("log", busted_rows("cut"))])["hands"][0]
+    assert first["your_chips"] is None
     # Dealt in the next hand with chips: you won, as before.
     first = session_report([("log", busted_rows("dealt in"))])["hands"][0]
     assert first["your_chips"] == 105.0
@@ -132,6 +139,41 @@ def test_a_hand_cut_off_all_in_is_not_a_bust():
     rows = busted_rows("ends")
     for item in rows:
         item["fields"]["actions_v1"]["complete"] = False
+    assert session_report([("log", rows)])["hands"][0]["your_chips"] is None
+
+
+def test_a_small_blind_steal_takes_the_mushroom_pool_too():
+    """The mushroom pool is not in the pot read: a small blind's win larger
+    than the pot is the pool, not a rebuy (until 10/17 dropped once the pool
+    passed your chips in the pot)."""
+    steal = [(2, "preflop", 7, "fold", "0", "no_chips"),
+             (3, "preflop", 4, "raise", "12", "bet"),
+             (4, "preflop", 5, "fold", "0", "no_chips"),
+             (5, "preflop", 6, "fold", "0", "no_chips")]
+
+    def hand(name, start, dealer, stack, cards, pool, *, actions=(), pots=(15,) * 6):
+        rows = [row(start + f, (start + f) * 0.1, hand=name, cards=cards, stack=stack,
+                    pot=pot, actions=actions) for f, pot in enumerate(pots)]
+        for item in rows:
+            item["fields"]["participants"] = {str(s): "active" for s in (4, 5, 6, 7)}
+            item["fields"]["mushroom_pool"] = pool
+            item["fields"]["actions_v1"].update(complete=True, dealer=dealer)
+        return rows
+
+    def steal_rows(read, after=142):
+        # Dealer 7: you (4) are the small blind, 100 before the ante 2 and
+        # blind 1. You raise to 12 and all fold: the pot 26 and the pool 30,
+        # 142 (as the dealer next you post 2 and 6 for the pool: 134 read).
+        return (hand("hand_0", 0, 7, "97", ("Ac", "Kd"), read, actions=steal,
+                     pots=(15, 15, 15, 26, 26, 26))
+                + hand("hand_6", 6, 4, str(after - 8), ("8c", "3d"), "0")
+                + hand("hand_12", 12, 5, str(after - 14), ("9c", "4d"), "6"))
+
+    first, second, _ = session_report([("log", steal_rows("30"))])["hands"]
+    assert (first["your_chips"], second["your_chips"]) == (42.0, -8.0)
+    # The pool not read: up to 40 big blinds of it.
+    assert session_report([("log", steal_rows(None))])["hands"][0]["your_chips"] == 42.0
+    rows = steal_rows(None, after=400)
     assert session_report([("log", rows)])["hands"][0]["your_chips"] is None
 
 

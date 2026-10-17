@@ -67,6 +67,32 @@ def test_an_all_in_the_replay_settles_otherwise_keeps_its_luck():
         assert found["why"] == "settle_mismatch" and found["settle_matches"] is False
 
 
+def test_a_small_blind_all_in_won_with_the_mushroom_pool_has_its_luck_out():
+    """A small blind who wins the pot takes the mushroom pool too, which is
+    not in the replay: its luck comes out whoever won (until 10/17 only when
+    you lost, so the results leaned your way)."""
+    # Dealer 7: you (4) are the small blind and shove your last 97 with
+    # aces, seat 6 calls 94 with kings.
+    shove = [(10, "preflop", 7, "fold", "0"), (12, "preflop", 4, "all_in", "97"),
+             (14, "preflop", 5, "fold", "0"), (16, "preflop", 6, "call", "94")]
+    kings = (("6", ("Kc", "Ks")),)
+    lost = results.runout(hand(kings, chips=-100.0), facts(shove, dealer=7), 2.0)
+    assert lost["luck"] is not None and lost["settle_matches"] is True
+    # Won: 206 less 10 rake less your 100, and the pool's 30 (not read).
+    won_board = BOARD[:4] + ["3d"]
+    won = results.runout(hand(kings, chips=126.0), facts(shove, won_board, dealer=7),
+                         2.0)
+    assert won["luck"] is not None and won["settle_matches"] is True
+    assert won["luck"] == pytest.approx(lost["luck"] + 98)
+    # More than the pool can hold (40 big blinds when not read) or than the
+    # pool read: a misread, its luck kept.
+    for chips, pool in ((226.0, None), (156.0, "30")):
+        rows = [{"fields": {"mushroom_pool": pool}}]
+        found = results.runout(hand(kings, chips=chips),
+                               facts(shove, won_board, dealer=7), 2.0, rows)
+        assert found["why"] == "settle_mismatch", (chips, pool)
+
+
 def test_an_all_in_that_cannot_be_worked_out_says_why():
     assert results.runout(hand(shown=()), facts(), 2.0)["why"] == "cards_not_shown"
     assert results.runout(hand(), facts(board=BOARD[:4]), 2.0)["why"] == "board_unread"
