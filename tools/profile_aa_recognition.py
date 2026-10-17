@@ -16,9 +16,16 @@ window's recorder at 30 frames a second alongside, as it does live;
 signal window does (``/api/status``, answered as this checkout answers it);
 with a load the run is timed only (Python 3.12's profiler sees every
 thread). ``--threads N`` limits OpenCV's and the math libraries' worker
-threads to N. ``--hashes FILE`` writes a fingerprint of each frame's result,
-per field; ``compare A B`` says which fields differ between two runs (two
-versions of the code on the same frames).
+threads to N. The reader uses the recognition bundle the window uses on
+this computer (``app_update.installed_recognition`` in the window's data
+folder: ``$POKERSENSE_DATA_ROOT/aa-live-state`` for a source checkout with a
+data folder, else the per-version folder under ``%LOCALAPPDATA%``), and the
+development profile ``DEFAULT_PROFILE`` only where none is installed (its
+``G:/`` and old-checkout paths are mapped on the Mac, not on Windows, where
+``G:/`` is a real drive); ``--profile`` names another. ``--hashes FILE``
+writes a fingerprint of each frame's result, per field; ``compare A B``
+says which fields differ between two runs (two versions of the code on the
+same frames).
 
 All print JSON lines of totals, function names and fingerprints, never
 table data.
@@ -45,6 +52,7 @@ import sys
 import time
 
 DEFAULT_PROFILE = "configs/reproduction/aa8_candidate_v2/factory.json"
+INSTALLS = "PokerSense-AA"  # the window's per-version folders under %LOCALAPPDATA%
 # The reader's own steps, whose callees are listed (file name, function).
 PARENTS = (("aa_reader.py", "read"), ("aa8_candidate_v2.py", "read"),
            ("aa8_holdout_predict.py", "read"))
@@ -553,6 +561,36 @@ def profile(video, reader_factory, *, start=0.0, step=4, count=300, exclude=(),
     return result
 
 
+def window_states(environ=os.environ):
+    """The data folders a window started from this checkout keeps its
+    recognition bundle in (as ``packaging/aa_live_entry.default_state``)."""
+    from poker_engine import __version__
+    from poker_engine.data_paths import DATA_ROOT_ENV
+    states = []
+    data = environ.get(DATA_ROOT_ENV, "").strip()
+    if data:
+        states.append(Path(data).expanduser() / "aa-live-state")
+    base = environ.get("LOCALAPPDATA")
+    root = Path(base) if base else Path.home() / ".local" / "share"
+    states.append(root / INSTALLS / __version__)
+    return states
+
+
+def choose_profile(given=None, environ=os.environ):
+    """(profile path, bundle digest or None, what it is): the one given,
+    else the installed recognition bundle's (checked against its digest, as
+    the window does), else the development profile."""
+    if given is not None:
+        return Path(given), None, {"profile": "given"}
+    from poker_engine.desktop.app_update import installed_recognition
+    for state in window_states(environ):
+        found = installed_recognition(state)
+        if found is not None:
+            path, digest = found
+            return path, digest, {"profile": "installed", "bundle": digest[:12]}
+    return Path(DEFAULT_PROFILE), None, {"profile": "development"}
+
+
 def _limit_threads(threads):
     """Before numpy and OpenCV load: at most ``threads`` worker threads."""
     for key in THREAD_VARIABLES:
@@ -566,7 +604,9 @@ def main(argv=None):
     log.add_argument("paths", nargs="+", type=Path)
     run = commands.add_parser("run", help="profile recognition on a recording")
     run.add_argument("--video", type=Path, required=True)
-    run.add_argument("--profile", type=Path, default=Path(DEFAULT_PROFILE))
+    run.add_argument("--profile", type=Path,
+                     help="the reader's profile (default: the installed "
+                          "recognition bundle, else the development profile)")
     run.add_argument("--start", type=float, default=120.0,
                      help="seconds into the recording to begin (default 120)")
     run.add_argument("--frames", type=int, default=300)
@@ -602,14 +642,17 @@ def main(argv=None):
     import tempfile
     from poker_engine.desktop.aa_reader import AA8Reader
     from poker_engine.desktop.aa_video_source import parse_windows
+    path, digest, which = choose_profile(args.profile)
     with tempfile.TemporaryDirectory(prefix="pokersense-profile-") as scratch:
-        result = profile(args.video, lambda: AA8Reader(args.profile),
+        result = profile(args.video,
+                         lambda: AA8Reader(path, bundle_sha256=digest),
                          start=args.start, step=args.step, count=args.frames,
                          exclude=parse_windows(args.exclude), load=args.load,
                          scratch=scratch, hashes=args.hashes,
                          profiled=not args.timed_only)
     print(json.dumps({"computer": computer(), "threads": args.threads,
-                      "video": args.video.name, **result}, ensure_ascii=False))
+                      "video": args.video.name, **which, **result},
+                     ensure_ascii=False))
     return 0
 
 
