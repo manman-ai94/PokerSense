@@ -99,7 +99,7 @@ from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     bomb_post, hand_facts, replay_hand, starting_stacks)
 from poker_engine.desktop.aa_stakes import stakes_label  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
-from tools.aa_session_report import session_report, stack  # noqa: E402
+from tools.aa_session_report import posted, session_report, stack  # noqa: E402
 from tools.aa_strategy_review import decision as review_decision  # noqa: E402
 from tools.plain_live_report import act, compliance  # noqa: E402
 from tools import session_shadow  # noqa: E402
@@ -791,8 +791,13 @@ def complied(decision):
     if free:
         action = "check" if action == "call" else action
         you = "check" if you == "call" else you
+    # Like with like: ``you_amount`` is what that action added (the action
+    # history's amount), so the size is the advice's ``chips`` (its ``to``
+    # less what you already had in on the street), not ``to``.
+    size = advice.get("chips")
     return compliance(you, decision.get("you_amount"),
-                      {"advice": action, "to": advice.get("to")})
+                      {"advice": action,
+                       "to": advice.get("to") if size is None else size})
 
 
 def compliance_block(decisions):
@@ -920,7 +925,8 @@ def versions(page, played):
     if page is None:
         out["page"] = None
     else:
-        version = re.search(r"v\d+(?:\.\d+)*", page.__doc__ or "")
+        # With its letter: v3.3, v3.3a, v3.3b and v3.3c are different pages.
+        version = re.search(r"v\d+(?:\.\d+)*[a-z]?", page.__doc__ or "")
         numbers = page_numbers(page)
         out["page"] = {
             "version": version.group(0) if version else None,
@@ -1017,7 +1023,8 @@ def build(folder, *, rows=None, item=None, hands=None, settings=None):
         shadowed.append({"hand_id": hand_id, "rows": hand_rows,
                          "turns": turns_of(pairs), "decisions": mine,
                          "stakes": facts["stakes"], "chips": chips.get(hand_id),
-                         "start": stack(hand_rows), "luck": runouts.get(hand_id)})
+                         "start": stack(hand_rows), "posted": posted(facts),
+                         "luck": runouts.get(hand_id)})
     if page is None:
         nulls.update({"versions.page": PLAIN_MISSING,
                       "decisions.position": PLAIN_MISSING,

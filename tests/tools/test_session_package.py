@@ -9,7 +9,7 @@ import pytest
 from poker_engine.scoreboard import plain_policy
 from tools import session_package as package
 
-PAGE = re.search(r"v\d+(?:\.\d+)*", plain_policy.__doc__).group(0)   # 一页纸现在的版本
+PAGE = re.search(r"v\d+(?:\.\d+)*[a-z]?", plain_policy.__doc__).group(0)   # 一页纸现在的版本
 
 # Six players at 1/2/4, dealer 5: small blind 0, big blind 1, straddle 2;
 # seat 3 acts first. You (seat 4) hold Ah Kd. Seat 3 raises to 16, you
@@ -322,3 +322,25 @@ def test_the_hand_the_log_ends_in_counts_as_unfinished(tmp_path):
     found = package.build(folder, settings={"machine": "du", "player": ""})
     assert found["shown_denominators"]["none"] == {"seats": 9, "folded": 4,
                                                    "unfinished": 5}
+
+
+def test_the_package_keeps_the_pages_letter():
+    """v3.3c is not v3.3: the ledger adds sessions up by page version."""
+    assert PAGE.startswith("v3.3") and PAGE != "v3.3"
+    assert package.versions(plain_policy, None)["page"]["version"] == PAGE
+
+
+def test_jamming_as_advised_after_betting_is_compliance():
+    """Flop, stack 184: you bet 60, get raised to 130, and go all in as the
+    page says (raise to 184, 124 more). The action history has the 124 you
+    added; the advice's ``chips`` is the same 124."""
+    report = {"status": "ready", "kind": "plain",
+              "advice": [{"action": "raise", "frequency": 1.0,
+                          "chips": "124", "to": "184"}],
+              "plain": {"action": "raise", "rule": "F.A", "hits": ["F.A"],
+                        "all_in": True, "to": 184}}
+    decision = {"advice": package.advice_block(report, "flop"),
+                "missing": None, "button": "call", "to_call": "70",
+                "you_did": "raise", "you_amount": "124"}
+    assert package.complied(decision) == (True, None)
+    assert package.complied({**decision, "you_amount": "60"}) == (False, "tighter")
