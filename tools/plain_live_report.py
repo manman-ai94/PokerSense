@@ -566,7 +566,9 @@ def coverage(items, cost):
     real = [item for item in items if item["real"]]
     extra = [item for item in items if not item["real"]]
     plain_ready = [item for item in real if item["plain"]["advice"] is not None]
-    iron = [item for item in plain_ready if item["plain"].get("missing")]
+    # 铁律 5 只算 S1；盲位没人加注、画面没读稳时照表给的（T1.*、I5.blind）单独数
+    unsteady = [item for item in plain_ready if item["plain"].get("missing")]
+    iron = [item for item in unsteady if item["plain"]["rule"] == "S1"]
     missing = Counter(key for item in iron for key in item["plain"]["missing"])
     not_ready = Counter(key for item in real if item["plain"]["advice"] is None
                         for key in (item["plain"].get("missing") or {}))
@@ -583,6 +585,7 @@ def coverage(items, cost):
             "iron5_unread": len(iron),
             "iron5_share": share(len(iron), len(plain_ready)),
             "iron5_missing": dict(missing.most_common()),
+            "blind_table_unsteady": len(unsteady) - len(iron),
             "changed_within_decision": sum(item["plain"]["changes"] for item in real),
             "rough": 0,
             "button_to_ready_median": median(waited),
@@ -725,7 +728,7 @@ def enough(count, key):
 
 def abilities(items, pots_found, classes):
     real = [item for item in items if item["real"] and item["plain"]["advice"]
-            and not item["plain"].get("missing")]
+            and (not item["plain"].get("missing") or item["plain"]["rule"] != "S1")]
     marks = [compliance(item["you"], item["size"], item["plain"]) for item in real]
     marks = [mark for mark in marks if mark[0] is not None]
     old_marks = [compliance(item["you"], item["size"], item["shown"]) for item in items
@@ -840,7 +843,9 @@ def sheet(summary, who=""):
                        for key, count in plain["iron5_missing"].items())
     lines.append(f"铁律 5（画面 2 秒没读稳）：{plain['iron5_unread']} 次，"
                  f"占有建议的 {_pct(plain['iron5_share'])}"
-                 + (f"；缺：{missing}" if missing else ""))
+                 + (f"；缺：{missing}" if missing else "")
+                 + (f"；另有盲位没人加注、画面没读稳照表给的 {plain['blind_table_unsteady']} 次"
+                    if plain.get("blind_table_unsteady") else ""))
     lines.append(
         f"速度：按钮出现到就绪中位 {_num(plain['button_to_ready_median'])} 秒"
         f"（九成 {_num(plain['button_to_ready_p90'])} 秒）；就绪到出建议中位 "
