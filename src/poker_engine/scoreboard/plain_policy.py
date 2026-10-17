@@ -1,6 +1,6 @@
-"""一页纸打法 ``plain``：按《一页纸打法 v3.3a》（2026-10-17）原样实现，翻前翻后都在这里。
+"""一页纸打法 ``plain``：按《一页纸打法 v3.3b》（2026-10-17）原样实现，翻前翻后都在这里。
 
-v3.3a 是唯一的规则来源（v3.3 撤回两条放宽；v3.3 替代 v3.2，只改了它第八节表里列的地方，其余
+v3.3b 是唯一的规则来源（v3.3a、v3.3b 各撤回 v3.3 的两条；v3.3 替代 v3.2，只改了它第八节表里列的地方，其余
 条文和规则编号不动）：
 不加规则、不顺手优化、不用人群模型的 EV 调数字。本页没写的情形按铁律 5（面对下注弃、没人
 下注过牌；翻前轮到盲位且没人加注时不适用），建议里记一条 ``unspecified`` 汇总给主人。有两种
@@ -12,7 +12,11 @@ B 档转牌、河牌面对下注收紧，SPR 规则 ≥ 3 个对手和铁律 2 �
 第七节自我迭代只是文字，不进代码。
 
 v3.3a（主人 2026-10-17）撤回 v3.3 的两条放宽：晚位平跟表、大盲和小盲的补齐表回到 v3.2 的表；
-其余 v3.3 的改动都留着。下面“灵魂”里“便宜看翻牌”说的平跟和补齐，按的就是 v3.2 这两张表。
+下面“灵魂”里“便宜看翻牌”说的平跟和补齐，按的就是 v3.2 这两张表。
+
+v3.3b（主人 2026-10-17）再撤回两条：平跟后再加注的对手回到表 3 普通再加注的打法（``T3.limp``
+和他“前 3%”的范围都去掉）；SPR 规则 ≥ 3 个对手面对下注回到 v3.2 的 ≤ 1/2 底池跟一次。其余 v3.3
+的改动都留着：抓头隔离、表 3 去 AQs、转牌不打第二枪、多人转牌 ≤ 1/2 / ≤ 1/3、铁律 2 分街写。
 
 零、灵魂（v3.3 原文）
 =====================
@@ -154,7 +158,6 @@ JAM = hands("QQ+ AK")
 FOUR_BET = hands("KK+")
 CALL_THREE_BET = hands("QQ JJ AK")               # v3.3：AQs 弃
 VS_FOUR_BET = hands("KK+")
-LIMP_RERAISE = hands("KK+")                       # 平跟后再加注的对手：只 KK+ 继续（全下）
 PUSH = hands("77+ ATs+ AJo+ KQs")
 PUSH_BUTTON = hands("55+ A2s+ KJo+")
 # 蘑菇池（小盲）：池 ≥ 20 个大盲再加
@@ -179,7 +182,7 @@ B_CALL_HU = {"flop": 2 / 3, "turn": 2 / 3, "river": 1 / 2}
 # 多人 B 档面对下注：还剩 2 个对手 / ≥ 3 个对手时跟到多大（None：弃）
 B_CALL_TWO = {"flop": 1.0, "turn": 1 / 2, "river": 1 / 2}
 B_CALL_MANY = {"flop": 1 / 2, "turn": 1 / 3, "river": None}
-SPR_MANY_CALL = 1 / 3               # SPR ≤ 2、≥ 3 个对手：面对 ≤ 1/3 底池跟一次
+SPR_MANY_CALL = 1 / 2               # SPR ≤ 2、≥ 3 个对手：面对 ≤ 1/2 底池跟一次（v3.3b 回到 v3.2）
 IRON2_CALL = {"flop": 1 / 2, "turn": 1 / 3, "river": 1 / 2}   # 铁律 2：≥ 3 个对手不跟更大的注
 C_CALL_FLOP = 1 / 2                 # C 档单挑翻牌跟一次 ≤ 1/2 底池
 D_STRONG_RAISE = 1 / 2              # D-强 翻牌面对 ≤ 1/2 底池的下注加注
@@ -195,7 +198,7 @@ MUSHROOM_PLAYERS = 4                # 蘑菇池满 4 人才有（scoreboard.mush
 PREFLOP_RANGE = {"limp": (0.04, 0.50), "raise": (0.0, 0.12),
                  "raise_early": (0.0, 0.10), "raise_late": (0.0, 0.15),
                  "call_raise": (0.06, 0.31), "three_bet": (0.0, 0.06),
-                 "call_three_bet": (0.03, 0.10), "limp_reraise": (0.0, 0.03)}
+                 "call_three_bet": (0.03, 0.10)}
 # 10/17 亮牌 125 次的核对：加注 13/14 在前 31%、再加注以上 25/27 在前 12%、转牌加注 15/23 和
 # 河牌加注 15/16 是两对以上——方向对；"平跟去掉前 4%"偏乐观（平跟者 21% 是前 12% 的牌），
 # 每类满 100 次亮牌再调。
@@ -265,9 +268,6 @@ READINGS = {
                         "（小盲前一位、大盲前两位、抓头前三位）",
     "straddle_size": "抓头'加注到 1 倍底池 + 每个平跟者 2 个大盲'和表 1 的尺寸同一读法（底池已含"
                      "平跟者的 2 个大盲），封顶有效筹码 1/5",
-    "limp_reraise": "平跟后再加注的对手（他先平跟、你加注、他再加注）排在表 3 其它行前面，含"
-                    "'≤ 20 个大盲推弃'和'面对全下按第一行'：只 KK+ 全下，其余弃（理论锁定，取保守侧）；"
-                    "他的范围前 3% 也只用在这一种情形（你加注的那一下被他再加注）",
     "flop_called": "'翻牌被跟'的'下了注'含你在翻牌的加注；'翻牌没下过注'按你翻牌没下过注读"
                    "（别人翻牌下注、你跟了的转牌照下 1/2，和 v3.2 一样）",
     "b_two_texture": "多人 B 档面对下注'无三同花/四连牌'只写在翻牌：还剩 2 个对手、翻牌三同花或"
@@ -304,7 +304,6 @@ RULES = {
     "T3.fold": "表 3·弃牌",
     "T3.push20": "表 3·有效筹码 ≤ 20 个大盲推弃",
     "T3.vs4bet": "表 3·被 4-bet 只有 KK+ 继续",
-    "T3.limp": "表 3·平跟后再加注的对手：只 KK+ 全下",
     "M.iso": "蘑菇池·小盲按晚位表隔离",
     "M.flop": "蘑菇池·小盲翻牌下 1/3 一次",
     "N.A": "没人下注·A 档",
@@ -326,7 +325,7 @@ RULES = {
     "R.D": "面对加注·D 档按补牌",
     "R.CE": "面对加注·C、E 档弃",
     "SPR.A": "SPR ≤ 2 且对手 ≤ 2：B 档视同 A 档",
-    "SPR.many": "SPR ≤ 2、≥ 3 个对手：B 档下 1/2、面对 ≤ 1/3 底池跟一次、被加注弃",
+    "SPR.many": "SPR ≤ 2、≥ 3 个对手：B 档下 1/2、跟一次、被加注弃",
     "ALLIN": "面对全下：胜率 ≥ 所需 + 5% 才跟",
     "J1": "直接全下·A 档下注或加注后剩余 ≤ 底池",
     "J1.no": "直接全下·B/C/D/E 档的注下出去剩余 ≤ 底池就不下",
@@ -798,7 +797,7 @@ class Read:
 
 ACTION_WORD = {"limp": "平跟", "raise": "加注", "call_raise": "跟注了加注",
                "three_bet": "再加注", "all_in": "全下", "call_three_bet": "跟注了再加注",
-               "limp_reraise": "平跟后再加注", None: "没投钱", "bomb": "暴击局"}
+               None: "没投钱", "bomb": "暴击局"}
 STREET_ACTION_WORD = {"call": "跟注", "bet": "下注", "raise": "加注", "all_in": "全下"}
 
 
@@ -808,25 +807,18 @@ def preflop_action(table, seat):
         return "bomb", (0.0, 1.0)
     last = None
     raises = 0
-    limped = False
-    raiser = None
     for act in table.street_acts("preflop"):
         if act.seat == seat:
             if act.kind == "raise":
                 if act.all_in or raises >= 1:
                     last = "all_in" if act.all_in and raises == 0 else "three_bet"
-                    if (last == "three_bet" and limped and raises == 1
-                            and raiser == table.me):           # 他平跟、你加注、他再加注
-                        last = "limp_reraise"
                 else:
                     last = "raise"
             elif act.kind == "call":
-                limped = limped or raises == 0
                 last = ("limp" if raises == 0 else
                         "call_raise" if raises == 1 else "call_three_bet")
         if act.kind == "raise":
             raises += 1
-            raiser = act.seat
     if last is None:
         return None, (0.0, 1.0)
     if last == "raise":
@@ -1146,25 +1138,9 @@ def _table3_first_row(table, advice, cls):
     return _fold(advice, "T3.allin")
 
 
-def _limp_reraise(table, raise_act):
-    """他先平跟、你加注、他再加注。"""
-    acts = table.street_acts("preflop")
-    raises = [index for index, act in enumerate(acts) if act.kind == "raise"]
-    if (len(raises) < 2 or acts[raises[-2]].seat != table.me
-            or acts[raises[-1]] is not raise_act):
-        return False
-    return any(act.seat == raise_act.seat and act.kind == "call"
-               for act in acts[:raises[0]])               # 第一次加注之前的跟注就是平跟
-
-
 def _table3(table, advice, cls, name, raise_act):
     advice.situation = "翻前面对再加注" + ("全下" if raise_act.all_in else "")
     effective = table.effective()
-    if _limp_reraise(table, raise_act):           # READINGS limp_reraise：排在其它行前面
-        advice.situation = "翻前平跟的人对你的加注再加注" + ("全下" if raise_act.all_in else "")
-        if cls in LIMP_RERAISE:
-            return _aggressive(table, advice.hit("T3.limp"), _all_in_to(table))
-        return _fold(advice, "T3.limp")
     if table.bb(effective) <= PUSH_FOLD_BB:
         wanted = PUSH | (PUSH_BUTTON if name == "BTN" else frozenset())
         if cls in wanted:
@@ -1675,7 +1651,6 @@ def flip(table, advice, context):
         "T3.fold": "只有 KK+ 4-bet，QQ、JJ、AK 跟（AQs 也弃）",
         "T3.push20": "有效筹码超过 20 个大盲就按表 3 正常打",
         "T3.vs4bet": "只有 KK+ 继续",
-        "T3.limp": "他不是先平跟再加注时按表 3 正常打（QQ、JJ、AK 跟）",
         "M.iso": "蘑菇池不到 10 个大盲、或你不在小盲，就不按晚位表",
         "M.flop": "对手多于 2 个就不下这一注",
         "N.A": "被加注时坚果再加注，否则跟",
@@ -1694,7 +1669,7 @@ def flip(table, advice, context):
         "R.B": "转牌、河牌被加注一律弃；翻牌跟注后 SPR ≤ 1 才算胜率",
         "R.CE": "被加注一律弃",
         "SPR.A": "对手多于 2 个或 SPR 大于 2 就按 B 档正常打",
-        "SPR.many": "下注超过 1/3 底池、被加注或已经跟过一次就弃",
+        "SPR.many": "下注超过 1/2 底池、被加注或已经跟过一次就弃",
         "J1": "A 档下注后剩余会不到底池，直接全下",
         "J1.no": "这一注下出去剩的会不到底池，所以不下；只有 A 档才直接全下",
         "J3": "加注到 3 倍会占剩余筹码 40% 以上，直接全下",
@@ -1750,7 +1725,7 @@ def action_id(advice, observation):
 
 
 class PlainBot(_Policy):
-    """``plain``：翻前翻后都按 v3.3a；``counts`` 记每条规则定了几次、没写的情形几次。"""
+    """``plain``：翻前翻后都按 v3.3b；``counts`` 记每条规则定了几次、没写的情形几次。"""
 
     name = "plain"
 
