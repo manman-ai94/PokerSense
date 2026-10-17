@@ -57,6 +57,7 @@ PRICE_FRAMES = 3                # 要跟的金额连续 3 帧一样
 SEATS_FRAMES = 2                # 还在局的对手连续 2 帧一样
 READY_SECONDS = 2.0             # 轮到你 2 秒还没就绪：铁律 5
 READY_FRAMES = 20               # 没有时钟可看时按帧数（约 10 帧一秒）
+TURN_GAP = 5                    # 按钮消失至少这么多帧再出现，才算这条街的下一个决策（不算一闪）
 SIDE_BY_SIDE = 2.0              # 要跟的金额变了：旧建议在旁边留 2 秒
 OPENING_FRAMES = 300            # 认级别、庄位用的开局帧，最多留这么多
 EPSILON = 1e-9
@@ -149,6 +150,8 @@ class HandState:
         self.mushroom = None
         self.prices = []                # 按钮出现的帧上的价格，最近几帧
         self.acted = {}                 # 街 -> 你的按钮上次消失的帧（你在这条街动过）
+        self.turns = {}                 # 街 -> 这条街的第几个决策（按钮消失够久又出现过几次）
+        self._hidden = 0                # 按钮连着几帧没出现
         self.preflop_turn = False
         self._visible = False
         self.history = {}               # 动作历史（徽章）：最后一帧读到的
@@ -177,12 +180,17 @@ class HandState:
             self.mushroom = pool
         controls = fields.get("hero_controls") or {}
         if controls.get("visible"):
+            if (not self._visible and self._hidden >= TURN_GAP
+                    and self.street in self.acted):
+                self.turns[self.street] = self.turns.get(self.street, 0) + 1
+            self._hidden = 0
             self.preflop_turn |= self.street == "preflop"
             self.prices.append(price(controls, self.stack_read(HERO)))
             del self.prices[:-PRICE_FRAMES]
         else:
             if self._visible:
                 self.acted[self.street] = frame
+            self._hidden += 1
             self.prices = []
         self._visible = bool(controls.get("visible"))
         if not self.opened:
@@ -725,7 +733,7 @@ class AAPlainAdvice:
         self.state, self._hand_id = None, None
         self._stakes = None             # 前面几手认下的级别
         self._last = None               # 上一手结束时的手牌和公共牌
-        self._decisions = {}            # (街, 价格) -> 建议
+        self._decisions = {}            # (街, 价格, 这条街第几个决策) -> 建议
         self._wait = None               # (街, 开始的帧, 开始的时间)
         self._shown = None              # (上一个决策的建议, 到什么时候)
 
@@ -760,7 +768,15 @@ class AAPlainAdvice:
         if street not in STREETS:
             return self._report("idle", "street_not_covered", street=street)
         now = price(controls, state.stack_read(HERO))
-        done = self._decisions.get((street, now))
+        # 同一条街你跟了、后面有人加注后价格一样，也是新的决策：按你动过几次分开；
+        # 按钮被挡住一会儿又出现、这期间没读到新动作，还是原来那个决策
+        key = (street, now, state.turns.get(street, 0))
+        done = self._decisions.get(key)
+        if done is None:
+            earlier = [item for (at, was, turn), item in self._decisions.items()
+                       if at == street and was == now and turn < key[2]]
+            if earlier and len(history.get("actions") or ()) <= earlier[-1]["decision"]:
+                done = earlier[-1]
         if done is not None:
             # 等待从价格第一次变成新的那一帧算起，不从一闪而过的误读算起。
             self._wait = None
@@ -778,12 +794,12 @@ class AAPlainAdvice:
         started = time.perf_counter()
         report = self._decide(state, fields, street, now, missing, waited, history)
         report["seconds"] = round(time.perf_counter() - started, 3)
-        if now is not None:
-            previous = [item for key, item in self._decisions.items()
-                        if key[0] == street]
-            self._decisions[(street, now)] = report
-            if previous:
-                self._shown = (previous[-1], self._clock() + SIDE_BY_SIDE, frame)
+        # 价格没读到时给的铁律 5 也记下，不然下一帧又从头等 2 秒（一闪而过）
+        previous = [item for done_key, item in self._decisions.items()
+                    if done_key[0] == street]
+        self._decisions[key] = report
+        if previous and now is not None:
+            self._shown = (previous[-1], self._clock() + SIDE_BY_SIDE, frame)
         self._wait = None
         return self._with_previous(report)
 
