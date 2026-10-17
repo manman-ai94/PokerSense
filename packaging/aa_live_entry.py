@@ -434,6 +434,70 @@ def open_listener(preferred, *, wait=0.0):
     return listener
 
 
+# Console events that end the program on Windows: Ctrl+Break, the window
+# closed, logging off, shutting down (CTRL_BREAK_EVENT and on). Ctrl+C stays
+# Python's KeyboardInterrupt.
+CLOSE_EVENTS = (1, 2, 5, 6)
+_KEPT = []                       # the console handler, alive as long as we are
+
+
+def quiet():
+    """Output to nowhere: the terminal is gone, and writing to it fails."""
+    try:
+        null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(null, 1)
+        os.dup2(null, 2)
+        os.close(null)
+    except OSError:
+        pass
+
+
+def on_close(close, *, platform=os.name, install=signal.signal, kernel32=None):
+    """Call ``close`` when the program's black window (Terminal on a Mac, the
+    console on Windows) is closed, the computer logs off or shuts down, or a
+    new launch takes over (SIGTERM). Left alone the system ends the program on
+    the spot, in the middle of a recording: no ``recording.json``, so no
+    sheet, no package and no upload (peng's session of 2026-10-16 21:09).
+    On Windows ``close`` runs on the system's own thread, and the program is
+    ended once it returns (about 5 seconds at most)."""
+    if platform == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel32 = kernel32 or ctypes.WinDLL("kernel32", use_last_error=True)
+        prototype = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)  # tests elsewhere
+
+        @prototype(wintypes.BOOL, wintypes.DWORD)
+        def handler(event):
+            if event not in CLOSE_EVENTS:
+                return False
+            close()
+            return True
+        kernel32.SetConsoleCtrlHandler(handler, True)
+        _KEPT.append(handler)
+        return handler
+
+    def handler(signum, frame):
+        if signum == getattr(signal, "SIGHUP", None):
+            quiet()
+        close()
+    for name in ("SIGHUP", "SIGTERM"):
+        if hasattr(signal, name):
+            install(getattr(signal, name), handler)
+    return handler
+
+
+def close_window(service, *, after_close=None):
+    """What closing the window does: what 停止 does (``aa_session.stop``
+    finishes the recording: ``recording.json``, then its sheet and package in
+    a process of their own), then what the window had left to upload goes on
+    by itself (``aa_after_session.after_close``)."""
+    from poker_engine.desktop import aa_after_session
+    try:
+        service.stop()
+    finally:
+        (after_close or aa_after_session.after_close)()
+
+
 def serve(args):
     import uvicorn
 
@@ -468,14 +532,25 @@ def serve(args):
               "AA offline preview. Close this console to stop. "
               "Private recognition models and live strategy are not included.",
               flush=True)
+        closing = threading.Event()
+
+        def close():
+            if closing.is_set():
+                return
+            closing.set()
+            try:
+                close_window(app.state.aa_session)
+            finally:
+                server.should_exit = True
+        on_close(close)
         if not args.no_browser:
             open_page(base)
         try:
-            while thread.is_alive():
+            while thread.is_alive() and not closing.is_set():
                 thread.join(timeout=0.5)
         except KeyboardInterrupt:
-            server.should_exit = True
-            thread.join(timeout=10)
+            close()
+        thread.join(timeout=15)      # the server's own shutdown, then out
     return 0
 
 
