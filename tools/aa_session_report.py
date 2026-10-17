@@ -270,6 +270,8 @@ def hand_report(rows, advice, gaps=(), stakes=None):
         "bomb_pot": None if replay is None else replay.get("bomb_pot"),
         "stalls": [gap for gap in gaps
                    if rows[0]["pts_seconds"] <= gap["pts"] <= rows[-1]["pts_seconds"]],
+        "your_actions": [item["kind"] for item in history["actions"]
+                         if str(item["slot"]) == HERO],
         "start_stack": stack(rows), "posted": posted(facts),
         "stakes": facts["stakes"],
         "first_stack": next(iter(readings(rows)), None),
@@ -371,7 +373,9 @@ def chips(hands):
     with your same two cards was split in two (a new hand was started in the
     middle of it): both parts count as one, on the first. A rise larger than
     the hand's biggest pot (as read, after the posts) is a rebuy or a
-    misread and is left out.
+    misread and is left out, and so is any rise in a hand you folded: a
+    folded hand only costs, so the rise is a rebuy or a table change (until
+    10/17 a rebuy right after a folded bomb pot counted as its win).
 
     A hand you finished all in with nothing left (``busted``) costs your
     whole start. Until 10/16 those were left out (no stack read after it)
@@ -413,9 +417,15 @@ def chips(hands):
         change = two - one
         if read > 0 and (most is None or read > most):
             continue
+        # A fold after your all in is the next hand's, joined to this one by
+        # your cards read the same in it.
+        yours = [kind for h in whole for kind in h["your_actions"]]
+        if change > 0 and "fold" in yours and "all_in" not in yours:
+            continue
         first["your_chips"] = round(change, 2)
     for hand in hands:
-        for key in ("start_stack", "posted", "most_pot", "first_stack", "end_stack"):
+        for key in ("your_actions", "start_stack", "posted", "most_pot", "first_stack",
+                    "end_stack"):
             del hand[key]
 
 
