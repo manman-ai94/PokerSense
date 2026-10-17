@@ -1,14 +1,18 @@
-"""一页纸打法 ``plain``：按《一页纸打法 v3.3》（2026-10-17）原样实现，翻前翻后都在这里。
+"""一页纸打法 ``plain``：按《一页纸打法 v3.3a》（2026-10-17）原样实现，翻前翻后都在这里。
 
-v3.3 是唯一的规则来源（替代 v3.2，只改了它第八节表里列的地方，其余条文和规则编号不动）：
+v3.3a 是唯一的规则来源（v3.3 撤回两条放宽；v3.3 替代 v3.2，只改了它第八节表里列的地方，其余
+条文和规则编号不动）：
 不加规则、不顺手优化、不用人群模型的 EV 调数字。本页没写的情形按铁律 5（面对下注弃、没人
 下注过牌；翻前轮到盲位且没人加注时不适用），建议里记一条 ``unspecified`` 汇总给主人。有两种
 读法的地方，这里选了一种，写在 ``READINGS``（PR 描述里同样列出）。
 
-v3.3 改的（第八节）：抓头面对平跟者按晚位加注表加注（``T1.str``）；晚位平跟表、大盲和小盲的
-补齐表放宽；表 3 跟注去掉 AQs；平跟后再加注的对手只 KK+ 继续（``T3.limp``）；B 档翻牌被跟后
-转牌不打第二枪（``N.B.second``）；多人 B 档转牌、河牌面对下注收紧，SPR 规则 ≥ 3 个对手和铁律 2
-跟着对齐。第四节范围表的亮牌核对和第七节自我迭代只是文字，不进代码。
+v3.3 改的（第八节）：抓头面对平跟者按晚位加注表加注（``T1.str``）；表 3 跟注去掉 AQs；平跟后
+再加注的对手只 KK+ 继续（``T3.limp``）；B 档翻牌被跟后转牌不打第二枪（``N.B.second``）；多人
+B 档转牌、河牌面对下注收紧，SPR 规则 ≥ 3 个对手和铁律 2 跟着对齐。第四节范围表的亮牌核对和
+第七节自我迭代只是文字，不进代码。
+
+v3.3a（主人 2026-10-17）撤回 v3.3 的两条放宽：晚位平跟表、大盲和小盲的补齐表回到 v3.2 的表；
+其余 v3.3 的改动都留着。下面“灵魂”里“便宜看翻牌”说的平跟和补齐，按的就是 v3.2 这两张表。
 
 零、灵魂（v3.3 原文）
 =====================
@@ -121,24 +125,21 @@ def _hands(item):
 # 86s、97s、T8s、J9s、Q9s）；两张 T 以上（同花不同花都算）；A8o+
 SPECULATIVE = hands("22+ A2s+ K5s+ 54s-KQs 75s-J9s Q9s ATs+ KTs+ QTs+ JTs "
                     "ATo+ KTo+ QTo+ JTo A8o+")
-# 表 1 · 没人加注时（前面全弃或只有平跟）；平跟首个入池也可以
+# 表 1 · 没人加注时（前面全弃或只有平跟）；平跟首个入池也可以。晚位平跟和下面的补齐表是
+# v3.2 的（v3.3a 撤回了 v3.3 的再放宽）
 TABLE1 = {
     "early": {"raise": hands("66+ ATs+ KQs AJo+"),
               "limp": hands("22+ A2s+ 65s-KQs ATs+ KTs+ QTs+ JTs")},
     "middle": {"raise": hands("44+ A9s+ KTs+ QTs+ JTs ATo+ KJo+"),
                "limp": SPECULATIVE},
     "late": {"raise": hands("22+ A2s+ K9s+ Q9s+ J9s+ T9s 98s 87s A8o+ KTo+ QTo+ JTo"),
-             "limp": SPECULATIVE | hands("Q8s J8s T8s 97s 86s 75s A2o+ K9o+ Q9o+ "
-                                         "K2s+ Q6s+ J7s+ T7s+ 96s 64s 53s 43s "
-                                         "K8o+ J9o+ T9o 98o")},
+             "limp": SPECULATIVE | hands("Q8s J8s T8s 97s 86s 75s A2o+ K9o+ Q9o+")},
 }
 ISOLATE_MANY = hands("TT+ AJs+ AQo+ KQs")          # ≥ 2 个平跟者只用这些隔离
 # 盲位情形 a：大盲、小盲补齐到抓头（其余弃）；抓头按晚位加注表加注（其余过牌）
 COMPLETE = {
-    "BB": SPECULATIVE | hands("98s T8s+ J8s+ Q8s+ K8s+ 43s 53s 64s "
-                              "A2o+ K7o+ Q8o+ J8o+ T8o+ 98o 97o 87o 76o"),
-    "SB": SPECULATIVE | hands("K2s+ Q6s+ J7s+ T7s+ 96s 85s 74s 64s 53s "
-                              "A2o+ K8o+ Q9o+ J9o+ T9o 98o"),
+    "BB": SPECULATIVE | hands("98s T8s+ J8s+ Q8s+ K8s+ A2o+ K9o+ Q9o+ J9o+ T9o"),
+    "SB": SPECULATIVE | hands("A2o+ K9o+ Q9o+ JTo"),
 }
 # 表 2 · 面对一次加注
 THREE_BET = hands("QQ+ AK")
@@ -1749,7 +1750,7 @@ def action_id(advice, observation):
 
 
 class PlainBot(_Policy):
-    """``plain``：翻前翻后都按 v3.3；``counts`` 记每条规则定了几次、没写的情形几次。"""
+    """``plain``：翻前翻后都按 v3.3a；``counts`` 记每条规则定了几次、没写的情形几次。"""
 
     name = "plain"
 

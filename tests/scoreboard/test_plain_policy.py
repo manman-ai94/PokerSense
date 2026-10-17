@@ -1,4 +1,4 @@
-"""一页纸打法 ``plain``（《一页纸打法 v3.3》）：每条规则至少一个用例。
+"""一页纸打法 ``plain``（《一页纸打法 v3.3a》）：每条规则至少一个用例。
 
 牌局都是合成的：按指定的牌发牌（``spot``），在 AA 8 人桌上照写好的动作走到要测的那一步，
 再看 ``plain`` 的建议。8 人桌：0 小盲、1 大盲、2 抓头、3 早位、4 和 5 中位、6 CO、7 庄位；
@@ -98,10 +98,9 @@ def test_speculative_hands_are_defined_once():
     assert {"22", "A2s", "K5s", "54s", "75s", "Q9s", "JTo", "KTo", "A8o"} <= spec
     assert not {"K4s", "64s", "53s", "A7o", "K9o", "J9o", "T9o", "Q8s"} & spec
     assert plain.TABLE1["middle"]["limp"] == spec
-    # 晚位平跟再加 Q8s、J8s、T8s、97s、86s、75s、A2o+、K9o+、Q9o+；v3.3 再加 K2s+、Q6s+、J7s+、
-    # T7s+、96s、64s、53s、43s、K8o+、J9o+、T9o、98o（投机牌里已有的不重复）
+    # 晚位平跟再加 Q8s、J8s、T8s、97s、86s、75s、A2o+、K9o+、Q9o+（v3.3a 撤回了 v3.3 的再放宽）
     assert plain.TABLE1["late"]["limp"] - spec == plain.hands(
-        "Q6s-Q8s J7s-J8s K2s-K4s T7s 96s 64s 53s 43s A2o-A7o K8o-K9o Q9o J9o T9o 98o")
+        "Q8s J8s A2o-A7o K9o Q9o")
 
 
 @pytest.mark.parametrize("seats, expected", [
@@ -151,12 +150,10 @@ def test_positions_follow_the_number_of_seats(seats, expected):
     ("3f 4f 5f", "Qc9d", "call", None, "T1.limp"),
     ("3f 4f 5f", "Js8s", "call", None, "T1.limp"),
     ("3f 4f 5f", "8c7d", "fold", None, "T1.out"),
-    ("3f 4f 5f", "Jc9d", "call", None, "T1.limp"),        # v3.3 晚位再加 K2s+ … J9o+、98o
-    ("3f 4f 5f", "Ks2s", "call", None, "T1.limp"),
-    ("3f 4f 5f", "4s3s", "call", None, "T1.limp"),
-    ("3f 4f 5f", "Kc8d", "call", None, "T1.limp"),
-    ("3f 4f 5f", "Jc8d", "fold", None, "T1.out"),
-    ("3f 4f 5f", "Qs5s", "fold", None, "T1.out"),
+    ("3f 4f 5f", "Jc9d", "fold", None, "T1.out"),         # v3.3a 撤回晚位再放宽
+    ("3f 4f 5f", "Ks2s", "fold", None, "T1.out"),
+    ("3f 4f 5f", "4s3s", "fold", None, "T1.out"),
+    ("3f 4f 5f", "Kc8d", "fold", None, "T1.out"),
     ("3c 4f 5f", "7s6s", "call", None, "T1.limp"),
     ("3c 4c 5f", "TcTd", "raise", 31, "T1.iso2"),         # ≥ 2 个平跟者：TT+ 隔离，底池 31
     ("3c 4c 5f", "KsQs", "raise", 31, "T1.iso2"),
@@ -209,33 +206,21 @@ def test_straddle_raise_is_capped_at_a_fifth_of_the_effective_stack():
 @pytest.mark.parametrize("actions, seat, hand, action, to, rule", [
     # a. 小盲、大盲面对只有平跟者、这手不隔离：补齐到抓头（大盲付 2、小盲付 3），其余弃
     ("3c 4c 5f 6f 7f", 0, "Ks9s", "call", None, "T1.a"),
-    # 小盲：+ K2s+、Q6s+、J7s+、T7s+、96s、85s、74s、64s、53s、A2o+、K8o+、Q9o+、J9o+、T9o、98o
+    # 小盲：+ A2o+、K9o+、Q9o+、JTo（v3.3a 撤回 v3.3 的再放宽，回到 v3.2 的表）
     ("3c 4c 5f 6f 7f", 0, "Ac2d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Ks2s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Qs6s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Js7s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "8s5s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "7s4s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Kc8d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Jc9d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "9c8d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f", 0, "Js6s", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f", 0, "Kc7d", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f", 0, "Qc8d", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f", 0, "Jc8d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Js8s", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Jc9d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Ks2s", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f", 0, "Kc8d", "fold", None, "T1.a.fold"),
     ("3c 4c 5f 6f 7f", 0, "QcQd", "raise", 31, "T1.iso2"),
-    # 大盲：+ 两张 8 以上的同花、43s、53s、64s、A2o+、K7o+、Q8o+、J8o+、T8o+、98o、97o、87o、76o
+    # 大盲：+ 两张 8 以上的同花、A2o+、K9o+、Q9o+、J9o+、T9o（v3.3a 回到 v3.2 的表）
     ("3c 4c 5f 6f 7f 0f", 1, "Js8s", "call", None, "T1.a"),
     ("3c 4c 5f 6f 7f 0f", 1, "Jc9d", "call", None, "T1.a"),
     ("3c 4c 5f 6f 7f 0f", 1, "Tc9d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f 0f", 1, "4s3s", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f 0f", 1, "Kc7d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f 0f", 1, "Tc8d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f 0f", 1, "9c7d", "call", None, "T1.a"),
-    ("3c 4c 5f 6f 7f 0f", 1, "7c6d", "call", None, "T1.a"),
     ("3c 4c 5f 6f 7f 0f", 1, "8c3d", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f 0f", 1, "Kc6d", "fold", None, "T1.a.fold"),
-    ("3c 4c 5f 6f 7f 0f", 1, "6c5d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f 0f", 1, "4s3s", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f 0f", 1, "Kc7d", "fold", None, "T1.a.fold"),
+    ("3c 4c 5f 6f 7f 0f", 1, "9c7d", "fold", None, "T1.a.fold"),
     ("3c 4c 5f 6f 7f 0c", 1, "7s3s", "fold", None, "T1.a.fold"),
     # b. 小盲、大盲面对 1 个平跟者：中位加注表隔离，不在表内按 a 补齐
     ("3c 4f 5f 6f 7f", 0, "AcTd", "raise", 27, "T1.b"),
