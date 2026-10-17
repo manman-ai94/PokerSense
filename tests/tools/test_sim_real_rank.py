@@ -152,6 +152,11 @@ def test_table_actions_read_as_answers():
     assert sim_real_rank.answer(observation, "check_call") == {"action": "call"}
     assert sim_real_rank.answer(observation, raises[0]["id"]) == {
         "action": "raise", "to": raises[0]["raise_to"]}
+    # A size of the strategy's own, not among the listed ones.
+    assert "raise_to:333" not in {item["id"] for item in observation["legal_actions"]}
+    picked = sim_real_rank.answer(observation, "raise_to:333")
+    assert picked == {"action": "raise", "to": "333"}
+    assert chips(picked, observation, 0.3) is not None
 
 
 def test_kendall_counts_pairs_in_the_same_and_the_other_order():
