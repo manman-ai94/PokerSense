@@ -167,3 +167,30 @@ def test_the_board_counts_only_after_the_flop():
     board = summary["reading"]["board"]
     assert (board["turns"], board["within_2s"]) == (1, 1.0)
     assert summary["reading"]["hero_cards"]["turns"] == summary["reading"]["turns"]
+
+
+def test_a_blind_answered_from_the_table_is_not_iron_law_5():
+    # 盲位没人加注、画面 2 秒没读稳：一页纸照表加注（T1.b），不算铁律 5，照做率照算（夜间检查 10-17）
+    clock = Clock()
+    recorder = Recorder(clock)
+    table = Screen(recorder, clock=clock, dealer=2, hero=("Qs", "Qh"))
+    table.deal(blinds=())
+    for seat, chips in ((3, 1), (4, 2), (5, 4)):
+        table.put(seat, chips, frames=0)
+    table.show(3)
+    table.put(6, 4, badge="call")
+    for seat in (7, 0, 1, 2, 3):
+        table.fold(seat)
+    controls = {"visible": True, "button": "call", "call_amount": "2"}
+    for state in ("active", "folded") * 13:          # 7 号一闪一闪：没读稳
+        table.fields["participants"]["7"] = state
+        table.show(1, hero_controls=controls)
+    table.acted()
+    table.put(4, 22, badge="raise")
+    found = report.log_report("x", recorder.rows, luck=False)
+    (turn,) = found["turns"]
+    assert turn["plain"]["rule"] == "T1.b" and turn["plain"]["advice"] == "raise"
+    summary = report.summarize([found])
+    plain = summary["coverage"]["plain"]
+    assert (plain["iron5_unread"], plain["blind_table_unsteady"]) == (0, 1)
+    assert summary["abilities"]["compliance"]["decisions"] == 1
