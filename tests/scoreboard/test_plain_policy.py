@@ -1,4 +1,4 @@
-"""一页纸打法 ``plain``（《一页纸打法 v3.3b》）：每条规则至少一个用例。
+"""一页纸打法 ``plain``（《一页纸打法 v3.3c》）：每条规则至少一个用例。
 
 牌局都是合成的：按指定的牌发牌（``spot``），在 AA 8 人桌上照写好的动作走到要测的那一步，
 再看 ``plain`` 的建议。8 人桌：0 小盲、1 大盲、2 抓头、3 早位、4 和 5 中位、6 CO、7 庄位；
@@ -466,6 +466,8 @@ def test_facing_an_all_in_three_bet_uses_the_first_row():
 @pytest.mark.parametrize("hole, board, tier, words", [
     ("7c7d", "7h Kc 2d", "A", "暗三"),
     ("Kc7d", "Kh 7c 2d", "A", "两对"),
+    ("QcJd", "Qs Tc Qh", "A", "明三条"),                 # v3.3c：公共牌对子 + 你一张（hand_15812）
+    ("7c2d", "Kh 7h 7d", "A", "明三条"),                 # 踢脚小也是
     ("9c8d", "7h 6c 5d", "A", "顺子"),
     ("Ah2h", "Kh 7h 3h", "A", "同花"),                   # 有同花不降
     ("7c7d", "7h Kc Kd 2h", "A", "葫芦"),
@@ -505,6 +507,7 @@ def test_strong_draws_and_outs():
 @pytest.mark.parametrize("hole, board, tier, was", [
     ("7c7d", "7h Kh 2h", "B", "A"),                         # 三同花：暗三降到 B
     ("9c8d", "9h 8c 7d 6s", "B", "A"),                      # 四连牌：两对降到 B
+    ("QcJd", "Qh Qs 9h 2h", "B", "A"),                      # 三同花：明三条也降到 B
     ("QcQd", "Jh 9h 2h", "C", "B"),                         # 超对降到 C
     ("AcAd", "Jh Tc 9d 8s", "C", "B"),
     ("Ah2h", "Kh 7h 3h", "A", None),                        # 同花、顺子、葫芦不降
