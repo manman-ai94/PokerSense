@@ -56,7 +56,7 @@ from poker_engine.scoreboard.bots import (  # noqa: E402
 from poker_engine.scoreboard.calibrated import (  # noqa: E402
     DEPTH_BB_RANGE, FITTED, PREFLOP_REFERENCE_PRICE, PRICE_RANGE, REFERENCE_DEPTH_BB,
     REFERENCE_PRICE, REFERENCE_SPR, SPR_RANGE, STREETS, adjusted_keep, checked_probs,
-    facing_probs, preflop_adjusted, preflop_probs, situation)
+    facing_probs, preflop_adjusted, preflop_probs, situation, spot_mix)
 from poker_engine.scoreboard.bots import _rng  # noqa: E402
 from poker_engine.scoreboard.fidelity import FLOOR, SALT, options  # noqa: E402
 from poker_engine.scoreboard.population import actions, postflop_situation  # noqa: E402
@@ -153,6 +153,7 @@ def prepare(job):
                 "features": tuple(decision["features"])}
         if street == "preflop":
             seen = {**hand["table"], "observing_seat": seat}
+            item["spot"] = decision["spot"]
             item["bands"] = {
                 name: (*band_after(decision["earlier"],
                                    lambda spot: preflop_shares(seen, spot, aa=stats)),
@@ -196,8 +197,9 @@ def decision_probs(item, params, version, stats):
         place = (PERCENTILE - low) / width if width > 0 else np.ones(len(COMBOS))
         base = np.where(place <= raise_share, 2,
                         np.where(place <= raise_share + call_share, 1, 0))
-        return preflop_probs(base, raise_share, call_share, params["mix"],
-                             item["can_fold"], item["can_raise"])
+        mix, raise_mix = spot_mix(item["spot"], params)
+        return preflop_probs(base, raise_share, call_share, mix,
+                             item["can_fold"], item["can_raise"], raise_mix)
     street = params[item["street"]]
     row = postflop_shares(item["spot"], aa=stats)
     win = np.nan_to_num(item["win"], nan=0.0)

@@ -11,7 +11,7 @@ from poker_engine.scoreboard.bots import _rng, make_policy
 from poker_engine.scoreboard.calibrated import (
     FITTED, REFERENCE_DEPTH_BB, REFERENCE_PRICE, REFERENCE_SPR, CalibratedBot,
     adjusted_keep, all_in_or, cal_stats, checked_probs, effective_stack, facing_probs,
-    preflop_adjusted, preflop_probs, priced_keep, situation)
+    preflop_adjusted, preflop_probs, priced_keep, situation, spot_mix)
 from poker_engine.scoreboard.fidelity import chances
 from poker_engine.scoreboard.replay import kind_of
 from poker_engine.scoreboard.runner import POOLS
@@ -106,6 +106,25 @@ def test_probabilities_are_whole_and_legal():
     assert facing[-1][2] == pytest.approx(0.8)
     assert list(checked_probs(win, SPOT, 0.3, 0.0, 0.0, can_raise=False)[-1]) == \
         [0.0, 1.0, 0.0]
+
+
+def test_three_bets_and_up_mix_by_their_own_share():
+    params = {"mix": 0.6, "mix_3bet": 0.4}
+    assert spot_mix("rfi", params) == (0.6, None)
+    assert spot_mix("vs_open", params) == (0.6, 0.4)
+    assert spot_mix("open_vs_3bet", params) == (0.4, None)
+    assert spot_mix("open_vs_3bet", {"mix": 0.6}) == (0.6, None)
+    base = np.array([0, 1, 2])
+    probs = preflop_probs(base, 0.1, 0.3, 0.6, raise_mix=0.4)
+    assert probs.sum(axis=-1) == pytest.approx([1, 1, 1])
+    assert probs[:, 2] == pytest.approx([0.04, 0.04, 0.64])
+    # fold and call share the rest as they would
+    same = preflop_probs(base, 0.1, 0.3, 0.6)
+    assert probs[0][0] / probs[0][1] == pytest.approx(same[0][0] / same[0][1])
+    assert preflop_probs(base, 0.1, 0.3, 0.6, raise_mix=0.6) == pytest.approx(same)
+    # a band raiser that does not raise folds and calls as the spot's shares
+    alone = preflop_probs(2, 0.1, 0.3, 0.0, raise_mix=0.4)
+    assert list(alone) == pytest.approx([0.24, 0.12, 0.64])
 
 
 def test_without_departures_it_acts_as_aa_real_on_the_same_numbers(arena):
