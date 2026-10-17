@@ -1,6 +1,7 @@
 """Recording the capture card from the live service, without a real encoder."""
 
 import json
+import os
 from pathlib import Path
 import threading
 import time
@@ -10,8 +11,8 @@ import numpy as np
 import pytest
 
 from poker_engine.desktop.aa_recorder import (
-    FOURCCS, GB, AARecorder, SegmentWriter, check_writer, free_bytes, strip_box,
-    WRITER_API)
+    FOURCCS, GB, OPENH264, AARecorder, SegmentWriter, check_writer, free_bytes,
+    strip_box, use_openh264, WRITER_API)
 from poker_engine.desktop.aa_sources import AACaptureSource
 from poker_engine.desktop.aa_video_source import AAVideoSource
 from poker_engine.perceptual.capture.normalization import NormalizationConfig
@@ -122,6 +123,37 @@ def test_windows_writes_through_ffmpeg_only():
     assert WRITER_API == (cv2.CAP_FFMPEG if os.name == "nt" else cv2.CAP_ANY)
 
 
+def test_openh264_in_the_codecs_folder_goes_first_on_the_path(tmp_path):
+    """Windows looks for the library OpenCV's FFmpeg loads on PATH; the
+    folder is put there once."""
+    (tmp_path / OPENH264).write_bytes(b"MZ")
+    system = str(tmp_path / "system32")
+    environ = {"PATH": os.pathsep.join([system, ""])}
+    found = use_openh264(tmp_path, environ, windows=True)
+    assert found == str(tmp_path / OPENH264)
+    assert environ["PATH"].split(os.pathsep) == [str(tmp_path), system]
+    assert use_openh264(tmp_path, environ, windows=True) == found
+    assert environ["PATH"].split(os.pathsep) == [str(tmp_path), system]
+
+
+def test_without_openh264_the_path_is_left_alone(tmp_path):
+    environ = {"PATH": "system32"}
+    assert use_openh264(tmp_path, environ, windows=True) is None
+    (tmp_path / OPENH264).write_bytes(b"MZ")
+    assert use_openh264(tmp_path, environ, windows=False) is None   # Mac, Linux
+    assert environ == {"PATH": "system32"}
+
+
+@pytest.mark.skipif(os.name != "nt", reason="OpenCV's Windows FFmpeg")
+def test_opencv_ffmpeg_loads_the_openh264_named_here():
+    """The testers' install steps download this exact file from Cisco; an
+    OpenCV that wants another version needs the steps changed too."""
+    import cv2
+    found = list(Path(cv2.__file__).parent.glob("opencv_videoio_ffmpeg*.dll"))
+    assert found, "OpenCV's FFmpeg is missing"
+    assert all(OPENH264.encode() in path.read_bytes() for path in found)
+
+
 def test_no_encoder_at_all_names_what_was_tried(tmp_path):
     segments = SegmentWriter(tmp_path, writer_factory=(named("avc1", False),
                                                        named("mp4v", False)))
@@ -136,6 +168,7 @@ def test_this_machine_can_write_a_recording_and_read_it_back():
     assert report["ready"] is True, report
     assert report["fourcc"] in FOURCCS
     assert report["backend"] and report["backend"] != "MSMF"
+    assert "openh264" in report                 # where it was found, or None
 
 
 def test_the_writer_check_reports_a_missing_encoder():

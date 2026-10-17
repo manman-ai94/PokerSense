@@ -32,7 +32,13 @@ OpenH264 library, which is usually missing; OpenCV then quietly hands
 ``avc1`` to Windows Media Foundation (``MSMF``), whose writer encodes at a
 fixed 1 bit per pixel: about 60 Mbit/s, 26 GB an hour of a mostly black
 picture (a tester's 18 minutes on 2026-10-15 came to 7.95 GB). FFmpeg's MPEG-4
-there writes about 0.5-1 GB an hour.
+there writes about 0.5-2 GB an hour: OpenCV gives it a keyframe every 12
+frames. With Cisco's ``OPENH264`` in ``codecs`` in the data folder (downloaded
+from Cisco on that computer, never shipped), FFmpeg's H.264 opens
+(``use_openh264``). On a made-up recording (2026-10-17, OpenH264 2.5.0 set up
+as OpenCV's FFmpeg sets it) it wrote 0.03 GB an hour against MPEG-4's 0.64 at
+slightly less CPU, and as much as MPEG-4 only when every frame carried fresh
+noise.
 
 A recording is only worth it when it shows the phone. The capture card puts
 the phone's portrait screen between black bars (``picture``): measured on
@@ -56,6 +62,7 @@ import cv2
 import numpy as np
 
 from ..code_version import code_version
+from ..data_paths import data_root
 
 FPS = 30
 SIZE = (1920, 1080)
@@ -94,6 +101,22 @@ FOURCCS = ("avc1", "mp4v")          # H.264 first; MPEG-4 where H.264 is missing
 # The library OpenCV picks for a writer: on Windows only FFmpeg (see above).
 WRITER_API = cv2.CAP_FFMPEG if os.name == "nt" else cv2.CAP_ANY
 REFUSED_BACKENDS = ("MSMF",)        # 1 bit per pixel: 26 GB an hour
+OPENH264 = "openh264-2.5.0-win64.dll"   # the name OpenCV 4.14's FFmpeg loads
+
+
+def use_openh264(folder=None, environ=os.environ, windows=os.name == "nt"):
+    """On Windows, let OpenCV's FFmpeg find ``OPENH264`` in ``folder``
+    (``codecs`` in the data folder): the folder goes first on this program's
+    PATH, where Windows looks for it. The library's path, or None."""
+    if not windows:
+        return None
+    path = Path(data_root() / "codecs" if folder is None else folder) / OPENH264
+    if not path.is_file():
+        return None
+    parts = [part for part in environ.get("PATH", "").split(os.pathsep) if part]
+    if str(path.parent) not in parts:
+        environ["PATH"] = os.pathsep.join([str(path.parent), *parts])
+    return str(path)
 
 
 def fourcc_writer(code, api=None):
@@ -101,6 +124,7 @@ def fourcc_writer(code, api=None):
     api = WRITER_API if api is None else api
 
     def make(path, fps, size):
+        use_openh264()
         return cv2.VideoWriter(str(path), api, cv2.VideoWriter_fourcc(*code),
                                fps, size)
     make.fourcc = code
@@ -122,7 +146,8 @@ def backend_of(writer):
 def check_writer(writers=WRITERS, size=SIZE, frames=5):
     """Whether a recording could be written here: the first encoder of
     ``writers`` that opens writes a few frames to a temporary file, which is
-    read back. {"ready", "fourcc", "reason"}."""
+    read back. {"ready", "fourcc", "backend", "reason", "openh264"}."""
+    openh264 = use_openh264()
     with tempfile.TemporaryDirectory(prefix="pokersense-recorder-") as folder:
         segments = SegmentWriter(folder, size=size, writer_factory=writers,
                                  segment_seconds=60)
@@ -133,7 +158,7 @@ def check_writer(writers=WRITERS, size=SIZE, frames=5):
             segments.close()
         except Exception as error:      # noqa: BLE001 - reported, never raised
             return {"ready": False, "fourcc": None, "backend": None,
-                    "reason": str(error)}
+                    "reason": str(error), "openh264": openh264}
         capture = cv2.VideoCapture(str(Path(folder) / "segment_0000.mp4"))
         count = 0
         while count < frames and capture.read()[0]:
@@ -141,7 +166,8 @@ def check_writer(writers=WRITERS, size=SIZE, frames=5):
         capture.release()
     ready = count > 0
     return {"ready": ready, "fourcc": segments.fourcc, "backend": segments.backend,
-            "reason": None if ready else "written video does not read back"}
+            "reason": None if ready else "written video does not read back",
+            "openh264": openh264}
 
 
 class SegmentWriter:
@@ -337,5 +363,6 @@ class AARecorder:
 
 
 __all__ = ["AARecorder", "backend_of", "check_writer", "FOURCCS", "fourcc_writer",
-           "free_bytes", "GB", "MIN_FREE_GB", "picture", "REFUSED_BACKENDS",
-           "SegmentWriter", "STOP_FREE_GB", "strip_box", "WRITER_API", "WRITERS"]
+           "free_bytes", "GB", "MIN_FREE_GB", "OPENH264", "picture",
+           "REFUSED_BACKENDS", "SegmentWriter", "STOP_FREE_GB", "strip_box",
+           "use_openh264", "WRITER_API", "WRITERS"]

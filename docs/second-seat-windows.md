@@ -191,12 +191,28 @@ C:\PokerSense\launch\aa\START-AA.cmd --self-check
 
 输出里 `"capture_enabled": true`、`"recognition_bundle": "INSTALLED"`、`"solver_ready": true`、
 `"recorder_ready": true` 都有就对了。它会真算一个很小的河牌局面、写几帧录像再读回来（在临时文件夹里，
-算完就删），所以要等十来秒。`"recorder"` 里的 `"fourcc"` 是录像用的编码，`"backend"` 应该是 `FFMPEG`：
-Windows 上通常是 `mp4v`（一小时约 0.5–1 GB），主人那边照样能读。
+算完就删），所以要等十来秒。`"recorder"` 里的 `"fourcc"` 是录像用的编码，`"backend"` 应该是 `FFMPEG`。
+`"recordings_free_gb"` 是放录像的那块盘还剩多少 GB（`"recordings"` 是录像文件夹）：少于 20 GB 不开始录，录到剩 10 GB 自动停。
 
-输出里有 `openh264-2.5.0-win64.dll` 找不到之类的告警、但 `recorder_ready` 是 true，不用管，也不要去网上找这个 dll：
-OpenCV 先试 OpenH264 这个库，没有就用 `mp4v`。**不用** Windows 自带的 H.264 编码器（`MSMF`）：它固定每秒约 60 Mbit，
-一小时 26 GB（2026-10-15 杜的 18 分钟录了 7.95 GB）。
+录像编码：没装 OpenH264 时是 `mp4v`（一小时约 0.5–2 GB，主人那边照样能读），自检里会有 `openh264-2.5.0-win64.dll` 找不到的告警。
+装上以后是 `avc1`（H.264，文件小得多），`"recorder"` 里的 `"openh264"` 写着它的位置。这个文件不在仓库里，也不随安装包发，
+每台电脑自己从 Cisco 官网下载，核对 SHA256 后放进数据文件夹下的 `codecs`（只在主人给的更新步骤里装）：
+
+```powershell
+$t = Join-Path $env:TEMP 'pokersense-openh264'
+New-Item -ItemType Directory -Force $t | Out-Null
+curl.exe -fsSL -o (Join-Path $t 'openh264.dll.bz2') http://ciscobinary.openh264.org/openh264-2.5.0-win64.dll.bz2
+C:\PokerSense\.venv\Scripts\python.exe -c "import bz2,shutil,sys; shutil.copyfileobj(bz2.open(sys.argv[1]), open(sys.argv[2],'wb'))" (Join-Path $t 'openh264.dll.bz2') (Join-Path $t 'openh264-2.5.0-win64.dll')
+(Get-FileHash (Join-Path $t 'openh264-2.5.0-win64.dll') -Algorithm SHA256).Hash
+# 必须是 BF91C488638B32448F7D89611F6BB9C232DCE82975D7D2827C78F78FC2A7FB2B，不一样就停下，别放进去
+New-Item -ItemType Directory -Force C:\PokerSense_data\codecs | Out-Null
+Copy-Item (Join-Path $t 'openh264-2.5.0-win64.dll') C:\PokerSense_data\codecs\
+Remove-Item -LiteralPath $t -Recurse -Force
+```
+
+（`C:\PokerSense_data` 换成你的数据文件夹。）想退回 `mp4v`，把这个文件从 `codecs` 里挪走就行。
+**不用** Windows 自带的 H.264 编码器（`MSMF`）：它固定每秒约 60 Mbit，
+一小时 26 GB（2026-10-15 杜的 18 分钟录了 7.95 GB），OpenCV 找不到 OpenH264 时也不会退到它。
 第一段录像录完，双击录像文件夹里的 `segment_0000.mp4` 看一眼能不能放，能放就照常录。
 
 ## 7. 更新（只在主人说要更新时）
