@@ -45,6 +45,18 @@ def test_the_self_check_reports_the_solver_and_the_recorder():
     assert ready["recorder"]["reason"] == "no encoder"
 
 
+def test_small_computers_give_recognition_half_their_threads():
+    assert [entry.recognition_threads(cpus) for cpus in (1, 2, 3, 4, 8, 10)] == [
+        1, 1, 1, 2, None, None]
+    assert entry.recognition_threads(0) is None   # os.cpu_count() unknown
+    applied = []
+    assert entry.limit_recognition_threads(4, applied.append) == 2
+    assert entry.limit_recognition_threads(10, applied.append) is None
+    assert applied == [2]
+    report = entry.package_report(entry.parser().parse_args([]))
+    assert report["recognition_threads"] == entry.recognition_threads()
+
+
 def test_only_the_self_check_solves_and_records(tmp_path, monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(entry, "readiness", lambda: calls.append(1) or {})
