@@ -21,7 +21,10 @@ entry = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(entry)
 
 
-def test_public_package_offline_preflight_does_not_write(tmp_path, capsys):
+def test_public_package_offline_preflight_does_not_write(tmp_path, capsys, monkeypatch):
+    # A data folder not made yet: free space is read from the nearest folder
+    # there is (on Windows the default is the G: drive, missing on CI).
+    monkeypatch.setenv(entry.DATA_ROOT_ENV, str(tmp_path / "data"))
     state = tmp_path / "state"
     assert entry.main(["--self-check", "--state", str(state)]) == 0
     report = json.loads(capsys.readouterr().out)
@@ -33,16 +36,30 @@ def test_public_package_offline_preflight_does_not_write(tmp_path, capsys):
     assert not state.exists()
     # The record button's encoder works here; the solver answers either way.
     assert report["recorder_ready"] is True, report["recorder"]
+    assert report["recordings_free_gb"] > 0
+    assert report["recordings"].startswith(str(tmp_path / "data"))
+    assert not (tmp_path / "data").exists()
     assert isinstance(report["solver_ready"], bool)
     assert report["solver"]["ready"] is report["solver_ready"]
 
 
-def test_the_self_check_reports_the_solver_and_the_recorder():
+def test_the_self_check_reports_the_solver_and_the_recorder(tmp_path):
     ready = entry.readiness(
         solver_check=lambda: {"ready": True, "seconds": 4.0, "reason": None},
-        recorder_check=lambda: {"ready": False, "fourcc": None, "reason": "no encoder"})
+        recorder_check=lambda: {"ready": False, "fourcc": None, "reason": "no encoder"},
+        recordings=tmp_path, free=lambda path: 12.34 * 1024 ** 3)
     assert ready["solver_ready"] is True and ready["recorder_ready"] is False
     assert ready["recorder"]["reason"] == "no encoder"
+    assert (ready["recordings"], ready["recordings_free_gb"]) == (str(tmp_path), 12.3)
+
+
+def test_the_self_check_says_so_when_the_recordings_disk_is_missing(tmp_path):
+    def missing(path):
+        raise FileNotFoundError(path)
+    ready = entry.readiness(solver_check=lambda: {"ready": True},
+                            recorder_check=lambda: {"ready": True},
+                            recordings=tmp_path / "G", free=missing)
+    assert ready["recordings_free_gb"] is None
 
 
 def test_small_computers_give_recognition_half_their_threads():

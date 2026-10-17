@@ -46,7 +46,7 @@ def configure_source_path():
 
 configure_source_path()
 from poker_engine import __version__  # noqa: E402
-from poker_engine.data_paths import DATA_ROOT_ENV  # noqa: E402
+from poker_engine.data_paths import DATA_ROOT_ENV, private_root  # noqa: E402
 from poker_engine.desktop import app_update  # noqa: E402
 
 
@@ -238,17 +238,28 @@ def package_report(args):
     }
 
 
-def readiness(solver_check=None, recorder_check=None):
+def readiness(solver_check=None, recorder_check=None, recordings=None, free=None):
     """What --self-check adds: the solver solves one tiny river spot
-    (heads-up turn and river advice; without it the range rule advises) and
-    the recorder writes and reads back a few frames (the record button)."""
+    (heads-up turn and river advice; without it the range rule advises), the
+    recorder writes and reads back a few frames (the record button), and the
+    free space where recordings go (a recording starts with 20 GB free and
+    stops at 10 GB; None when that disk is not there)."""
+    from poker_engine.desktop import aa_recorder
     if solver_check is None:
         from poker_engine.solver.texassolver import smoke_test as solver_check
     if recorder_check is None:
-        from poker_engine.desktop.aa_recorder import check_writer as recorder_check
+        recorder_check = aa_recorder.check_writer
+    if recordings is None:
+        recordings = private_root() / "aa-mac-recordings"
+    free = aa_recorder.free_bytes if free is None else free
+    try:
+        free_gb = round(free(recordings) / aa_recorder.GB, 1)
+    except OSError:
+        free_gb = None
     solver, recorder = solver_check(), recorder_check()
     return {"solver_ready": solver["ready"], "solver": solver,
-            "recorder_ready": recorder["ready"], "recorder": recorder}
+            "recorder_ready": recorder["ready"], "recorder": recorder,
+            "recordings": str(recordings), "recordings_free_gb": free_gb}
 
 
 def self_test():

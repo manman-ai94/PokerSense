@@ -2,6 +2,7 @@
 
 import json
 
+from poker_engine.scoreboard import plain_policy
 from tools import session_evidence as evidence
 from tools import session_package as package
 
@@ -237,3 +238,22 @@ def test_old_packages_say_they_have_no_ledger(tmp_path):
     text = evidence.shadow_lines([evidence.load(path)])
     assert text[-2:] == ["  没有可比的决策",
                          "  没有分量账本的场次 1 场（场次包格式 1，或这一块没做成）"]
+
+
+def ledger_package(version, hands, loosened=None):
+    return {"session": {"hands": hands}, "shadow": {"summary": {
+        "page_version": version, "shown_by": {"plain": 1},
+        "replay_matches_shown": {"n": 1, "same": 1}, "decisions": 1, "compared": 1,
+        "diverged": 0, "first_divergences": 0, "groups": {}, "loosened": loosened or {},
+        "booked": {"n": 0, "plain_minus_old_bb": 0.0},
+        "by_shown": {"n": 0, "plain_minus_old_bb": 0.0},
+        "fold_check": {"n": 0, "off": 0}}, "decisions": []}}
+
+
+def test_a_v33_ledger_and_a_v33c_ledger_are_not_added_up():
+    """A package the v3.3 page wrote (its loosenings still in) and one this
+    page writes now stay on two lines."""
+    old = ledger_package("v3.3", 300, loosened={"late_limp": {"n": 0}})
+    now = ledger_package(package.versions(plain_policy, None)["page"]["version"], 500)
+    lines = [line for line in evidence.shadow_lines([old, now]) if "重放：" in line]
+    assert len(lines) == 2, lines

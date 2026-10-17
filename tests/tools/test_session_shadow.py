@@ -2,7 +2,6 @@
 worth 0 (made-up hands only: the repository is public)."""
 
 import json
-from decimal import Decimal
 from types import SimpleNamespace
 
 from poker_engine.scoreboard import plain_policy
@@ -37,15 +36,21 @@ def test_only_the_hands_the_page_has_beyond_v32_count_as_loosened():
     assert shadow.LOOSENED == shadow.loosenings(plain_policy)
 
 
-def test_from_here_counts_back_to_the_decision_and_on_to_the_next_posts():
-    hand = {"chips": "-38", "start": "200", "big_blind": "2"}
-    assert shadow.from_here({"your_stack": "200"}, hand, Decimal(2)) == (-18.0, None)
-    assert shadow.from_here({"your_stack": "184"}, hand, Decimal(2)) == (-10.0, None)
-    busted = {"chips": "-200", "start": "200", "big_blind": "2"}
-    assert shadow.from_here({"your_stack": "150"}, busted, None) == (-75.0, None)
-    assert shadow.from_here({"your_stack": "200"}, hand, None)[0] is None
+def test_from_here_counts_back_to_the_decision_with_the_hands_own_posts():
+    """The sheet's result pays this hand's own posts (#132): 6 posted, 38
+    lost in all; what was left at the end against what you had behind."""
+    hand = {"chips": "-38", "start": "194", "posted": "6", "big_blind": "2"}
+    assert shadow.from_here({"your_stack": "194"}, hand) == (-16.0, None)
+    assert shadow.from_here({"your_stack": "178"}, hand) == (-8.0, None)
+    folded = {"chips": "-6", "start": "194", "posted": "6", "big_blind": "2"}
+    assert shadow.from_here({"your_stack": "194"}, folded) == (0.0, None)
+    busted = {"chips": "-200", "start": "194", "posted": "6", "big_blind": "2"}
+    assert shadow.from_here({"your_stack": "150"}, busted) == (-75.0, None)
+    # Posts not worked out count 0, as the sheet counted them.
+    assert shadow.from_here({"your_stack": "200"},
+                            {**hand, "start": "200", "posted": None}) == (-19.0, None)
     unfinished = {**hand, "chips": None}
-    assert shadow.from_here({"your_stack": "200"}, unfinished, 2)[0] is None
+    assert shadow.from_here({"your_stack": "200"}, unfinished)[0] is None
 
 
 def test_a_line_is_worth_0_folded_what_you_got_played_and_nothing_else():
@@ -143,7 +148,7 @@ def made_block(monkeypatch, spot=lambda *_: None, loose=LOOSE):
                               "you_did": you})
         hands.append({"hand_id": f"h{len(hands)}", "rows": hand_rows, "turns": turns,
                       "decisions": decisions, "stakes": {"big_blind": "2"},
-                      "chips": chips, "start": start,
+                      "chips": chips, "start": start, "posted": "2",
                       "luck": {"runout": runout, "allin": runout is None}})
     tail = {"fields": {}}
     log.append(tail)
@@ -153,7 +158,6 @@ def made_block(monkeypatch, spot=lambda *_: None, loose=LOOSE):
                   "stakes": {"big_blind": "2"}, "chips": None, "start": None,
                   "luck": None})
     monkeypatch.setattr(shadow, "replays", lambda _: {"old": old, "plain": plain})
-    monkeypatch.setattr(shadow, "posts", lambda *_: Decimal(2))
     monkeypatch.setattr(shadow, "shown_spot", spot)
     monkeypatch.setattr(shadow, "LOOSENED", shadow.loosenings(loose))
     return shadow.block(log, hands, code="abcdef1", page_version="v3.3")
