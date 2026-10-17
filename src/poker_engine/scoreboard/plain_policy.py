@@ -1636,6 +1636,7 @@ def flip(table, advice, context):
     if agg is not None and table.street != "preflop":
         pot_before = agg.pot
     effective = table.effective() if table else 0.0
+    price_share = MUSHROOM_PRICE_SHARE if table and table.mushroom else PRICE_SHARE
     texts = {
         "T1.raise": "前面有人加注就改按表 2",
         "T1.limp": "前面有人加注就改按表 2",
@@ -1651,7 +1652,7 @@ def flip(table, advice, context):
         "T1.c": "前面有人平跟就按隔离规则，有人加注就按表 2",
         "T2.3bet": "被 4-bet 只有 KK+ 继续",
         "T2.call": "被再加注就按表 3",
-        "T2.price": f"跟注超过 {_chips(PRICE_SHARE * effective)} 就弃",
+        "T2.price": f"跟注超过 {_chips(price_share * effective)} 就弃",
         "T2.blind": (f"跟注超过 {_chips(BLIND_POT * table.pot)} 或已跟的人不到 2 个就弃"
                      if table else ""),
         "T2.short": "他的全下超过 15 个大盲就只留 QQ+、AK",
@@ -1701,7 +1702,9 @@ def flip(table, advice, context):
         return f"他下到 {_chips(limit * pot_before)} 以上就{then}"
     if rule in ("F.D", "R.D") or (rule == "F.D_strong" and advice.action != "raise"):
         if advice.equity is not None and advice.equity < 1 and table:
-            before = matched_pot(table.observation) - table.to_call
+            # 和所需胜率一样，小盲的蘑菇池全额算进底池（Table.need）
+            before = (matched_pot(table.observation) - table.to_call
+                      + table.mushroom * table.big_blind)
             most = advice.equity * before / (1 - advice.equity)
             return f"跟注 {_chips(most)} 以内才跟（补牌胜率 {advice.equity:.0%}）"
     if rule in ("ALLIN", "J2") and advice.need is not None:

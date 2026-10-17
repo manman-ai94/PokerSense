@@ -603,6 +603,12 @@ view = signalView(running(page({action: "fold", frequency: 1.0},
     tag: "铁律 5：缺你的手牌", missing: ["hero_cards"]})), 0, {});
 assert.ok(view.tags.includes("铁律 5：缺你的手牌"));
 assert.ok(view.basis.includes("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"));
+// A blind nobody raised, answered from the table while the screen is not steady: not iron law 5.
+view = signalView(running(page({action: "raise", frequency: 1.0, amount: "22"},
+  {...foldPlain, action: "raise", rule: "T1.b", rule_label: "表 1·盲位没人加注", hits: ["T1.b"],
+    missing: ["opponents"]})), 0, {});
+assert.ok(view.basis.includes("画面 2 秒没读稳：盲位没人加注，照表（铁律 5 不适用）"));
+assert.ok(!view.basis.some(line => line.includes("按铁律 5 先弃或过牌")));
 // Before the screen is steady: no advice, how long it has read and what it waits for.
 view = signalView(running(base({solver_advice_v1: {status: "reading", kind: "plain",
   reason: "price_not_steady", waited: 0.4, missing: ["price_not_steady"],

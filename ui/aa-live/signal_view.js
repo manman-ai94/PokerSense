@@ -317,7 +317,9 @@
     if (page.flip) basis.push(`翻转条件：${page.flip}`);
     if (page.unspecified) basis.push("本页没写这种情形：按铁律 5 先弃或过牌，记下来给主人");
     if (Array.isArray(page.missing) && page.missing.length)
-      basis.push("画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌");
+      // Only the S1 answer is iron law 5; a blind nobody raised is answered from the table.
+      basis.push(page.rule === "S1" ? "画面 2 秒没读稳，缺的东西没法算：按铁律 5 先弃或过牌"
+        : "画面 2 秒没读稳：盲位没人加注，照表（铁律 5 不适用）");
     const before = advice.previous;
     if (before) {
       const row = (before.advice || [])[0];
