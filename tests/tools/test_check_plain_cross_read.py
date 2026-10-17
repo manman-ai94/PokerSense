@@ -42,6 +42,7 @@ def test_carried_stacks_that_match_later_reads_pass_the_gate(tmp_path):
     assert total["gate"]["pass"] and total["counts"]["stack_check_frames"] > 0
     assert total["counts"]["stack_carried_hands"] == 1
     assert total["iron5_off"] == {"stack": 1} and not total["iron5_on"]
+    assert total["iron5_detail_off"] == {"preflop/stack": 1}
     assert "rec" in json.loads(out.read_text(encoding="utf-8"))["logs"]
     assert total["tails"]["0"]["stack_carried_hands"] == 1
     assert total["tails"]["3"]["stack_disagree_frames"] == 0

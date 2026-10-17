@@ -17,7 +17,8 @@ readings off (as before them) and on. On every frame with your buttons up:
   price. Logs written before ``raw_call_amount`` was logged have no doubtful
   digits, so only the chips-and-pot-rise check is seen on them;
 * **decisions**: iron rule 5 for want of a reading, off against on, by what
-  was missing; and decisions whose advice changed;
+  was missing first and (``iron5_detail_*``) by street and everything
+  missing; and decisions whose advice changed;
 * **tails** (``--tails``): the stack check again with other numbers of a
   hand's last frames left out of the carried reading (``aa_plain_advice.TAIL``),
   to see whether fewer would carry more stacks without a disagreement. The
@@ -154,6 +155,12 @@ def iron5(found):
     return Counter(row.get("unread") for row in found.values() if row.get("unread"))
 
 
+def iron5_detail(found):
+    """Iron rule 5 for want of a reading, by street and everything missing."""
+    return Counter(f"{key[1]}/{'+'.join(row.get('missing') or [row['unread']])}"
+                   for key, row in found.items() if row.get("unread"))
+
+
 def log_report(rows, tails=()):
     with _Off():
         before = decisions(rows)
@@ -170,6 +177,8 @@ def log_report(rows, tails=()):
             changed[f"{was}->{now}"] += 1
     return {"decisions_off": len(before), "decisions_on": len(after),
             "iron5_off": dict(iron5(before)), "iron5_on": dict(iron5(after)),
+            "iron5_detail_off": dict(iron5_detail(before)),
+            "iron5_detail_on": dict(iron5_detail(after)),
             "changed": dict(changed), "counts": dict(counts),
             "stack_differences": dict(stack_diffs),
             "price_differences": dict(price_diffs),
@@ -183,7 +192,8 @@ def _tail(counts):
 
 def summarize(reports):
     total = {"decisions_off": 0, "decisions_on": 0}
-    sums = {key: Counter() for key in ("iron5_off", "iron5_on", "changed", "counts",
+    sums = {key: Counter() for key in ("iron5_off", "iron5_on", "iron5_detail_off",
+                                       "iron5_detail_on", "changed", "counts",
                                        "stack_differences", "price_differences")}
     tails = {}
     for report in reports.values():
