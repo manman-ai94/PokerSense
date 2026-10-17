@@ -22,6 +22,15 @@
   （只读到其中一个也行）；翻牌开始时的底池按手锁存。真正缺了没法算的只有四样：你的手牌、
   要跟的金额、底池（翻后）、你的筹码（还有庄位）。翻前的底池不读屏幕（AA 翻前显示
   0，注还摆在各人面前），按结构算：前注 × 人数 + 小盲 + 大盲 + 抓头 + 各座已投入的。
+- **两处读数对上才算读到**（不是默认值，对不上就还是没读到、照样铁律 5）：
+  - 你的筹码这手一帧都没读到（杜 10-17 那场翻前 17 次铁律 5 都是缺它）：上一手你弃牌以后、
+    别人还在打的时候至少读到两帧、到那手结束读到的都是同一个数，这手开局只投了前注和
+    盲注（翻前、你还没动过、你不是庄位：庄位要交蘑菇），就用那个数减前注和你的盲注
+    （``carried_stack``）。这手读到过别的数、按钮是 All in、或者要跟的金额不比它少，都不算。
+  - 按钮上的金额没读稳（杜 10-17 那场有一手翻牌 11 秒铁律 5）：翻后、你这条街还没投钱，
+    按钮读出的没把握的数字和别人面前的筹码（最高的那个）或这条街开始以来底池涨的一样；
+    转牌、河牌上这条街开始的底池和上一条街最后的底池一样（这条街的注都在后来涨的里面）
+    时，别人面前的筹码和底池涨的一样也算（``derived_price``）。
 - **就绪条件**：按钮出现、要跟的金额连续 3 帧一样、两张手牌连续两帧读成一样、公共牌
   张数和街道对得上、还在局的对手连续 2 帧一样、底池（翻后）和你的筹码读到了；这手的手牌或
   公共牌读出过两种就不就绪（``card_conflict``，宁可铁律 5 也不按其中一种算）。就绪前
@@ -60,6 +69,7 @@ READY_FRAMES = 20               # 没有时钟可看时按帧数（约 10 帧一
 TURN_GAP = 5                    # 按钮消失至少这么多帧再出现，才算这条街的下一个决策（不算一闪）
 SIDE_BY_SIDE = 2.0              # 要跟的金额变了：旧建议在旁边留 2 秒
 OPENING_FRAMES = 300            # 认级别、庄位用的开局帧，最多留这么多
+TAIL = 10                       # 一手最后这么多帧可能已经是下一手（前注扣了）：往前带的筹码不能只靠它们
 EPSILON = 1e-9
 BASIS = "一页纸打法 v3.3c（plain）：只按这一页的规则；只显示建议，不替你点"
 
@@ -75,6 +85,8 @@ BLIND_RULES = frozenset({"T1.a", "T1.a.fold", "T1.b", "T1.c", "T1.straddle", "T1
 # 按默认补上的缺项（窗口上的小标签）。
 DEFAULTS = {"opponent_stack": "缺对手筹码→按最深已读",
             "carried_stack": "对手筹码按上次读数往前带",
+            "hero_stack": "你的筹码按上一手读数往前带",
+            "derived_price": "要跟的金额按两处读数对上",
             "mushroom": "蘑菇池没读到→按 0",
             "inferred": "有动作没读到→按注额补上",
             "flop_pot": "翻牌底池按手锁存"}
@@ -130,7 +142,7 @@ class HandState:
     def __init__(self, hand_id, last=None):
         last = last or {}
         self.hand_id = hand_id
-        self.frames = 0
+        self.frames, self.last_frame = 0, None
         self.opening, self.opened = [], False
         self.states, self.previous_live, self.live_frames = {}, None, 0
         self.seen_live, self.folds = set(), []
@@ -139,8 +151,13 @@ class HandState:
         self.street, self.carry = None, {}
         self._wager_reads, self.events, self.wagers = {}, [], {}
         self._stack_reads, self.stacks = {}, {}
+        self.hero_stack_raw = set()     # 这手读到过的你的筹码（一帧的也算）
+        self.carried = last.get("stack")    # 上一手你弃牌以后读到的筹码
+        self._hero_folded, self._hero_out = False, False
+        self._out_values, self._out_frames = set(), []
         self._pot = _Steady()
         self.pot = self.opening_pot = self.flop_pot = None
+        self.street_pots, self.end_pots = {}, {}    # 街 -> 这条街开始 / 最后读稳的底池
         self._stale_hero = last.get("hero")
         self._stale_board = last.get("board")
         self._hero = _Steady()
@@ -149,6 +166,7 @@ class HandState:
         self.board, self.board_seen = [None] * 5, [set() for _ in range(5)]
         self.mushroom = None
         self.prices = []                # 按钮出现的帧上的价格，最近几帧
+        self.derived = None             # 这一帧按两处读数对上的价格（按钮金额没读稳时）
         self.acted = {}                 # 街 -> 你的按钮上次消失的帧（你在这条街动过）
         self.turns = {}                 # 街 -> 这条街的第几个决策（按钮消失够久又出现过几次）
         self._hidden = 0                # 按钮连着几帧没出现
@@ -160,6 +178,7 @@ class HandState:
 
     def observe(self, fields, frame):
         self.frames += 1
+        self.last_frame = frame
         self.history = fields.get("actions_v1") or self.history
         street = fields.get("street")
         if street in STREETS and street != self.street:
@@ -179,13 +198,14 @@ class HandState:
         if pool is not None:
             self.mushroom = pool
         controls = fields.get("hero_controls") or {}
+        self.derived = self.derived_price(controls)
         if controls.get("visible"):
             if (not self._visible and self._hidden >= TURN_GAP
                     and self.street in self.acted):
                 self.turns[self.street] = self.turns.get(self.street, 0) + 1
             self._hidden = 0
             self.preflop_turn |= self.street == "preflop"
-            self.prices.append(price(controls, self.stack_read(HERO)))
+            self.prices.append(self.price(controls))
             del self.prices[:-PRICE_FRAMES]
         else:
             if self._visible:
@@ -206,11 +226,14 @@ class HandState:
                             if state in LIVE and seat != HERO))
         self.live_frames = self.live_frames + 1 if live == self.previous_live else 1
         self.previous_live = live
+        self._hero_folded = False
         for seat, state in states.items():
             if state in LIVE:
                 self.seen_live.add(seat)
-            steady = self._fold_reads.setdefault(seat, _Steady())
-            if (steady.read(state) == "folded" and seat in self.seen_live
+            steady = self._fold_reads.setdefault(seat, _Steady()).read(state)
+            if seat == HERO:
+                self._hero_folded = steady == "folded" and seat in self.seen_live
+            if (steady == "folded" and seat in self.seen_live
                     and seat not in {fold[2] for fold in self.folds}):
                 self.folds.append((frame, self.street, seat))
         if fields.get("dealer") is not None:
@@ -241,11 +264,26 @@ class HandState:
                 self.events.append((frame, self.street, seat, steady))
 
     def _stack_frame(self, fields, frame):
+        mine = None
         for seat, value in (fields.get("stacks") or {}).items():
-            steady = self._stack_reads.setdefault(int(seat), _Steady()).read(
-                _amount(value))
+            amount = _amount(value)
+            if int(seat) == HERO:
+                mine = amount
+            steady = self._stack_reads.setdefault(int(seat), _Steady()).read(amount)
             if steady is not None:
                 self.stacks[int(seat)] = (steady, frame)
+        if mine is None:
+            return
+        self.hero_stack_raw.add(mine)
+        # 你弃牌以后筹码不会再变：别人还在打的时候读到的，和到这手结束读到的，都得是一个数
+        # （下一手的前注要是在这手结束前就扣了，会读出第二个数，就不往前带）。
+        playing = any(state in LIVE for seat, state in self.states.items()
+                      if seat != HERO)
+        if self._hero_folded and playing:
+            self._hero_out = True
+            self._out_frames.append(frame)
+        if self._hero_out:
+            self._out_values.add(mine)
 
     def _pot_frame(self, fields):
         steady = self._pot.read(_amount(fields.get("pot")))
@@ -258,6 +296,12 @@ class HandState:
         if (self.flop_pot is None and self.street == "flop" and not flop_bets
                 and len(self._board_cards()) == 3):
             self.flop_pot = steady
+        street = self.street
+        if street in STREETS[1:] and len(self._board_cards()) == BOARD_CARDS[street]:
+            if (street not in self.street_pots and steady > 0
+                    and not any(on == street for _, on, *_ in self.events)):
+                self.street_pots[street] = steady
+            self.end_pots[street] = steady
 
     def _cards(self, fields):
         hero = tuple(sorted(card for card in fields.get("hero") or () if card))
@@ -300,6 +344,54 @@ class HandState:
     def stack_read(self, seat):
         found = self.stacks.get(seat)
         return None if found is None else found[0]
+
+    def out_stack(self):
+        """你这手弃牌以后的筹码（往前带给下一手）：弃牌以后、别人还在打的时候至少读到两帧
+        （不算这手最后 ``TAIL`` 帧：那时可能已经扣了下一手的前注），而且从弃牌到这手结束
+        读到的都是这一个数；不然 None。"""
+        early = [at for at in self._out_frames if at <= self.last_frame - TAIL]
+        if len(early) >= STEADY and len(self._out_values) == 1:
+            return next(iter(self._out_values))
+        return None
+
+    def price(self, controls):
+        """要跟的金额：按钮读到的，没读稳时按两处读数对上的（``derived_price``），都没有是
+        None。"""
+        found = price(controls, self.stack_read(HERO))
+        return found if found is not None else self.derived
+
+    def derived_price(self, controls, shadow=False):
+        """按钮是跟注、金额没读稳时，两处读数对上的价格（见模块说明），或 None：
+
+        - 按钮读出的没把握的数字 = 别人面前最高的筹码，或 = 这条街开始以来底池涨的；
+        - 没有数字时，转牌、河牌上这条街开始的底池 = 上一条街最后的底池（这条街谁都还没
+          下注时锁的），别人面前最高的筹码 = 底池涨的。
+
+        只在翻后、你这条街还没投钱（读到的注额）时算；你的筹码读到了的，价格得比它少
+        （不然按钮是 All in）。``shadow``：按钮金额读到了也算（核对用）。"""
+        street = self.street
+        if (not controls.get("visible") or controls.get("button") != "call"
+                or street not in STREETS[1:] or (street, HERO) in self.wagers
+                or (not shadow and _amount(controls.get("call_amount")) is not None)):
+            return None
+        raw = str(controls.get("raw_call_amount") or "")
+        digits = Decimal(raw) if raw.isdigit() and not raw.startswith("0") else None
+        top = max((value for (on, seat), value in self.wagers.items()
+                   if on == street and seat != HERO), default=None)
+        start = self.street_pots.get(street)
+        rise = self.pot - start if start is not None and self.pot is not None else None
+        rise = rise if rise is not None and rise > 0 else None
+        found = None
+        if digits is not None:
+            found = digits if digits in (top, rise) else None
+        elif top is not None and top == rise:
+            before = STREETS[STREETS.index(street) - 1]
+            if street != "flop" and self.end_pots.get(before) == start:
+                found = top
+        stack = self.stack_read(HERO)
+        if found is None or found <= 0 or (stack is not None and found >= stack):
+            return None
+        return found
 
     def seats(self):
         """这手发了牌的座位：现在的状态是在局、弃牌或全下的，加上这手投过钱的、
@@ -381,6 +473,41 @@ def blind_unraised(state, stakes, now):
         posts.append(Decimal(str(stakes["straddle_amount"])))
     at = ring.index(HERO)
     return 1 <= at <= len(posts) and posts[at - 1] + now <= posts[-1]
+
+
+def carried_stack(state, stakes, controls, to_call, shadow=False):
+    """你的筹码这手一帧都没读到时，往前带的那个数（见模块说明），或 None：上一手你弃牌
+    以后读到的筹码（``HandState.out_stack``）减这手的前注和你的盲注。只在翻前、你这手
+    还没动过（按钮没出现又消失过、你面前的筹码不比盲注多、没读到你的动作）、你不是庄位
+    （庄位要交蘑菇）、至少 3 人、级别是桌上读到的、按钮是跟注或让牌而且要跟的金额比它少
+    时算；这手读到过的你的筹码只能是开局到现在的几个数（没扣前注、扣了前注、再扣了
+    盲注）。``shadow``：这手读到了也算（核对用）。"""
+    if (state.carried is None or state.street != "preflop" or "preflop" in state.acted
+            or stakes.get("source") not in ("table", "carried")
+            or controls.get("button") not in ("call", "check") or to_call is None
+            or (not shadow and state.stack_read(HERO) is not None)
+            or any(item[2] == HERO for item in state._history_actions())):
+        return None
+    seats = state.seats()
+    if HERO not in seats or len(seats) < 3 or state.bomb() is not None:
+        return None
+    dealer = state.dealer(stakes)
+    if dealer is None or dealer == HERO:
+        return None
+    ring = _clockwise(seats, dealer)
+    posts = [Decimal(str(stakes["small_blind"])), Decimal(str(stakes["big_blind"]))]
+    if len(ring) >= 4:
+        posts.append(Decimal(str(stakes["straddle_amount"])))
+    at = ring.index(HERO)
+    post = posts[at - 1] if 1 <= at <= len(posts) else Decimal(0)
+    if any(seat == HERO and value > post for _, _, seat, value in state.events):
+        return None                     # 你面前的筹码比盲注多：你动过了
+    ante = Decimal(str(stakes["ante"]))
+    stack = state.carried - ante - post
+    allowed = {state.carried, state.carried - ante, stack}
+    if stack <= to_call or (not shadow and not state.hero_stack_raw <= allowed):
+        return None
+    return stack
 
 
 def _first_actor(fields):
@@ -494,7 +621,13 @@ def table_observation(state, fields, stakes):
     seats = state.seats()
     controls = fields.get("hero_controls") or {}
     stack = state.stack_read(HERO)
-    to_call = price(controls, stack)
+    to_call = state.price(controls)
+    if to_call is not None and price(controls, stack) is None:
+        defaults.append("derived_price")
+    if stack is None:
+        stack = carried_stack(state, stakes, controls, to_call)
+        if stack is not None:
+            defaults.append("hero_stack")
     pot = state.pot if state.pot is not None else _amount(fields.get("pot"))
     if HERO not in seats:
         missing.append("seat")
@@ -767,7 +900,7 @@ class AAPlainAdvice:
         street = fields.get("street")
         if street not in STREETS:
             return self._report("idle", "street_not_covered", street=street)
-        now = price(controls, state.stack_read(HERO))
+        now = state.price(controls)
         # 同一条街你跟了、后面有人加注后价格一样，也是新的决策：按你动过几次分开；
         # 按钮被挡住一会儿又出现、这期间没读到新动作，还是原来那个决策
         key = (street, now, state.turns.get(street, 0))
@@ -808,8 +941,11 @@ class AAPlainAdvice:
             stakes = self.state.stakes(self._stakes)
             if stakes["source"] == "table":
                 self._stakes = stakes
-            self._last = {"hero": self.state.hero,
-                          "board": list(self.state.board)}
+            old = self.state
+            dealer = old.dealer(stakes, old.bomb()) if old.seats() else None
+            self._last = {"hero": old.hero, "board": list(old.board),
+                          "stack": old.out_stack() if dealer not in (None, HERO)
+                          else None}
         self.state, self._hand_id = HandState(hand_id, self._last), hand_id
         self._decisions, self._wait, self._shown = {}, None, None
 
@@ -832,7 +968,8 @@ class AAPlainAdvice:
             missing.append("opponents")
         if state.pot is None and street != "preflop":   # 翻前底池按结构算
             missing.append("pot")
-        if state.stack_read(HERO) is None:
+        if state.stack_read(HERO) is None and carried_stack(
+                state, self.stakes(), fields.get("hero_controls") or {}, now) is None:
             missing.append("stack")
         return missing
 
