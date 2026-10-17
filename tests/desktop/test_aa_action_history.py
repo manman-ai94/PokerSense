@@ -134,6 +134,84 @@ def test_cards_read_only_a_moment_are_no_new_deal():
     assert {hand["hand_id"] for hand in hands} == {"hand_0"}
 
 
+def watch(history, start=0):
+    frame = start
+
+    def see(item):
+        nonlocal frame
+        snap = history.observe(item, frame)
+        frame += 1
+        return snap
+    return see
+
+
+def test_a_deal_after_a_played_hand_with_no_action_read_is_no_missed_start():
+    # Nightly check 10/17 (#125): hand B is played (the pot rises) with no
+    # action read; the pot going down starts the next deal and is taken as
+    # B's start again, B's cards still on screen. The new cards must not
+    # then start a hand "whose start was missed".
+    see = watch(AAActionHistory())
+    folded = [event(1, 2, "fold")]
+    for _ in range(4):
+        see({**dealt(["Ad", "Qc"], pot="88"), "action_history_candidate": folded})
+    see({**dealt(["Kd", "7c"]), "action_history_candidate": folded})
+    b = see({**dealt(["Kd", "7c"]), "action_history_candidate": folded})
+    assert b["start"] == "pot_went_down" and b["complete"] is True
+    for pot in ["31"] * 4 + ["23"] * 2:
+        see({**dealt(["Kd", "7c"], pot=pot), "action_history_candidate": folded})
+    c = [see({**dealt(["4h", "Js"]), "action_history_candidate": folded})
+         for _ in range(5)]
+    assert {hand["hand_id"] for hand in c} == {b["hand_id"]}
+    assert c[-1]["complete"] is True
+
+
+def test_signals_after_your_new_cards_mark_the_same_deal():
+    # Your new cards are read before the pot (unreadable as the deal starts)
+    # is read going down: one deal, and the next deal's cards start a hand.
+    see = watch(AAActionHistory())
+    for _ in range(6):
+        see(dealt(["Kd", "7c"], pot="88"))
+    deal = [see(dealt(["4h", "Js"], pot=None)) for _ in range(4)]
+    deal += [see(dealt(["4h", "Js"])) for _ in range(3)]
+    assert len({hand["hand_id"] for hand in deal[2:]}) == 1
+    assert deal[-1]["start"] == "new_hole_cards"
+    nxt = [see(dealt(["Qs", "Qh"])) for _ in range(4)]
+    assert nxt[-1]["hand_id"] != deal[-1]["hand_id"]
+    assert nxt[-1]["start"] == "new_hole_cards"
+
+
+def test_the_button_read_after_your_new_cards_keeps_them_this_hands():
+    # The pot goes down, your new cards are read, then the button is read
+    # moving: the same start, and the cards stay this hand's, so the next
+    # deal's cards still start a hand when nothing else is read.
+    see = watch(AAActionHistory())
+    for _ in range(4):
+        see({**dealt(["Ad", "Qc"], pot="88"),
+             "action_history_candidate": [event(1, 2, "fold")]})
+    see(dealt(["Ad", "Qc"], pot="0"))
+    start = see(dealt(["Ad", "Qc"], pot="0"))
+    assert start["start"] == "pot_went_down"
+    for pot in ["0", "19", "19"]:
+        see(dealt(["Kd", "7c"], pot=pot))
+    moved = [see(dealt(["Kd", "7c"], pot="19", dealer=0)) for _ in range(3)]
+    assert {hand["hand_id"] for hand in moved} == {start["hand_id"]}
+    nxt = [see(dealt(["4h", "Js"], pot="19", dealer=0)) for _ in range(4)]
+    assert nxt[-1]["start"] == "new_hole_cards"
+
+
+def test_a_played_deal_found_by_your_cards_ends_at_the_next_pot_drop():
+    see = watch(AAActionHistory())
+    for _ in range(6):
+        see(dealt(["Kd", "7c"], pot="88"))
+    pots = [None] * 4 + ["23"] * 3 + ["40"] * 3   # the pot rises: it is played
+    deal = [see(dealt(["4h", "Js"], pot=pot)) for pot in pots]
+    assert len({hand["hand_id"] for hand in deal[2:]}) == 1
+    assert deal[-1]["start"] == "new_hole_cards"
+    drop = [see(dealt(["4h", "Js"])) for _ in range(2)]
+    assert drop[-1]["hand_id"] != deal[-1]["hand_id"]
+    assert drop[-1]["start"] == "pot_went_down" and drop[-1]["complete"] is True
+
+
 def test_a_hand_over_ends_the_hand_and_old_actions_stay_with_it():
     history = AAActionHistory()
     feed(history, [payload("23")] * 3 + [payload("40", "flop")] * 3)
