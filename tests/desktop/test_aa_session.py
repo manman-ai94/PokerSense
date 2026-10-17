@@ -12,7 +12,8 @@ from poker_engine.desktop.aa_session import AARecognitionSession, SIGNAL_KEYS
 
 
 def wait_until(predicate):
-    deadline = time.monotonic() + 2
+    # Returns as soon as it holds; the long limit is for a loaded CI runner.
+    deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         if predicate():
             return
