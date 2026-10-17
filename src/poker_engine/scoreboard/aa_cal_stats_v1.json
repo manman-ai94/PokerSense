@@ -789,6 +789,7 @@
  },
  "fitted": {
   "mix": 0.6,
+  "mix_3bet": 0.4,
   "price_slope": 0.0,
   "flop": {
    "slow": 0.4,
