@@ -819,6 +819,29 @@ def test_facing_an_all_in_needs_five_points_over_the_price(equity_is, value, act
     assert "所需" in advice.flip
 
 
+@pytest.mark.parametrize("value, action, rule", [(0.4, "call", "ALLIN"),
+                                                 (0.2, "fold", "F.C")])
+def test_the_all_in_row_variant_calls_a_cheap_all_in_by_the_price(
+        equity_is, value, action, rule):
+    # 筹码 120：翻牌跟 43 后剩 52，转牌被全下 52 赢 255，所需 20%。页上 C 档转牌被下注
+    # 一律弃；plain@allin 按"胜率 ≥ 所需 + 5%"定
+    equity_is(value)
+    observation = spot({7: "9c9d"}, "Kh Tc 2d 4s", HU + " 2r43 7c 2r52", stacks=120)
+    assert plain.decide(observation).action == "fold"
+    advice = plain.decide(observation, all_in_row=True)
+    assert (advice.action, advice.rule) == (action, rule)
+
+
+def test_the_all_in_row_variant_beats_iron_law_1(equity_is):
+    # 超对 B 档转牌被全下：页上铁律 1 弃；plain@allin 胜率够就跟
+    equity_is(0.6)
+    observation = spot({7: "QcQd"}, "Jh 7c 2d 4s", HU + " 2r43 7c 2r132")
+    assert plain.decide(observation).rule == "I1"
+    advice = plain.decide(observation, all_in_row=True)
+    assert (advice.action, advice.rule) == ("call", "ALLIN")
+    assert make_policy("plain@allin").all_in_row and not make_policy("plain").all_in_row
+
+
 def test_a_draw_facing_an_all_in_uses_four_percent_an_out_on_the_flop():
     advice = decide({7: "9h8h"}, "7h 6h 2c", HU + " 2r175")       # 15 张 × 4% = 60%
     assert (advice.action, advice.rule) == ("call", "F.D_strong")

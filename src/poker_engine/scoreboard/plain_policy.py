@@ -1407,18 +1407,23 @@ def _banned(table, advice, context):
     plays = context.get("plays")
     raises = [act for act in table.street_acts() if act.kind in ("bet", "raise")]
     facing_all_in = bool(raises) and raises[-1].all_in
-    # 面对全下（翻后）：胜率 ≥ 所需胜率 + 5% 才跟；听牌按 D 档那一行（已按补牌比过）
+    # 面对全下（翻后）：胜率 ≥ 所需胜率 + 5% 才跟；听牌按 D 档那一行（已按补牌比过）。
+    # ``all_in_row``（记分牌上的 ``plain@allin``）：这一行同时定跟，档位表和铁律都不再改它
+    all_in_row = context.get("all_in_row", False)
     if (facing_all_in and table.street != "preflop" and plays != "D"
-            and advice.action in ("call", "raise")):
+            and (all_in_row or advice.action in ("call", "raise"))):
         advice.equity = context["equity"]()
         advice.need = table.need()
         if advice.equity is None:
             _unspecified(table, advice, "no_range")
         elif advice.equity < advice.need + ALL_IN_MARGIN:
-            _fold(advice, "ALLIN")
+            if advice.action != "fold":
+                _fold(advice, "ALLIN")
         else:
             advice.action, advice.to = "call", None
             advice.hit("ALLIN")
+            if all_in_row:
+                return advice
     # 直接全下阈值 2：跟注后剩余 ≤ 1/2 底池 → 按面对全下决定（够就全下，不够就弃），
     # 不"跟了再看"；对手已经全下时不用它：翻前按表，翻后按面对全下（READINGS j2_all_in）
     if advice.action == "call" and not facing_all_in:
@@ -1493,9 +1498,10 @@ def _clear(observation):
     return None
 
 
-def decide(observation, *, numbers=True):
+def decide(observation, *, numbers=True, all_in_row=False):
     """一条建议（``Advice``）。``numbers``：把三个数都算出来（窗口用；记分牌上只在规则
-    要用胜率时才算）。"""
+    要用胜率时才算）。``all_in_row``：翻后面对全下只按"胜率 ≥ 所需 + 5%"定跟或弃
+    （``plain@allin``，只在记分牌上比，窗口不用）。"""
     missing = _clear(observation)
     if missing:
         advice = iron5_from(observation, "S1")
@@ -1503,7 +1509,7 @@ def decide(observation, *, numbers=True):
         return _finish(None, advice, {})
     table = Table(observation)       # 人数不在 4–8 人按最近的人数表：位置按座位数排
 
-    context = {}
+    context = {"all_in_row": all_in_row}
     cache = {}
 
     def reads():
@@ -1745,13 +1751,17 @@ def action_id(advice, observation):
 
 
 class PlainBot(_Policy):
-    """``plain``：翻前翻后都按 v3.3b；``counts`` 记每条规则定了几次、没写的情形几次。"""
+    """``plain``：翻前翻后都按 v3.3c；``counts`` 记每条规则定了几次、没写的情形几次。
+    ``plain@allin``：翻后面对全下按"胜率 ≥ 所需 + 5%"定跟或弃（``decide`` 的 ``all_in_row``）。"""
 
     name = "plain"
 
-    def __init__(self):
+    def __init__(self, all_in_row=False):
         from collections import Counter
         self.counts = Counter()
+        self.all_in_row = all_in_row
+        if all_in_row:
+            self.name = "plain@allin"
 
     def for_game(self, salt):
         def policy(observation):
@@ -1762,7 +1772,7 @@ class PlainBot(_Policy):
         return self.act(observation)
 
     def act(self, observation):
-        advice = decide(observation, numbers=False)
+        advice = decide(observation, numbers=False, all_in_row=self.all_in_row)
         self.counts[f"rule:{advice.rule}"] += 1
         if advice.unspecified:
             self.counts[f"unspecified:{advice.unspecified}"] += 1
