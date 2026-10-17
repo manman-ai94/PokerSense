@@ -72,7 +72,7 @@ from poker_engine.scoreboard.strength import DECK  # noqa: E402
 from poker_engine.strategy.aa_rules_v2 import estimate_rake  # noqa: E402
 from tools import flywheel_session as fly  # noqa: E402
 from tools.aa_session_report import (  # noqa: E402
-    HERO, IN_HAND, followed, number, session_report, stack)
+    HERO, IN_HAND, followed, mushroom, number, session_report, stack)
 from tools.aa_strategy_review import decisions as review_decisions  # noqa: E402
 
 SEAT = int(HERO)
@@ -145,7 +145,7 @@ def runout(hand, facts, big_blind, rows=()):
         why = how if arena is None else "not_finished"
         return (screen_runout(hand, rows, facts, big_blind)
                 or {"allin": None, "luck": None, "why": f"replay:{why}"})
-    found = _replay_runout(hand, facts, big_blind, arena, how)
+    found = _replay_runout(hand, facts, big_blind, arena, how, rows)
     if found["why"] in ("board_unread", "settle_mismatch"):
         screen = screen_runout(hand, rows, facts, big_blind)
         if screen and screen["luck"] is not None:
@@ -153,7 +153,19 @@ def runout(hand, facts, big_blind, rows=()):
     return found
 
 
-def _replay_runout(hand, facts, big_blind, arena, how):
+def _settles(paid, yours, pot, facts, rows):
+    """Whether ``paid``, what a replay or the screen says you won or lost
+    in the pot, is your result (``yours``) within ``SETTLE_MATCH`` of the
+    pot, once the mushroom pool is set aside (``mushroom``): the dealer's
+    post comes back and a small blind who won may have taken the pool too.
+    Until 10/17 the pool made a small blind's won all-in miss, so its luck
+    was kept, while the same all-in lost had its luck taken out."""
+    post, pool = mushroom(facts, rows) or (0.0, 0.0)
+    over, slack = yours + post - paid, SETTLE_MATCH * pot
+    return -slack <= over <= (pool if paid > 0 else 0.0) + slack
+
+
+def _replay_runout(hand, facts, big_blind, arena, how, rows=()):
     alive = [i for i, seat in enumerate(arena._seats) if seat not in arena._folded]
     street = arena._history[-1]["street"] if arena._history else "preflop"
     if (len(alive) < 2 or SHOWN[street] >= 5 or SEAT not in arena._seats
@@ -182,7 +194,7 @@ def _replay_runout(hand, facts, big_blind, arena, how):
     at = arena._seats.index(SEAT)
     unit = float(arena.rules.minimum_chip)
     pot = sum(contributions) * unit
-    if abs(actual[at] * unit - hand["your_chips"]) > SETTLE_MATCH * pot:
+    if not _settles(actual[at] * unit, hand["your_chips"], pot, facts, rows):
         # The replay put in or paid out other chips than the table did (a
         # stack misread): its luck is not this hand's (10/08, a 130 bb bust
         # replayed deep came out 570 bb unlucky).
@@ -252,8 +264,9 @@ def screen_runout(hand, rows, facts, big_blind):
         return {**found, "why": "board_unread"}
     # The rake does not change with the table's size (the rules cover 4-8).
     players = min(max(len(facts["seats"]), min(PLAYERS)), max(PLAYERS))
-    played = _played(rows, closed, live[1], share, hand["your_chips"],
-                     _rules(players, facts.get("stakes")))
+    post, pool = mushroom(facts, rows) or (0.0, 0.0)
+    played = _played(rows, closed, live[1], share, hand["your_chips"] + post,
+                     _rules(players, facts.get("stakes")), pool if share else 0.0)
     if played is None:
         return {**found, "why": "settle_mismatch", "settle_matches": False}
     outcomes = luck.runout_outcomes([1.0, 1.0], holes, known,
@@ -263,10 +276,11 @@ def screen_runout(hand, rows, facts, big_blind):
             "settle_matches": True}
 
 
-def _played(rows, closed, other, share, yours, rules):
+def _played(rows, closed, other, share, yours, rules, pool=0.0):
     """The pot you and ``other`` played for after rake, read off the screen
     from the frame the betting ``closed``, or None when no reading of it
-    agrees with your result (``yours``, your ``share`` of it).
+    agrees with your result (``yours``, your ``share`` of it, and up to
+    ``pool`` more: the mushroom pool a small blind takes with the pot).
 
     The screen's pot holds a bet the all-in could not call until the hand is
     paid. With both of you all in, that part is the bigger stack's excess
@@ -293,13 +307,16 @@ def _played(rows, closed, other, share, yours, rules):
                 whole = pot
     if whole:
         net = whole - float(estimate_rake(rules, str(whole), saw_flop=True).amount)
-        if abs(share * net - min(stakes.values()) - yours) <= SETTLE_MATCH * whole:
+        over = yours - (share * net - min(stakes.values()))
+        if -SETTLE_MATCH * whole <= over <= pool + SETTLE_MATCH * whole:
             return net
     after = _last_stack(rows, other)
     if share == 0.5 or stakes[other] is None or after is None:
         return None
     theirs = after - stakes[other]
-    won, lost = (yours, -theirs) if share else (theirs, -yours)
+    # Heads up you cannot win more than he lost: the rest is the pool.
+    won, lost = (min(yours, -theirs) if pool else yours, -theirs) if share \
+        else (theirs, -yours)
     played = won + lost
     cap = float(rules.rake_cap_bb * rules.big_blind)
     if (won <= 0 or lost <= 0 or (pot and played > pot * (1 + SETTLE_MATCH))

@@ -50,6 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     _rules, bomb_post, check_hand, hand_facts)
+from poker_engine.core.enums import Position  # noqa: E402
 from poker_engine.strategy.aa_rules_v2 import build_forced_bet_plan  # noqa: E402
 from tools.aa_range_exclusion import session_exclusion  # noqa: E402
 from tools.check_aa_action_history import (  # noqa: E402
@@ -62,6 +63,7 @@ STALL = 1.0          # seconds between two shown frames that count as a stall
 STALE = 2.0          # the live window clears the table after this long
 LATE = 3.0           # advice later than this after your buttons showed
 MUSHROOM_POST = 3    # big blinds the dealer puts in the mushroom pool (蘑菇:3BB)
+MUSHROOM_UNREAD = 40  # big blinds at most in a pool not read (3 a hand; 30 seen 10/07)
 MISREAD = 3          # frames a second reading of one card needs to count
 FIRST = 5            # frames at a hand's start that read its stacks
 AGGRESSIVE = {"bet": "raise", "raise": "raise", "all_in": "raise", "allin": "raise"}
@@ -222,14 +224,52 @@ def posted(facts):
     bomb = bomb_post(facts)
     if bomb is not None:
         return float(bomb)
-    dealer = facts["dealer"] if facts["dealer"] in seats else facts.get("blind_dealer")
-    if dealer not in seats or not 4 <= len(seats) <= 8:
+    table = forced_bets(facts)
+    if table is None:
         return None
-    rules = _rules(len(seats), facts["stakes"])
-    chips = build_forced_bet_plan(rules, tuple(seats), dealer).contributions[hero]
-    if dealer == hero:
+    rules, plan = table
+    chips = plan.contributions[hero]
+    if plan.dealer_seat == hero:
         chips += rules.big_blind * MUSHROOM_POST
     return float(chips)
+
+
+def forced_bets(facts):
+    """(rules, forced-bet plan) of the hand, or None when the dealer is not
+    read or the table size has no AA rules (4 to 8 players)."""
+    seats = facts["seats"]
+    dealer = facts.get("dealer")
+    dealer = dealer if dealer in seats else facts.get("blind_dealer")
+    if dealer not in seats or not 4 <= len(seats) <= 8:
+        return None
+    rules = _rules(len(seats), facts.get("stakes"))
+    return rules, build_forced_bet_plan(rules, tuple(seats), dealer)
+
+
+def mushroom(facts, rows):
+    """(chips you put in the mushroom pool as the dealer, chips you take
+    from it when you win the pot as the small blind): the pool as read in
+    the hand's ``rows``, else at most ``MUSHROOM_UNREAD`` big blinds (the
+    window seldom reads it). (0, 0) when you were not dealt in or in a bomb
+    pot; None when the dealer is not read.
+
+    Neither is in the pot read on the screen or in a replay of the hand, but
+    both are in your result (``chips``): until 10/17 a small blind's win was
+    left out as a rebuy once the pool passed your chips in the pot, and its
+    all-in luck was kept, while the same all-in lost had its luck taken out."""
+    hero = int(HERO)
+    if hero not in facts["seats"] or bomb_post(facts) is not None:
+        return 0.0, 0.0
+    table = forced_bets(facts)
+    if table is None:
+        return None
+    rules, plan = table
+    post = float(rules.big_blind * MUSHROOM_POST) if plan.dealer_seat == hero else 0.0
+    if plan.positions[hero] != Position.SB:
+        return post, 0.0
+    pools = [number(row["fields"].get("mushroom_pool")) for row in rows]
+    pools = [pool for pool in pools if pool is not None]
+    return post, max(pools) if pools else float(rules.big_blind * MUSHROOM_UNREAD)
 
 
 def hand_report(rows, advice, gaps=(), stakes=None):
@@ -273,11 +313,22 @@ def hand_report(rows, advice, gaps=(), stakes=None):
         "your_actions": [item["kind"] for item in history["actions"]
                          if str(item["slot"]) == HERO],
         "start_stack": stack(rows), "posted": posted(facts),
+        "pool": (mushroom(facts, rows) or (0.0, 0.0))[1],
+        "paid_out": paid_out(rows),
         "stakes": facts["stakes"],
         "first_stack": next(iter(readings(rows)), None),
         "end_stack": (readings(rows) or [None])[-1],
         "most_pot": max(filter(None, map(number, (f.get("pot") for f in fields))),
                         default=None)}
+
+
+def paid_out(rows):
+    """Whether the pot was paid after your stack first read 0: it read 0
+    (cleared) in two frames or more after that."""
+    broke = next((at for at, row in enumerate(rows)
+                  if number((row["fields"].get("stacks") or {}).get(HERO)) == 0), None)
+    return broke is not None and sum(
+        number(row["fields"].get("pot")) == 0 for row in rows[broke:]) >= 2
 
 
 def shown_cards(fields, actions):
@@ -372,8 +423,9 @@ def chips(hands):
     recording, before either hand's posts (``posted``). A hand that goes on
     with your same two cards was split in two (a new hand was started in the
     middle of it): both parts count as one, on the first. A rise larger than
-    the hand's biggest pot (as read, after the posts) is a rebuy or a
-    misread and is left out, and so is any rise in a hand you folded: a
+    the hand's biggest pot (as read, after the posts) and the mushroom pool
+    you may take as the small blind (``mushroom``) is a rebuy or a misread
+    and is left out, and so is any rise in a hand you folded: a
     folded hand only costs, so the rise is a rebuy or a table change (until
     10/17 a rebuy right after a folded bomb pot counted as its win).
 
@@ -405,6 +457,8 @@ def chips(hands):
             two += after[0]["posted"] or 0
         most = max((h["most_pot"] for h in whole if h["most_pot"] is not None),
                    default=None)
+        if most is not None:
+            most += max(h["pool"] for h in whole)
         for hand in whole:
             hand["your_chips"] = None
         if not any(h["you_in"] for h in whole) or one is None:
@@ -424,21 +478,23 @@ def chips(hands):
             continue
         first["your_chips"] = round(change, 2)
     for hand in hands:
-        for key in ("your_actions", "start_stack", "posted", "most_pot", "first_stack",
-                    "end_stack"):
+        for key in ("your_actions", "start_stack", "posted", "pool", "paid_out",
+                    "most_pot", "first_stack", "end_stack"):
             del hand[key]
 
 
 def busted(whole, after):
     """Whether you lost all your chips in this hand (``whole``, its parts):
     your last stack read 0, and either the recording ended after the hand
-    ended or the whole next hand (``after``, its parts) went by without you
-    dealt in, your stack first read 0 or not read (a rebuy comes later)."""
+    was paid (``paid_out``; until 10/17 a recording stopped while you were
+    all in counted as a bust) or the whole next hand (``after``, its parts)
+    went by without you dealt in, your stack first read 0 or not read (a
+    rebuy comes later)."""
     last = whole[-1]
     if last["end_stack"] != 0:
         return False
     if after is None:
-        return last["complete"]
+        return last["complete"] and last["paid_out"]
     following = after[0]
     return (following["complete"] and not following["you_in"]
             and not following["first_stack"])
