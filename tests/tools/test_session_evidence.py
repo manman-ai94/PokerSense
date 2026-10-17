@@ -181,6 +181,24 @@ def test_the_ledger_adds_up_its_groups_and_tests_the_loosenings(tmp_path):
             "（一对、诈唬） 2 次；是分歧的 1 次（一对或更差 1）") in text
 
 
+def test_a_page_without_loosenings_has_nothing_to_review(tmp_path):
+    path = made(tmp_path, "peng", "20261017-200000-live", hands=300)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["shadow"] = {"summary": {
+        "page_version": "v3.3a", "shown_by": {"plain": 2},
+        "replay_matches_shown": {"n": 2, "same": 2}, "decisions": 2, "compared": 2,
+        "diverged": 1, "first_divergences": 1, "groups": {}, "loosened": {},
+        "booked": {"n": 0, "plain_minus_old_bb": 0.0},
+        "by_shown": {"n": 0, "plain_minus_old_bb": 0.0},
+        "fold_check": {"n": 0, "off": 0}},
+        "decisions": [ledger("a_preflop_old_in", True, -4.0, luck_out=-4.0)]}
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    text = "\n".join(evidence.shadow_lines([evidence.load(path)]))
+    assert "按一页纸 v3.3a 重放：1 场 300 手" in text
+    assert "放宽复核：这一版晚位平跟、小盲大盲补齐用的是 v3.2 的表，没有放宽要复核" in text
+    assert "晚位平跟：碰到" not in text and "收回" not in text
+
+
 def test_the_withdrawal_test_wants_0_inside_and_the_top_under_4():
     assert evidence.withdraw_line([-1.0, 1.0, 2.0, -2.0]).endswith(
         "是（到复核时还是这样就收回）")

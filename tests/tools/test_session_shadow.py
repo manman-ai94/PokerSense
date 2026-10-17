@@ -3,19 +3,38 @@ worth 0 (made-up hands only: the repository is public)."""
 
 import json
 from decimal import Decimal
+from types import SimpleNamespace
 
+from poker_engine.scoreboard import plain_policy
+from poker_engine.scoreboard.plain_policy import hands
 from tools import session_package as package
 from tools import session_shadow as shadow
 
 from tests.tools.test_session_package import rows
 
 
-def test_only_the_hands_v33_adds_count_as_loosened():
-    assert "K8o" in shadow.LOOSENED["late_limp"]
-    assert "K9o" not in shadow.LOOSENED["late_limp"]       # v3.2 had it
-    assert "K7o" in shadow.LOOSENED["bb_complete"]
-    assert "Q6s" in shadow.LOOSENED["sb_complete"]
-    assert "AA" not in set().union(*shadow.LOOSENED.values())
+def page(late="", bb="", sb=""):
+    """A page with v3.2's three lists and ``late``, ``bb``, ``sb`` added."""
+    return SimpleNamespace(
+        TABLE1={"late": {"limp": hands(f"{shadow._V32['late_limp']} {late}")}},
+        COMPLETE={"BB": hands(f"{shadow._V32['bb_complete']} {bb}"),
+                  "SB": hands(f"{shadow._V32['sb_complete']} {sb}")})
+
+
+LOOSE = page("K8o+ Q6s+", "K7o+", "Q6s+")     # some of the hands v3.3 added
+
+
+def test_only_the_hands_the_page_has_beyond_v32_count_as_loosened():
+    found = shadow.loosenings(LOOSE)
+    assert "K8o" in found["late_limp"]
+    assert "K9o" not in found["late_limp"]                  # v3.2 had it
+    assert "K7o" in found["bb_complete"]
+    assert "Q6s" in found["sb_complete"]
+    assert "AA" not in set().union(*found.values())
+    assert shadow.loosenings(page(bb="K7o")) == {"bb_complete": frozenset({"K7o"})}
+    # v3.3a withdrew both loosenings: with v3.2's tables nothing is loosened.
+    assert shadow.loosenings(page()) == {}
+    assert shadow.LOOSENED == shadow.loosenings(plain_policy)
 
 
 def test_from_here_counts_back_to_the_decision_and_on_to_the_next_posts():
@@ -55,7 +74,8 @@ def test_the_three_groups():
     assert shadow.entered("b_postflop_plain_fold", None) is None
 
 
-def test_the_loosened_spots_by_seat_rule_and_hand():
+def test_the_loosened_spots_by_seat_rule_and_hand(monkeypatch):
+    monkeypatch.setattr(shadow, "LOOSENED", shadow.loosenings(LOOSE))
     late = {"street": "preflop", "position": "late", "seat_name": "BTN",
             "hero": "Kh 8d"}
     assert shadow.loosened(late, {"rule": "T1.limp"}) == "late_limp"
@@ -68,6 +88,10 @@ def test_the_loosened_spots_by_seat_rule_and_hand():
     small = {**big, "seat_name": "SB", "hero": "Qh 6h"}
     assert shadow.loosened(small, {"rule": "T1.a.fold"}) == "sb_complete"
     assert shadow.loosened(small, None) is None
+    # A page without loosenings: a fold by those rows is no loosened spot.
+    monkeypatch.setattr(shadow, "LOOSENED", shadow.loosenings(page()))
+    assert shadow.loosened(late, {"rule": "T1.out"}) is None
+    assert shadow.loosened(small, {"rule": "T1.a.fold"}) is None
 
 
 # -- the whole block on made-up hands ---------------------------------------------
@@ -102,7 +126,7 @@ BOARDS = {"preflop": [None] * 5, "flop": ["2c", "7d", "9s", None, None],
           "turn": ["2c", "7d", "9s", "Jh", None]}
 
 
-def made_block(monkeypatch, spot=lambda *_: None):
+def made_block(monkeypatch, spot=lambda *_: None, loose=LOOSE):
     log, hands, old, plain = [], [], [], []
     for spots, (chips, start, runout) in zip(SPOTS, SHEET):
         hand_rows, turns, decisions = [], [], []
@@ -131,6 +155,7 @@ def made_block(monkeypatch, spot=lambda *_: None):
     monkeypatch.setattr(shadow, "replays", lambda _: {"old": old, "plain": plain})
     monkeypatch.setattr(shadow, "posts", lambda *_: Decimal(2))
     monkeypatch.setattr(shadow, "shown_spot", spot)
+    monkeypatch.setattr(shadow, "LOOSENED", shadow.loosenings(loose))
     return shadow.block(log, hands, code="abcdef1", page_version="v3.3")
 
 
@@ -160,6 +185,14 @@ def test_each_hand_books_its_first_divergence_in_its_group(monkeypatch):
     assert top["fold_check"] == {"n": 1, "off": 0}
     assert top["replay_matches_shown"] == {"n": 5, "same": 5}
     assert top["shown_by"] == {"plain": 5}
+
+
+def test_with_v32_s_tables_nothing_is_booked_as_loosened(monkeypatch):
+    block = made_block(monkeypatch, loose=page())
+    limp = block["decisions"][3]
+    assert limp["loosened"] is None and limp["group"] == "other"
+    assert limp["in_minus_fold_bb"] is None                    # other: only counted
+    assert block["summary"]["loosened"] == {}
 
 
 def test_p3_counts_the_folds_that_met_a_pair_or_a_bluff(monkeypatch):

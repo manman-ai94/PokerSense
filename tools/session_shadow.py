@@ -34,12 +34,14 @@ never shown to the player.
   other line was never played: counted, not booked. With the page as the
   window's default, a and b fill only from hands where you did not take
   its fold.
-* ``loosened``: the two loosenings v3.3 makes on low evidence, to be
-  withdrawn after 1000-1500 hands if the interval holds 0 and its top is
-  under +4 big blinds a hand: late-position limps (table 1) and the small
-  and big blinds' completes (case a), each with only the hands v3.3 adds to
-  v3.2's list (``LOOSENED``). Every such spot where plain decided by that
-  table row is listed, booked as above when you put chips in.
+* ``loosened``: the hands the page's late-position limp list (table 1) and
+  the small and big blinds' complete lists (case a) have beyond v3.2's lists
+  (``LOOSENED``, worked out from the page). v3.3 added some on low evidence,
+  to be withdrawn after 1000-1500 hands if the interval held 0 and its top
+  was under +4 big blinds a hand; v3.3a (2026-10-17) withdrew them, so with
+  v3.2's tables on the page there are none and nothing is listed. Every
+  such spot where plain decided by that table row is listed, booked as
+  above when you put chips in.
 * "From that decision on" is the hand's result as the sheet counts it
   (``aa_session_report.chips``: from this hand's start to the next one's,
   each after its blinds and antes), plus what you had put in before the
@@ -75,6 +77,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from poker_engine.desktop.aa_solver_input import (  # noqa: E402
     hand_facts, table_observation)
 from poker_engine.scoreboard.multiway_bot import weak_hand  # noqa: E402
+from poker_engine.scoreboard import plain_policy  # noqa: E402
 from poker_engine.scoreboard.plain_policy import hands as hand_set  # noqa: E402
 from poker_engine.scoreboard.strength import hand_class  # noqa: E402
 from tools.aa_compare_advice import chips, shown_spot  # noqa: E402
@@ -87,20 +90,27 @@ NAMES = {"plain": "一页纸打法（plain）",
 GROUPS = ("a_preflop_old_in", "b_postflop_plain_fold", "c_old_allin", "other")
 DEEP_ALLIN_BB = 50          # "推 100 个大盲": an all-in at least this deep
 FOLD_OFF_BB = 0.5           # a fold "from here" further from 0 than this: off
-# The two loosenings of v3.3 (section 8), as v3.2 had the lists and as v3.3
-# adds to them; only the hands v3.2 did not have count.
+# The loosenings are measured against v3.2's lists (v3.3 section 8 added
+# hands to them; v3.3a withdrew those): only the hands the page has beyond
+# v3.2's list count.
 _V32_SPECULATIVE = ("22+ A2s+ K5s+ 54s-KQs 75s-J9s Q9s ATs+ KTs+ QTs+ JTs ATo+ KTo+ "
                     "QTo+ JTo A8o+")
 _V32 = {"late_limp": _V32_SPECULATIVE + " Q8s J8s T8s 97s 86s 75s A2o+ K9o+ Q9o+",
         "bb_complete": _V32_SPECULATIVE + " 98s T8s+ J8s+ Q8s+ K8s+ A2o+ K9o+ Q9o+ "
                                           "J9o+ T9o",
         "sb_complete": _V32_SPECULATIVE + " A2o+ K9o+ Q9o+ JTo"}
-_V33_ADDS = {"late_limp": "K2s+ Q6s+ J7s+ T7s+ 96s 64s 53s 43s K8o+ J9o+ T9o 98o",
-             "bb_complete": "43s 53s 64s K7o+ Q8o+ J8o+ T8o+ 98o 97o 87o 76o",
-             "sb_complete": "K2s+ Q6s+ J7s+ T7s+ 96s 85s 74s 64s 53s K8o+ J9o+ T9o "
-                            "98o"}
-LOOSENED = {name: hand_set(_V33_ADDS[name]) - hand_set(_V32[name])
-            for name in _V33_ADDS}
+
+
+def loosenings(page=plain_policy):
+    """{spot: the hands the page's list has that v3.2's did not}; a spot the
+    page has not loosened is left out (all of them with v3.2's tables)."""
+    lists = {"late_limp": page.TABLE1["late"]["limp"],
+             "bb_complete": page.COMPLETE["BB"], "sb_complete": page.COMPLETE["SB"]}
+    found = {name: frozenset(lists[name]) - hand_set(_V32[name]) for name in _V32}
+    return {name: found[name] for name in _V32 if found[name]}
+
+
+LOOSENED = loosenings()
 LOOSE_RULES = {"late_limp": ("T1.limp", "T1.out"),
                "bb_complete": ("T1.a", "T1.a.fold"),
                "sb_complete": ("T1.a", "T1.a.fold")}
@@ -109,8 +119,9 @@ CONVENTION = (
     "分歧，按弃 = 0 记账：c 旧策略建议全下且有效筹码 ≥ 50 个大盲（你加注了才记）；a 翻前旧进、"
     "本页弃；b 翻后本页弃、旧继续（a、b 你没弃才记）；记的是你从这一步起实际的输赢减弃牌线 0"
     "（这一手按体检单算的成绩 + 这一步之前已经投进去的 + 下一手开局交的前注、盲注、抓头或暴击局"
-    "的钱，爆掉了就是 0；庄位交的蘑菇不在里面），另给一版扣掉全下后发牌运气的。loosened 是 v3.3 "
-    "两条放宽（晚位平跟、小盲大盲补齐，只算 v3.3 新加的牌）每一次，按同样的口径记你投了钱的那几次。"
+    "的钱，爆掉了就是 0；庄位交的蘑菇不在里面），另给一版扣掉全下后发牌运气的。loosened 是本页晚位"
+    "平跟、小盲大盲补齐比 v3.2 多出来的牌（v3.3 加过，v3.3a 已撤回；本页没有就一次也不列）每一次，"
+    "按同样的口径记你投了钱的那几次。"
     "旧策略重放时单挑转牌河牌用范围规则代替求解器。")
 
 
@@ -226,7 +237,7 @@ def entered(group, you):
 
 
 def loosened(decision, plain):
-    """Which v3.3 loosening this decision is a spot of, or None."""
+    """Which loosening of the page this decision is a spot of, or None."""
     cards = (decision.get("hero") or "").split()
     if plain is None or decision.get("street") != "preflop" or len(cards) != 2:
         return None
@@ -239,7 +250,7 @@ def loosened(decision, plain):
             "bb_complete" if seat == "BB" else "sb_complete" if seat == "SB" else None)
     if spot is None or plain.get("rule") not in LOOSE_RULES[spot]:
         return None
-    return spot if name in LOOSENED[spot] else None
+    return spot if name in LOOSENED.get(spot, ()) else None
 
 
 def luck_out(here, hand):
@@ -434,4 +445,5 @@ def summary(items, code, page_version):
 
 
 __all__ = ["CONVENTION", "DEEP_ALLIN_BB", "GROUPS", "LOOSENED", "NAMES", "block",
-           "from_here", "group_of", "loosened", "posts", "strategy_of", "worth"]
+           "from_here", "group_of", "loosened", "loosenings", "posts", "strategy_of",
+           "worth"]

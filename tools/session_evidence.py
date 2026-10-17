@@ -34,10 +34,11 @@ or an AI, not for a person.
   divergence on less the fold line, with the plain 95% interval and the one
   that stays right however often it is looked at (``luck.always_valid``),
   raw and with the luck of the cards after an all-in taken out; and for
-  each of v3.3's two loosenings the test to withdraw it (plain 95% interval
-  of the luck-out numbers holds 0, top under +4 big blinds a hand; it is
-  meant to be read once, after 1000-1500 hands). Packages from before
-  block 11 are counted as having none.
+  each loosening the replayed page has (v3.3's two; v3.3a withdrew them)
+  the test to withdraw it (plain 95% interval of the luck-out numbers holds
+  0, top under +4 big blinds a hand; it is meant to be read once, after
+  1000-1500 hands). Packages from before block 11 are counted as having
+  none.
 
 * Each preflop class shows the mean place of its shown hands (median
   beside it), the share outside its preflop range and whether it has the
@@ -363,9 +364,15 @@ def shadow_lines(packages):
                         f"{len(went)}（另 {len(mine) - len(went)} 手你没走这条线，只数不记）；"
                         f"记上账 {len(raw)} 手 {_booked(raw)}；扣全下后发牌运气 "
                         f"{len(lucky)} 手 {_booked(lucky)}")
-        text.append("    放宽复核（v3.3 新加的牌；1000–1500 手后区间含 0 且上限 < +4 bb/手"
-                    f" → 收回；现在 {hands} 手）：")
-        for name, word in LOOSE_WORD.items():
+        loose = {item["loosened"] for item in items if item.get("loosened")}
+        for top in tops:
+            loose.update(top.get("loosened") or {})
+        if not loose:
+            text.append("    放宽复核：这一版晚位平跟、小盲大盲补齐用的是 v3.2 的表，没有放宽要复核")
+        else:
+            text.append("    放宽复核（v3.3 新加的牌；1000–1500 手后区间含 0 且上限 < +4 bb/手"
+                        f" → 收回；现在 {hands} 手）：")
+        for name, word in LOOSE_WORD.items() if loose else ():
             mine = [item for item in items if item.get("loosened") == name]
             went = [item for item in mine if item["entered"]]
             lucky = [item["in_minus_fold_luck_out_bb"] for item in went
