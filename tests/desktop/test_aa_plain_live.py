@@ -39,6 +39,7 @@ class Screen:
         self.stacks = dict.fromkeys(range(seats), stack)
         self.wagers = dict.fromkeys(range(seats))
         self.pot = 0
+        self.preflop_pot = None             # 翻前屏幕上显示的底池（None：显示真的）
         self.fields = {
             "street": "preflop", "hero": list(hero), "board": [None] * 5, "pot": "0",
             "dealer": dealer, "actor": None,
@@ -55,6 +56,8 @@ class Screen:
         self.fields["street_wagers"] = {str(seat): None if chips is None else str(chips)
                                         for seat, chips in self.wagers.items()}
         self.fields["pot"] = str(self.pot)
+        if self.preflop_pot is not None and self.fields["street"] == "preflop":
+            self.fields["pot"] = self.preflop_pot or None
         for _ in range(frames):
             fields = deepcopy(self.fields)
             self.out.append(self.advice.observe_fields(fields, self.frame))
@@ -130,6 +133,20 @@ def same(report, observation):
 
 
 # -- 和记分牌牌桌上一样 ------------------------------------------------------------
+
+@pytest.mark.parametrize("shown", ["0", ""])
+def test_the_preflop_pot_comes_from_the_table_not_the_screen(shown):
+    # AA 翻前屏幕上的底池是 0（注还摆在各人面前）；读不到也一样：按前注 × 人数 + 盲注
+    # + 抓头 + 各座已投入的算，尺寸和记分牌一样（主人 2026-10-17：hand_3663 等）。
+    screen = Screen(AAPlainAdvice(clock=Clock()), clock=None, hero=("Qs", "Qh"))
+    screen.preflop_pot = shown
+    screen.deal()
+    screen.put(3, 12, badge="raise")
+    report = ready(screen, call=12)
+    assert report["pot"] == "35"                    # 16 + 1 + 2 + 4 + 12
+    same(report, spot({4: "QsQh"}, "", "3r12"))
+    assert report["plain"]["action"] == "raise" and float(report["plain"]["to"]) > 30
+
 
 def test_preflop_facing_an_open_is_the_same_page_as_the_scoreboard():
     screen = Screen(AAPlainAdvice(clock=Clock()), clock=None, hero=("Qs", "Qh"))
