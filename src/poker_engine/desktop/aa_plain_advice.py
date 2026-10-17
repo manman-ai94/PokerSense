@@ -59,7 +59,7 @@ READY_FRAMES = 20               # 没有时钟可看时按帧数（约 10 帧一
 SIDE_BY_SIDE = 2.0              # 要跟的金额变了：旧建议在旁边留 2 秒
 OPENING_FRAMES = 300            # 认级别、庄位用的开局帧，最多留这么多
 EPSILON = 1e-9
-BASIS = "一页纸打法 v3.3a（plain）：只按这一页的规则；只显示建议，不替你点"
+BASIS = "一页纸打法 v3.3b（plain）：只按这一页的规则；只显示建议，不替你点"
 
 # 就绪条件没满足时缺的是什么（窗口上写“缺 X”）。
 MISSING = {"price": "要跟的金额", "price_not_steady": "要跟的金额没稳",

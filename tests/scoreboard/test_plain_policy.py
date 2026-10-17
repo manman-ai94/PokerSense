@@ -1,4 +1,4 @@
-"""一页纸打法 ``plain``（《一页纸打法 v3.3a》）：每条规则至少一个用例。
+"""一页纸打法 ``plain``（《一页纸打法 v3.3b》）：每条规则至少一个用例。
 
 牌局都是合成的：按指定的牌发牌（``spot``），在 AA 8 人桌上照写好的动作走到要测的那一步，
 再看 ``plain`` 的建议。8 人桌：0 小盲、1 大盲、2 抓头、3 早位、4 和 5 中位、6 CO、7 庄位；
@@ -406,25 +406,24 @@ def test_table_3_folds_ace_queen_suited_in_position_too():
 LIMP_RERAISE = "3c 4f 5f 6f 7r27 0f 1f 2f 3r81"     # 早位平跟、庄位加注、早位再加注
 
 
-@pytest.mark.parametrize("stacks, hand, action", [
-    (1000, "KcKd", "raise"), (1000, "AcAd", "raise"),
-    (1000, "QcQd", "fold"), (1000, "AcKd", "fold"),     # 平常表 3 会跟
-    (200, "QcQd", "fold"), (200, "AcKd", "fold"),       # 平常 ≥ 30% 会全下
-    (40, "KcKd", "call"), (40, "AcKd", "fold"),         # 平常 ≤ 20 个大盲推弃会全下；
-])                                                      # 他全下，跟就是全下
-def test_a_limper_who_reraises_gets_only_kings_plus(stacks, hand, action):
+@pytest.mark.parametrize("stacks, hand, action, rule", [
+    (1000, "KcKd", "raise", "T3.4bet"), (1000, "QcQd", "call", "T3.call"),
+    (1000, "AcKd", "call", "T3.call"),
+    (200, "AcKd", "raise", "T3.jam"), (200, "7c7d", "fold", "T3.jam"),
+    (40, "9c9d", "call", "T3.push20"),                  # 他全下，跟就是全下
+])
+def test_a_limper_who_reraises_is_the_usual_table_3(stacks, hand, action, rule):
+    # v3.3b 撤回“平跟后再加注只 KK+”：和别的再加注一样按表 3
     actions = LIMP_RERAISE if stacks > 40 else "3c 4f 5f 6f 7r10 0f 1f 2f 3r38"   # 他全下
     advice = decide({7: hand}, actions=actions, stacks=stacks)
-    assert (advice.action, advice.rule) == (action, "T3.limp")
-    if action == "raise":
-        assert advice.all_in
+    assert (advice.action, advice.rule) == (action, rule)
+    assert "T3.limp" not in plain.RULES
 
 
-def test_a_limper_who_reraises_has_the_top_three_percent():
+def test_a_limper_who_reraises_is_read_as_a_reraise():
     table = plain.Table(spot({7: "KcKd"}, actions=LIMP_RERAISE, stacks=1000))
     read = plain.read_range(table, 3)
-    assert (read.preflop, read.words) == ("limp_reraise", "前 3%")
-    assert "平跟后再加注" in read.story
+    assert (read.preflop, read.words) == ("three_bet", "前 6%")
 
 
 def test_a_reraise_over_someone_else_s_raise_is_the_usual_table_3():
@@ -724,19 +723,18 @@ def test_low_spr_top_pair_is_not_stopped_by_iron_law_1(equity_is):
 
 
 def test_low_spr_with_three_opponents_keeps_top_pair_a_one_pair_hand(equity_is):
-    # 4 人、你的筹码 150：翻牌剩 125、底池 109，SPR 1.1。v3.3：≤ 1/3 底池跟一次；跟 36 后剩 89
-    # ≤ 底池一半，按阈值 2 决定：胜率够要全下，多人底池 B 档不加注（铁律 2）→ 跟
-    stacks = dict.fromkeys(range(8), 200) | {7: 150}
-    actions = FOUR_WAY + " 1r36 2c 6c"
+    # 4 人、筹码 200：翻牌剩 177、底池 109，SPR 1.6。≤ 1/2 底池跟一次（v3.3b 回到 v3.2）；
+    # 跟完剩 123 ≤ 底池一半，按阈值 2 决定：胜率够要全下，多人底池 B 档不加注（铁律 2）→ 跟
+    actions = FOUR_WAY + " 1r54 2c 6c"
     equity_is(0.5)
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions, stacks=stacks)
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions)
     assert advice.action == "call" and advice.hits == ["SPR.many", "J2", "I2"]
-    equity_is(0.1)                                      # 所需 36/253 = 14%，+5% = 19%
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions, stacks=stacks)
+    equity_is(0.2)
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", actions)
     assert advice.action == "fold" and advice.hits == ["SPR.many", "J2"]
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r37 2c 6c", stacks=stacks)
-    assert (advice.action, advice.rule) == ("fold", "SPR.many")         # 超过 1/3（v3.2 跟）
-    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r20 2c 6r60", stacks=stacks)
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r56 2c 6c")
+    assert (advice.action, advice.rule) == ("fold", "SPR.many")         # 超过 1/2
+    advice = decide({7: "AsKd"}, "Ah 7c 2d", FOUR_WAY + " 1r20 2c 6r60")
     assert (advice.action, advice.rule) == ("fold", "SPR.many")         # 被加注弃
 
 
