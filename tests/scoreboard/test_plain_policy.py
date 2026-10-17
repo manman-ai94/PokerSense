@@ -478,6 +478,9 @@ def test_facing_an_all_in_three_bet_uses_the_first_row():
     ("KcKd", "Qh Qc 5d", "B", "超对"),                   # 口袋对子 + 公共牌对子：超对
     ("5c5d", "Qh Qc 9d", "C", "中对"),                   # ……或中对
     ("AcTd", "Ah 7c 7d", "B", "顶对踢脚 T"),             # 一张配公共牌、一张没配：不是两对
+    ("9c5d", "Kh Ks 9s 5h 2c", "C", "第二对"),           # 公共牌 KK 盖过你的 55：只剩一对 9
+    ("Kc5d", "Kh 9s 9c 5h", "C", "弱顶对"),              # 公共牌 99 盖过 55：顶对 K 踢脚 5
+    ("Kc7d", "Kh 7s 2c 2d", "A", "两对"),                # 公共牌 22 比两对都小：还是两对
     ("Ac9d", "Ah 7c 7d", "C", "弱顶对"),
     ("QcQd", "Jh 7c 2d", "B", "超对"),
     ("AcKd", "Ah 7c 2d", "B", "顶对踢脚 K"),
@@ -517,10 +520,20 @@ def test_strong_draws_and_outs():
     ("AcAd", "Jh Tc 9d 8s", "C", "B"),
     ("Ah2h", "Kh 7h 3h", "A", None),                        # 同花、顺子、葫芦不降
     ("7c7d", "7h Kh Kc 2h", "A", None),
+    ("9c5d", "Kh Ks 9h 5h 2h", "C", None),                  # 被盖过的两对：一对 9，不从 A 降
 ])
 def test_three_suited_or_four_straight_boards_drop_one_tier(hole, board, tier, was):
     found = plain.classify(cards(hole), cards(board))
     assert (found.tier, found.was) == (tier, was)
+
+
+def test_two_pair_under_a_bigger_board_pair_is_one_pair():
+    # K♥K♠9♠5♥2♣ 上的 9♣5♦ 只是一对 9：以前按 A 档河牌下 3/4、被下满池照跟
+    board, river = "Kh Ks 9s 5h 2c", HU + " 2c 7c 2c 7c"
+    advice = decide({7: "9c5d"}, board, river + " 2c", stacks=400)
+    assert (advice.tier, advice.action, advice.rule) == ("C", "check", "N.C")
+    advice = decide({7: "9c5d"}, board, river + " 2r65", stacks=400)
+    assert (advice.tier, advice.action, advice.rule) == ("C", "fold", "F.C")
 
 
 def test_dropping_a_tier_is_logged():
@@ -804,6 +817,29 @@ def test_facing_an_all_in_needs_five_points_over_the_price(equity_is, value, act
     assert (advice.action, advice.rule) == (action, "ALLIN")
     assert advice.need == pytest.approx(175 / 415, abs=0.001)
     assert "所需" in advice.flip
+
+
+@pytest.mark.parametrize("value, action, rule", [(0.4, "call", "ALLIN"),
+                                                 (0.2, "fold", "F.C")])
+def test_the_all_in_row_variant_calls_a_cheap_all_in_by_the_price(
+        equity_is, value, action, rule):
+    # 筹码 120：翻牌跟 43 后剩 52，转牌被全下 52 赢 255，所需 20%。页上 C 档转牌被下注
+    # 一律弃；plain@allin 按"胜率 ≥ 所需 + 5%"定
+    equity_is(value)
+    observation = spot({7: "9c9d"}, "Kh Tc 2d 4s", HU + " 2r43 7c 2r52", stacks=120)
+    assert plain.decide(observation).action == "fold"
+    advice = plain.decide(observation, all_in_row=True)
+    assert (advice.action, advice.rule) == (action, rule)
+
+
+def test_the_all_in_row_variant_beats_iron_law_1(equity_is):
+    # 超对 B 档转牌被全下：页上铁律 1 弃；plain@allin 胜率够就跟
+    equity_is(0.6)
+    observation = spot({7: "QcQd"}, "Jh 7c 2d 4s", HU + " 2r43 7c 2r132")
+    assert plain.decide(observation).rule == "I1"
+    advice = plain.decide(observation, all_in_row=True)
+    assert (advice.action, advice.rule) == ("call", "ALLIN")
+    assert make_policy("plain@allin").all_in_row and not make_policy("plain").all_in_row
 
 
 def test_a_draw_facing_an_all_in_uses_four_percent_an_out_on_the_flop():

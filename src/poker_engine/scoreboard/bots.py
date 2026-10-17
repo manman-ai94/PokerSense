@@ -266,9 +266,9 @@ def make_policy(name):
     if name in ("population", "aa_population"):
         from .population import PopulationBot   # imports this module
         return PopulationBot(adjusted=name == "aa_population")
-    if name == "plain":
+    if name in ("plain", "plain@allin"):
         from .plain_policy import PlainBot      # imports this module
-        return PlainBot()
+        return PlainBot(all_in_row=name == "plain@allin")
     if name.startswith("aa_preflop"):
         from .preflop_policy import from_name    # imports this module
         return from_name(name)

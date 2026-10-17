@@ -226,6 +226,8 @@ READINGS = {
     "push_fold": "'有效筹码 ≤ 20 个大盲改推弃'写在表 3 下面：只用于面对再加注",
     "four_bet_size": "表 3 的 4-bet 没写尺寸：按 3 倍再加注额（v3.2 的直接全下不管它，不自动全下）",
     "full_house": "降档只降暗三、明三条、两对和带大听牌的顶对/超对：葫芦以上比同花顺子大，不降",
+    "two_pair": "两对：两张手牌各配上一张公共牌，且公共牌自己的对子不比你小的那对大；公共牌"
+                "对子更大时你小的那对用不上（K♥K♠9♠5♥ 上的 9♣5♦），按一对定档",
     "four_straight": "'四张连牌'按字面：公共牌里有四张点数相连",
     "board_pair": "'公共牌对子 + 你的高牌'：公共牌有对子、你自己没成对，都算 C",
     "board_plays": "河牌五张公共牌自己成顺子、同花、葫芦以上，你的牌用不上：档分不出 → 铁律 5",
@@ -432,6 +434,7 @@ def classify(hole, board):
     top = bv[0]
     board_plays = len(board) == 5 and made in MADE and mine == best(board)
     paired = [v for v in hv if v in bv]
+    board_pairs = {v for v in bv if bv.count(v) >= 2}
     tier, words = None, ""
     if board_plays:
         return Strength("E", made=made, words="公共牌自己成牌", board_plays=True)
@@ -440,7 +443,8 @@ def classify(hole, board):
                             "full_house": "葫芦", "flush": "同花", "straight": "顺子"}[made]
     elif pocket and hv[0] in bv:
         tier, words = "A", "暗三"
-    elif not pocket and hv[0] in bv and hv[1] in bv:
+    elif (not pocket and hv[0] in bv and hv[1] in bv
+          and not any(v > hv[1] for v in board_pairs)):
         tier, words = "A", "两对"
     elif not pocket and any(bv.count(v) >= 2 for v in hv):
         tier, words = "A", "明三条"                  # v3.3c：原文漏写
@@ -1403,18 +1407,23 @@ def _banned(table, advice, context):
     plays = context.get("plays")
     raises = [act for act in table.street_acts() if act.kind in ("bet", "raise")]
     facing_all_in = bool(raises) and raises[-1].all_in
-    # 面对全下（翻后）：胜率 ≥ 所需胜率 + 5% 才跟；听牌按 D 档那一行（已按补牌比过）
+    # 面对全下（翻后）：胜率 ≥ 所需胜率 + 5% 才跟；听牌按 D 档那一行（已按补牌比过）。
+    # ``all_in_row``（记分牌上的 ``plain@allin``）：这一行同时定跟，档位表和铁律都不再改它
+    all_in_row = context.get("all_in_row", False)
     if (facing_all_in and table.street != "preflop" and plays != "D"
-            and advice.action in ("call", "raise")):
+            and (all_in_row or advice.action in ("call", "raise"))):
         advice.equity = context["equity"]()
         advice.need = table.need()
         if advice.equity is None:
             _unspecified(table, advice, "no_range")
         elif advice.equity < advice.need + ALL_IN_MARGIN:
-            _fold(advice, "ALLIN")
+            if advice.action != "fold":
+                _fold(advice, "ALLIN")
         else:
             advice.action, advice.to = "call", None
             advice.hit("ALLIN")
+            if all_in_row:
+                return advice
     # 直接全下阈值 2：跟注后剩余 ≤ 1/2 底池 → 按面对全下决定（够就全下，不够就弃），
     # 不"跟了再看"；对手已经全下时不用它：翻前按表，翻后按面对全下（READINGS j2_all_in）
     if advice.action == "call" and not facing_all_in:
@@ -1489,9 +1498,10 @@ def _clear(observation):
     return None
 
 
-def decide(observation, *, numbers=True):
+def decide(observation, *, numbers=True, all_in_row=False):
     """一条建议（``Advice``）。``numbers``：把三个数都算出来（窗口用；记分牌上只在规则
-    要用胜率时才算）。"""
+    要用胜率时才算）。``all_in_row``：翻后面对全下只按"胜率 ≥ 所需 + 5%"定跟或弃
+    （``plain@allin``，只在记分牌上比，窗口不用）。"""
     missing = _clear(observation)
     if missing:
         advice = iron5_from(observation, "S1")
@@ -1499,7 +1509,7 @@ def decide(observation, *, numbers=True):
         return _finish(None, advice, {})
     table = Table(observation)       # 人数不在 4–8 人按最近的人数表：位置按座位数排
 
-    context = {}
+    context = {"all_in_row": all_in_row}
     cache = {}
 
     def reads():
@@ -1741,13 +1751,17 @@ def action_id(advice, observation):
 
 
 class PlainBot(_Policy):
-    """``plain``：翻前翻后都按 v3.3b；``counts`` 记每条规则定了几次、没写的情形几次。"""
+    """``plain``：翻前翻后都按 v3.3c；``counts`` 记每条规则定了几次、没写的情形几次。
+    ``plain@allin``：翻后面对全下按"胜率 ≥ 所需 + 5%"定跟或弃（``decide`` 的 ``all_in_row``）。"""
 
     name = "plain"
 
-    def __init__(self):
+    def __init__(self, all_in_row=False):
         from collections import Counter
         self.counts = Counter()
+        self.all_in_row = all_in_row
+        if all_in_row:
+            self.name = "plain@allin"
 
     def for_game(self, salt):
         def policy(observation):
@@ -1758,7 +1772,7 @@ class PlainBot(_Policy):
         return self.act(observation)
 
     def act(self, observation):
-        advice = decide(observation, numbers=False)
+        advice = decide(observation, numbers=False, all_in_row=self.all_in_row)
         self.counts[f"rule:{advice.rule}"] += 1
         if advice.unspecified:
             self.counts[f"unspecified:{advice.unspecified}"] += 1
