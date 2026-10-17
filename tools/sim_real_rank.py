@@ -199,12 +199,12 @@ def spots(name, rows, reported=None):
 
 
 def answer(observation, action_id):
-    """A table action as ``aa_compare_advice.chips`` reads an answer."""
-    action = next(item for item in observation["legal_actions"]
-                  if item["id"] == action_id)
-    if action["kind"] == "raise_to":
-        return {"action": "raise", "to": action["raise_to"]}
-    if action["kind"] == "fold":
+    """A table action as ``aa_compare_advice.chips`` reads an answer. A raise
+    can be to any size the table takes, listed among the legal actions or not
+    (``plain`` sizes its own)."""
+    if action_id.startswith("raise_to:"):
+        return {"action": "raise", "to": action_id.partition(":")[2]}
+    if action_id == "fold":
         return {"action": "fold"}
     return {"action": "call" if Decimal(observation["to_call"] or 0) else "check"}
 
