@@ -405,3 +405,91 @@ def test_chinese_messages_survive_output_to_a_pipe():
     entry.utf8_output([stream, None])
     print("[更新] 已经是最新版", file=stream, flush=True)
     assert "[更新] 已经是最新版".encode("utf-8") in raw.getvalue()
+
+
+# -- closing the black window is 停止 -----------------------------------------------
+
+def test_closing_the_terminal_or_a_takeover_closes_like_stop(monkeypatch):
+    installed, closed, quieted = {}, [], []
+    monkeypatch.setattr(entry, "quiet", lambda: quieted.append(1))
+    handler = entry.on_close(lambda: closed.append(1), platform="posix",
+                             install=lambda signum, h: installed.update({signum: h}))
+    import signal
+    assert installed == {signal.SIGHUP: handler, signal.SIGTERM: handler}
+    handler(signal.SIGTERM, None)              # a new launch takes over
+    assert closed == [1] and quieted == []
+    handler(signal.SIGHUP, None)               # Terminal closed: no terminal left
+    assert closed == [1, 1] and quieted == [1]
+
+
+def test_closing_the_windows_console_closes_like_stop():
+    class Kernel32:
+        def SetConsoleCtrlHandler(self, handler, add):
+            self.handler, self.add = handler, add
+            return 1
+    kernel32, closed = Kernel32(), []
+    entry.on_close(lambda: closed.append(1), platform="nt", kernel32=kernel32)
+    assert kernel32.add is True
+    assert kernel32.handler(0) == 0 and closed == []    # Ctrl+C: as before
+    for event in (2, 5, 6, 1):          # window closed, log off, shut down, break
+        assert kernel32.handler(event) == 1
+    assert closed == [1, 1, 1, 1]
+    assert kernel32.handler in entry._KEPT
+
+
+def test_closing_finishes_the_recording_then_hands_over_the_upload(tmp_path):
+    """What 停止 does, then the upload: the recording's recording.json and its
+    sheet start before anything else, even when stopping fails."""
+    from poker_engine.desktop.aa_recorder import AARecorder
+    from tests.desktop.test_aa_recorder import AA8, Writer
+
+    order = []
+    recorder = AARecorder(tmp_path / "20261016-210927-live", AA8,
+                          writer_factory=Writer,
+                          on_finished=lambda folder: order.append(("sheet", folder)))
+
+    class Service:
+        def stop(self):
+            recorder.stop("source_stopped")
+    entry.close_window(Service(), after_close=lambda: order.append("upload"))
+    summary = json.loads((tmp_path / "20261016-210927-live" / "recording.json")
+                         .read_text(encoding="utf-8"))
+    assert summary["stopped_reason"] == "source_stopped"
+    assert order == [("sheet", tmp_path / "20261016-210927-live"), "upload"]
+
+    class Broken:
+        def stop(self):
+            raise RuntimeError("driver")
+    order.clear()
+    with pytest.raises(RuntimeError):
+        entry.close_window(Broken(), after_close=lambda: order.append("upload"))
+    assert order == ["upload"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
+@pytest.mark.parametrize("name", ["SIGHUP", "SIGTERM"])
+def test_a_real_close_signal_runs_the_close_and_no_more(tmp_path, name):
+    """Without the handler the system ends the program on the spot."""
+    import signal
+    import subprocess
+    done = tmp_path / "closed"
+    path = ROOT / "packaging" / "aa_live_entry.py"
+    script = (
+        "import importlib.util, sys, time\n"
+        f"spec = importlib.util.spec_from_file_location('e', {str(path)!r})\n"
+        "e = importlib.util.module_from_spec(spec); spec.loader.exec_module(e)\n"
+        f"e.on_close(lambda: open({str(done)!r}, 'w').write('ok') and sys.exit(0))\n"
+        "print('ready', flush=True)\n"
+        "time.sleep(20)\n"
+        "sys.exit(3)\n")
+    child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE,
+                             text=True, env=dict(__import__("os").environ,
+                                                 PYTHONPATH=f"{ROOT / 'src'}:{ROOT}"))
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        child.send_signal(getattr(signal, name))
+        assert child.wait(15) == 0
+    finally:
+        child.kill()
+        child.stdout.close()
+    assert done.read_text() == "ok"

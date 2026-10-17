@@ -63,6 +63,14 @@ Two ways up, the same passes and files either way:
   "未配置上传" and looks again every few minutes; nothing else happens.
   Folders pulled from another machine (with ``pulled.json``) are never
   uploaded again.
+* A recording waits while its sheet and package are being made
+  (``flywheel/building``, ``aa_after_session``): the cloud never gets a
+  folder without its package, or a package half written.
+* Closing the window does what 停止 does (``aa_live_entry``): the recording
+  is finished and what the window had left to send goes on in a process of
+  its own, ``python -m poker_engine.desktop.aa_upload --root <recordings>``
+  (one pass, then it ends). One upload at a time on this computer:
+  ``upload/upload.lock``, let go when its process ends, however it ends.
 """
 
 from __future__ import annotations
@@ -101,6 +109,9 @@ PASSES = (["--exclude", f"/{LOG}", "--exclude", f"/{VIDEO}"],
           ["--include", f"/{LOG}"], [])
 CLOUD = Path("~/Library/CloudStorage")   # where Google Drive for desktop syncs
 CHUNK = 1 << 20                  # bytes copied at a time into a synced folder
+BUILDING = "flywheel/building"   # there while the sheet and the package are made
+LOCK = "upload.lock"             # held by the one process uploading
+LOCK_WAIT = 120.0                # how long the upload after a close waits for it
 
 _CURRENT = None
 
@@ -216,6 +227,69 @@ def copy_slowly(source, target, limit, sleep=time.sleep, clock=time.monotonic):
     os.replace(part, target)
 
 
+def building(folder, now=None):
+    """Is the folder's sheet and package still being made? ``flywheel/building``
+    is there from just before the process making them starts until it ends;
+    one left behind by a process that never ended (the computer turned off)
+    counts for ``REPORT_WAIT`` at most."""
+    path = Path(folder) / BUILDING
+    try:
+        made = path.stat().st_mtime
+    except OSError:
+        return False
+    return (time.time() if now is None else now) - made < REPORT_WAIT
+
+
+class FileLock:
+    """An exclusive lock on a file between processes: let go by ``release``
+    or when the process holding it ends, also when it is killed."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.handle = None
+
+    def acquire(self, wait=0.0, *, sleep=time.sleep, clock=time.monotonic):
+        """True once held; False when another process still holds it after
+        ``wait`` seconds."""
+        if self.handle is not None:
+            return True
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path, "a+b")
+        deadline = clock() + wait
+        while True:
+            try:
+                _lock(handle)
+            except OSError:
+                if clock() >= deadline:
+                    handle.close()
+                    return False
+                sleep(0.5)
+                continue
+            self.handle = handle
+            return True
+
+    def release(self):
+        handle, self.handle = self.handle, None
+        if handle is not None:
+            try:
+                _lock(handle, unlock=True)
+            except OSError:
+                pass
+            handle.close()
+
+
+def _lock(handle, unlock=False):
+    if os.name == "nt":
+        import msvcrt
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK if unlock
+                       else msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN if unlock
+                    else fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def finished(folder):
     """A recording that is done (``recording.json`` is written at the end) and
     was made on this computer."""
@@ -269,6 +343,9 @@ def find_rclone(configured="", *, which=shutil.which, places=None):
     return ""
 
 
+_RUNNING = set()                 # rclone processes this window started
+
+
 def run_process(args, timeout):
     """(return code, output) of ``args`` at low priority, without a window."""
     extra = {}
@@ -278,14 +355,33 @@ def run_process(args, timeout):
     elif shutil.which("nice"):
         args = ["nice", "-n", "10", *args]
     try:
-        done = subprocess.run(args, capture_output=True, text=True, encoding="utf-8",
-                              errors="replace", timeout=timeout,
-                              stdin=subprocess.DEVNULL, **extra)
-    except subprocess.TimeoutExpired:
-        return 124, "超时"
+        process = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True,
+                                   encoding="utf-8", errors="replace",
+                                   stdin=subprocess.DEVNULL, **extra)
     except OSError as exc:
         return 127, str(exc)
-    return done.returncode, (done.stdout or "") + (done.stderr or "")
+    _RUNNING.add(process)
+    try:
+        out, err = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        return 124, "超时"
+    finally:
+        _RUNNING.discard(process)
+    return process.returncode, (out or "") + (err or "")
+
+
+def end_processes():
+    """End the rclone processes this window started: on Windows one started
+    without a window outlives the closed one, and would send a folder at the
+    same time as the upload that takes over (``after_close``)."""
+    for process in list(_RUNNING):
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def scrub(text, lines=6):
@@ -308,6 +404,7 @@ class Uploader:
         self.settings_path = base / "settings.json"
         self.state_path = base / "state.json"
         self.log_path = base / "upload.log"
+        self.lock_file = FileLock(base / LOCK)
         self.run, self.which, self.clock = run, which, clock
         self.places = places
         self.delay, self.retry_waits, self.report_wait = delay, retry_waits, report_wait
@@ -407,7 +504,7 @@ class Uploader:
             return
         while not self.stopped.is_set():
             self.wake.clear()
-            ok = self.upload_all()
+            ok = self.upload_once()
             if ok:
                 self.failures = 0
                 wait = IDLE_WAIT if self.configured else UNSET_WAIT
@@ -415,6 +512,22 @@ class Uploader:
                 wait = self.retry_waits[min(self.failures, len(self.retry_waits) - 1)]
                 self.failures += 1
             self.wake.wait(wait)
+
+    def upload_once(self, wait=0.0):
+        """``upload_all`` while holding this computer's upload lock (False
+        when another process, the upload after a closed window, holds it past
+        ``wait`` seconds). Anything that goes wrong is a failed pass: logged,
+        and tried again later, never the end of the upload thread."""
+        if not self.lock_file.acquire(wait):
+            return False
+        try:
+            return self.upload_all()
+        except Exception as exc:              # noqa: BLE001 - tried again later
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            self._log(f"上传出错：{self.last_error}")
+            return False
+        finally:
+            self.lock_file.release()
 
     def upload_all(self):
         """One pass: every recording that needs it, oldest first. False when
@@ -461,10 +574,10 @@ class Uploader:
              "--timeout", "5m", "--bwlimit", settings["bwlimit"] or "0",
              "--stats", "0", "--log-level", "NOTICE"], COPY_TIMEOUT)
 
-    def _put(self, folder, settings, files):
-        """The files into the synced cloud folder, in the three passes; True
-        when all went through."""
-        target = self.local / settings["machine"] / folder.name
+    def _put(self, folder, settings, files, local):
+        """The files into the synced cloud folder ``local``, in the three
+        passes; True when all went through."""
+        target = local / settings["machine"] / folder.name
         limit = rate(settings["bwlimit"])
         for which in range(len(PASSES)):
             for rel, size in files:
@@ -480,14 +593,17 @@ class Uploader:
         """The folder in its three passes (the package and the sheet, the log,
         the video), then its ``upload.json``; True when all went through."""
         folder = Path(folder)
-        target = self.destination(settings, folder.name)
+        # One answer for the whole upload: the window's status check may look
+        # again (``_check``) while the files go up.
+        local = self.local
+        target = self.destination(settings, folder.name, local)
         files = manifest(folder)
         marker = {"machine": settings["machine"], "folder": folder.name,
                   "files": files["files"], "bytes": files["bytes"]}
         self.uploading = folder.name
         try:
-            if self.local is not None:
-                code, output = self._put_all(folder, settings, files, marker)
+            if local is not None:
+                code, output = self._put_all(folder, settings, files, marker, local)
             else:
                 code, output = self._send_all(folder, settings, marker)
         finally:
@@ -528,12 +644,12 @@ class Uploader:
                                    "--stats", "0", "--log-level", "NOTICE"], 600)
         return code, output + more
 
-    def _put_all(self, folder, settings, files, marker):
+    def _put_all(self, folder, settings, files, marker, local):
         """The synced cloud folder: the three passes, then ``upload.json``."""
         try:
-            self._put(folder, settings, files["files"])
+            self._put(folder, settings, files["files"], local)
             marker["uploaded"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
-            write_json(self.local / settings["machine"] / folder.name / MARKER, marker)
+            write_json(local / settings["machine"] / folder.name / MARKER, marker)
         except OSError as exc:
             return 1, f"复制到云盘文件夹没成功：{exc}"
         return 0, ""
@@ -551,9 +667,10 @@ class Uploader:
             self._log(f"同名文件夹没合并（{code}）\n{scrub(output)}")
         return code == 0
 
-    def destination(self, settings, name):
-        if self.local is not None:
-            path = self.local / settings["machine"]
+    def destination(self, settings, name, local=None):
+        local = self.local if local is None else local
+        if local is not None:
+            path = local / settings["machine"]
             return str(path / name) if name else str(path)
         path = f"{settings['folder']}/{settings['machine']}"
         return f"{settings['remote']}:{path}/{name}" if name else (
@@ -566,14 +683,16 @@ class Uploader:
         """Is rclone here with the remote, or else a synced cloud folder?
         Kept for ``CHECK_EVERY`` seconds."""
         rclone = self._rclone(settings)
-        ok, self.local = False, None
+        ok, local = False, None
         if rclone:
             code, output = self.run([rclone, "listremotes"], 30)
             ok = code == 0 and f"{settings['remote']}:" in output.split()
         if not ok:
-            self.local = self._synced(settings)
-            ok = self.local is not None
-        self.configured, self.checked = ok, self.clock()
+            local = self._synced(settings)
+            ok = local is not None
+        # Set together at the end: an upload running meanwhile never sees
+        # the answer half made.
+        self.local, self.configured, self.checked = local, ok, self.clock()
         return ok
 
     def _synced(self, settings):
@@ -586,14 +705,22 @@ class Uploader:
         return drive_folder(settings["folder"], self.cloud)
 
     def _wait_for_report(self, folder):
+        """Until the sheet and the package are written: the process this
+        window started for them, else ``flywheel/building`` (made by a window
+        since closed); one that hangs past ``report_wait``: upload what is
+        there."""
         with self.lock:
             process = self.reports.pop(str(folder), None)
-        if process is None:
+        if process is not None:
+            try:
+                process.wait(timeout=self.report_wait)
+            except Exception:
+                pass
             return
-        try:
-            process.wait(timeout=self.report_wait)
-        except Exception:               # a sheet that hangs: upload what is there
-            pass
+        deadline = self.clock() + self.report_wait
+        while (building(folder) and not self.stopped.is_set()
+               and self.clock() < deadline):
+            self.sleep(2.0)
 
     def _state(self):
         try:
@@ -614,7 +741,25 @@ class Uploader:
             pass
 
 
-__all__ = ["BWLIMIT", "CLOUD", "FOLDER", "MARKER", "PULLED", "REMOTE", "Uploader",
-           "copy_slowly", "current", "default_settings", "drive_folder",
-           "find_rclone", "finished", "load_settings", "machine_name", "manifest",
-           "rate", "rclone_places", "run_process", "upload_pass", "write_json"]
+def main(argv=None):
+    """The upload a closed window hands over: one pass over the finished
+    recordings under ``--root`` (each after its sheet and package), then the
+    process ends; the next window tries again what did not go through."""
+    import argparse
+    parser = argparse.ArgumentParser(description="上传录完的录像（关窗口后接着传）")
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--base", type=Path)
+    args = parser.parse_args(argv)
+    uploader = Uploader(args.root, base=args.base, delay=0)
+    return 0 if uploader.upload_once(wait=LOCK_WAIT) else 1
+
+
+__all__ = ["BUILDING", "BWLIMIT", "CLOUD", "FileLock", "FOLDER", "LOCK", "MARKER",
+           "PULLED", "REMOTE", "Uploader", "building", "copy_slowly", "current",
+           "default_settings", "drive_folder", "end_processes", "find_rclone",
+           "finished", "load_settings", "machine_name", "main", "manifest", "rate",
+           "rclone_places", "run_process", "upload_pass", "write_json"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
