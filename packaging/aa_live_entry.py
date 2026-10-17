@@ -477,11 +477,12 @@ def on_close(close, *, platform=os.name, install=signal.signal, kernel32=None):
         return handler
 
     def handler(signum, frame):
-        if signum == signal.SIGHUP:
+        if signum == getattr(signal, "SIGHUP", None):
             quiet()
         close()
     for name in ("SIGHUP", "SIGTERM"):
-        install(getattr(signal, name), handler)
+        if hasattr(signal, name):
+            install(getattr(signal, name), handler)
     return handler
 
 

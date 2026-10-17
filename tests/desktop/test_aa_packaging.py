@@ -409,6 +409,7 @@ def test_chinese_messages_survive_output_to_a_pipe():
 
 # -- closing the black window is 停止 -----------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32", reason="no SIGHUP on Windows")
 def test_closing_the_terminal_or_a_takeover_closes_like_stop(monkeypatch):
     installed, closed, quieted = {}, [], []
     monkeypatch.setattr(entry, "quiet", lambda: quieted.append(1))
