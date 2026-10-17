@@ -15,7 +15,10 @@ departures, by amounts fitted on the recordings (``tools/fit_aa_cal.py``,
 the values in ``FITTED``):
 
 * before the flop a share ``mix`` of decisions follow the spot's shares
-  whatever the cards (a limp can hold aces, an open raise trash);
+  whatever the cards (a limp can hold aces, an open raise trash); in the
+  spots of a 3-bet or more (facing two raises, and the raise facing one)
+  ``mix_3bet`` instead, set so that the hands AA players show after such a
+  line sit in the middle of the model's range for it;
 * after the flop, on each street, ``slow`` of the hands strong enough to bet
   or raise check or call instead, ``bluff`` of those too weak to bet bet
   anyway and ``sticky`` of those too weak to call call anyway. The equity
@@ -79,6 +82,10 @@ BET_HU, BET_MULTI, RAISE = 0.5, 0.6, 1.1
 SHOVE_BET = ((0.5, 1.0), (1.0, 0.6), (2.0, 0.15), (None, 0.0))
 SHOVE_RAISE = ((1.0, 1.0), (2.0, 0.6), (4.0, 0.13), (None, 0.0))
 KINDS = ("f", "c", "r")
+# Spots before the flop facing two raises or more, and facing one: the raise
+# in either is a 3-bet or more and follows ``mix_3bet``.
+RERAISED = ("open_vs_3bet", "call_vs_3bet", "vs_3bet_cold", "3bet_vs_4bet")
+RAISED_ONCE = ("vs_open", "limp_vs_raise")
 
 
 @lru_cache(maxsize=1)
@@ -96,6 +103,11 @@ def cal_stats():
 # numbers and parameters together, and only when recordings neither has seen
 # are predicted better. ``preflop_allin_shift`` fitted with them since
 # 2026-10-16 (it held on both halves of 20 recordings, ``tools/fit_aa_cal.py``).
+# ``mix_3bet`` is not fitted on actions but set by the cards shown: on the 20
+# recordings 30 shown hands had a 3-bet or more in their line; at 0.6 (the
+# ``mix``) they sat at 0.36 and 0.43 of the model's range for them (each half
+# scored with the other half's numbers; 0.5 is calibrated), at 0.4 at 0.43
+# and 0.53. Refits keep it (it is not among the fitted names).
 FITTED = cal_stats()["fitted"]
 
 
@@ -177,13 +189,36 @@ def preflop_adjusted(raise_share, call_share, features, params):
     return raise_share * moved / keep, call_share * moved / keep
 
 
-def preflop_probs(base, raise_share, call_share, mix, can_fold=True, can_raise=True):
+def spot_mix(spot, params):
+    """(mix, raise mix) of a spot before the flop: ``mix_3bet`` (``mix`` when
+    it has none) facing two raises or more, and for the raise facing one."""
+    reraise = params.get("mix_3bet", params["mix"])
+    if spot in RERAISED:
+        return reraise, None
+    if spot in RAISED_ONCE:
+        return params["mix"], reraise
+    return params["mix"], None
+
+
+def preflop_probs(base, raise_share, call_share, mix, can_fold=True, can_raise=True,
+                  raise_mix=None):
     """[fold, call, raise] probabilities: the band's action ``base`` (0, 1 or
-    2; an array of them works too) mixed with the spot's shares."""
+    2; an array of them works too) mixed with the spot's shares. With
+    ``raise_mix`` the raise is mixed by it instead, and fold and call share
+    the rest as they would."""
     base = np.asarray(base)
     shares = np.array([max(1 - raise_share - call_share, 0.0), call_share,
                        raise_share])
     probs = (1 - mix) * (base[..., None] == np.arange(3)) + mix * shares
+    if raise_mix is not None and raise_mix != mix:
+        raising = (1 - raise_mix) * (base == 2) + raise_mix * raise_share
+        before = probs[..., 0] + probs[..., 1]
+        kept = shares[:2].sum()
+        rest = shares[:2] / kept if kept > 0 else np.array([1.0, 0.0])
+        some = np.where(before > 0, before, 1.0)[..., None]
+        split = np.where(before[..., None] > 0, probs[..., :2] / some, rest)
+        probs = np.concatenate([split * (1 - raising)[..., None], raising[..., None]],
+                               axis=-1)
     return _legal(probs, can_fold, can_raise)
 
 
@@ -292,9 +327,10 @@ class CalibratedBot(AARealBot):
                 1 if place <= raise_share + call_share else 0)
         raise_id = (raise_by_pot(observation, OPEN_POT)
                     if spot in ("rfi", "vs_limp") else raise_toward(observation, 1.0))
-        probs = preflop_probs(base, raise_share, call_share, self.params["mix"],
+        mix, raise_mix = spot_mix(spot, self.params)
+        probs = preflop_probs(base, raise_share, call_share, mix,
                               float(observation["to_call"] or 0) > 0,
-                              raise_id is not None)
+                              raise_id is not None, raise_mix)
         return probs, raise_id
 
     def postflop_plan(self, observation, rng):
@@ -322,4 +358,4 @@ class CalibratedBot(AARealBot):
 
 __all__ = ["FITTED", "REFERENCE_PRICE", "CalibratedBot", "adjusted_keep", "all_in_or",
            "cal_stats", "checked_probs", "effective_stack", "facing_probs",
-           "preflop_adjusted", "preflop_probs", "priced_keep", "situation"]
+           "preflop_adjusted", "preflop_probs", "priced_keep", "situation", "spot_mix"]
