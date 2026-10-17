@@ -469,7 +469,7 @@ typeHand();
 await click(el("hand-build"));
 hooks.rewrite["/api/analysis"] = value => ({...value, input_sha256: "c".repeat(64)});
 await click(el("hand-compute"));
-await new Promise(resolve => setTimeout(resolve, 500));
+await startSettled();
 check("a_start_response_for_a_different_input_is_rejected",
       run("acceptedAnalysisId") === null && results() === ""
       && analysisStatus().includes("不是同一份"),
