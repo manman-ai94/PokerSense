@@ -203,3 +203,34 @@ def test_each_hand_pays_its_own_blinds_antes_and_mushroom_post():
         item["fields"]["actions_v1"]["dealer"] = None
     first, second, _ = session_report([("log", rows)])["hands"]
     assert (first["your_chips"], second["your_chips"]) == (-11.0, 0.0)
+
+
+def test_a_hand_you_folded_only_costs():
+    """A rise in a hand you folded is a rebuy or a table change, left out
+    even when the pot read was big enough (until 10/17 a rebuy right after a
+    folded bomb pot counted as its win)."""
+    fold = [(2, "flop", 4, "fold", "0", "no_chips")]
+
+    def rows(after):
+        first = [row(f, f * 0.1, stack="100", pot=600, actions=fold[:f // 2])
+                 for f in range(6)]
+        return first + [row(f, f * 0.1, hand="hand_6", cards=("2c", "7d"), stack=after)
+                        for f in range(6, 12)]
+    assert session_report([("log", rows("500"))])["hands"][0]["your_chips"] is None
+    assert session_report([("log", rows("90"))])["hands"][0]["your_chips"] == -10.0
+    # Not folded: a win up to the pot counts, as before.
+    won = [{**item, "fields": {**item["fields"],
+                               "actions_v1": {**item["fields"]["actions_v1"],
+                                              "actions": []}}}
+           for item in rows("500")]
+    assert session_report([("log", won)])["hands"][0]["your_chips"] == 400.0
+    # All in and won, then the next hand read with the same cards, folded:
+    # the two count as one, and the fold is not this hand's.
+    shove = [(2, "flop", 4, "all_in", "100", "stack")]
+    rows = ([row(f, f * 0.1, stack="100", pot=600, actions=shove[:f // 2])
+             for f in range(6)]
+            + [row(f, f * 0.1, hand="hand_6", stack="250", actions=fold)
+               for f in range(6, 12)]
+            + [row(f, f * 0.1, hand="hand_12", cards=("2c", "7d"), stack="250")
+               for f in range(12, 18)])
+    assert session_report([("log", rows)])["hands"][0]["your_chips"] == 150.0
