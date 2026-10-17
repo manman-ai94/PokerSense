@@ -735,6 +735,7 @@ class AASolverAdvice:
         # hand being followed's (worked out until its first action).
         self._stakes, self._hand_stakes = None, (None, None)
         self.reads = AAReads()
+        self._plain.reset()             # 一页纸那一路也从头来（手的编号会重复）
 
     def __call__(self, payload, frame):
         return self.observe(payload, frame)

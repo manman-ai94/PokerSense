@@ -1023,7 +1023,7 @@ def _preflop(table, advice):
 
 
 def _fold(advice, rule):
-    advice.action, advice.to = "fold", None
+    advice.action, advice.to, advice.all_in = "fold", None, False
     return advice.hit(rule)
 
 
@@ -1354,7 +1354,7 @@ def _facing_raise(table, advice, strength, plays, spr_many, agg, context):
     if spr_many:
         return _fold(advice, "SPR.many")
     if plays == "B":
-        if street != "flop":
+        if street != "flop" or len(table.opponents) >= 2:   # 多人一栏：被加注弃
             return _fold(advice, "R.B")
         behind = table.stack - table.to_call
         his = table.behind.get(agg.seat, float("inf"))
@@ -1454,8 +1454,9 @@ def _banned(table, advice, context):
         if not _within_iron1(table, _put_now(table, advice)):
             if advice.action == "bet":
                 _call(table, advice, "I1")
-            elif advice.action == "raise" and _within_iron1(table, table.to_call):
-                _call(table, advice, "I1")
+            elif (advice.action == "raise" and advice.rule != "R.B"
+                  and _within_iron1(table, table.to_call)):
+                _call(table, advice, "I1")      # B 档被加注只有全下或弃（READINGS r_b_iron1）
             else:
                 _fold(advice, "I1")
     return advice
