@@ -458,7 +458,7 @@ def chips(hands):
         most = max((h["most_pot"] for h in whole if h["most_pot"] is not None),
                    default=None)
         if most is not None:
-            most += max(h["pool"] for h in whole)
+            most += max(h.get("pool") or 0.0 for h in whole)
         for hand in whole:
             hand["your_chips"] = None
         if not any(h["you_in"] for h in whole) or one is None:
@@ -480,7 +480,7 @@ def chips(hands):
     for hand in hands:
         for key in ("your_actions", "start_stack", "posted", "pool", "paid_out",
                     "most_pot", "first_stack", "end_stack"):
-            del hand[key]
+            hand.pop(key, None)
 
 
 def busted(whole, after):
@@ -494,7 +494,7 @@ def busted(whole, after):
     if last["end_stack"] != 0:
         return False
     if after is None:
-        return last["complete"] and last["paid_out"]
+        return last["complete"] and last.get("paid_out", False)
     following = after[0]
     return (following["complete"] and not following["you_in"]
             and not following["first_stack"])
