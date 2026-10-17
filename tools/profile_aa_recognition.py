@@ -580,8 +580,15 @@ def choose_profile(given=None, environ=os.environ):
     """(profile path, bundle digest or None, what it is): the one given,
     else the installed recognition bundle's (checked against its digest, as
     the window does), else the development profile."""
+    from poker_engine.desktop.aa_bundle import HASH, PROFILE
     if given is not None:
-        return Path(given), None, {"profile": "given"}
+        given = Path(given)
+        # An installed bundle's own profile: the updater names its folder for
+        # the digest it checked the bundle against.
+        folder = given.parent.name
+        if given.name == PROFILE and HASH.fullmatch(folder):
+            return given, folder, {"profile": "given", "bundle": folder[:12]}
+        return given, None, {"profile": "given"}
     from poker_engine.desktop.app_update import installed_recognition
     for state in window_states(environ):
         found = installed_recognition(state)

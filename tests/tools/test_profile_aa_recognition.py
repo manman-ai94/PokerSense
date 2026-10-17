@@ -259,9 +259,13 @@ def test_the_reader_uses_the_installed_recognition_bundle(tmp_path):
     profile = installed(data / "aa-live-state")
     assert tool.choose_profile(environ=environ) == (
         profile, "ab" * 32, {"profile": "installed", "bundle": "ab" * 6})
-    # One named on the command line wins.
+    # One named on the command line wins; an installed bundle's own profile
+    # is checked against the digest its folder is named for.
     assert tool.choose_profile(tmp_path / "mine.json", environ) == (
         tmp_path / "mine.json", None, {"profile": "given"})
+    other = installed(tmp_path / "other", "ef" * 32)
+    assert tool.choose_profile(other, environ) == (
+        other, "ef" * 32, {"profile": "given", "bundle": "ef" * 6})
 
 
 def test_a_broken_install_falls_back_to_the_development_profile(tmp_path):
