@@ -123,6 +123,7 @@ class AAActionHistory:
         self._hero_frames = 0                    # frames they were read
         self._hero_last = None                   # your cards in the last hand
         self._hero_new = (None, 0)               # other cards, frames in a row
+        self._hero_since = None                  # frame they were first read
 
     # -- hands -----------------------------------------------------------------
 
@@ -132,11 +133,24 @@ class AAActionHistory:
                       "actions": [], "streets": set()}
         self._hand_over = False
         self._seat_drops = []
+        self._retire_hero()
+
+    def _retire_hero(self):
+        """Your cards read so far were the last hand's."""
         if self._hero is not None:
             self._hero_last = self._hero
         self._hero, self._hero_frames, self._hero_new = None, 0, (None, 0)
+        self._hero_since = None
 
-    def _hole_cards(self, payload):
+    def _played_since(self, frame):
+        """Chips went in from ``frame`` on: a steady pot first read higher then
+        or later, from one that was not empty (the rise from an empty pot is
+        the blinds and antes)."""
+        runs = steady_runs(self._pots)
+        return any(new[1] >= frame and new[0] > old[0] > 0
+                   for old, new in zip(runs, runs[1:]))
+
+    def _hole_cards(self, payload, frame):
         """Your two cards read on this frame are a new deal (see the module
         notes); also keeps the hand's own cards."""
         hero = (payload.get("cards") or {}).get("hero")
@@ -146,7 +160,7 @@ class AAActionHistory:
             return None
         if self._hero is None:
             if pair != self._hero_last:
-                self._hero, self._hero_frames = pair, 1
+                self._hero, self._hero_frames, self._hero_since = pair, 1, frame
             return None
         if pair == self._hero:
             self._hero_frames += 1
@@ -495,7 +509,8 @@ class AAActionHistory:
         self._dealers.append(reading if isinstance(reading, int) else None)
         dealer = (self._dealers[0] if len(self._dealers) == 2
                   and self._dealers[0] == self._dealers[1] else None)
-        new_cards = self._hole_cards(payload) if self._hand is not None else None
+        new_cards = (self._hole_cards(payload, frame) if self._hand is not None
+                     else None)
         reason = self._boundary(payload, frame, street, dropped, dealer, new_cards)
         if reason is not None:
             self._opened = None           # the new hand's pot is read after this
@@ -505,13 +520,22 @@ class AAActionHistory:
             self._start(frame, dealer, reason, complete=False)
             self._shares.clear()
             self._hero, self._hero_frames = new_cards, NEW_CARDS_FRAMES
-        elif (reason is not None and hand is not None and hand["complete"]
-                and not hand["actions"]):
+            self._hero_since = frame
+        elif (reason is not None and hand is not None and not hand["actions"]
+                and (hand["complete"] or (hand["start"] == "new_hole_cards"
+                                          and not self._played_since(
+                                              hand["start_frame"])))):
             # Between hands the board clears, the pot resets and the button moves
             # one after another: while the new hand has no action yet they all
-            # mark the same start, which stays at the first of them.
+            # mark the same start, which stays at the first of them (also when
+            # your new cards showed it first and nothing went in since).
             hand["dealer"] = dealer if dealer is not None else hand["dealer"]
             self._hand_over = False
+            if self._hero is not None and self._played_since(self._hero_since):
+                # Chips went in after your cards were read: they were the last
+                # deal's, and the next deal's cards are not a deal whose start
+                # was missed.
+                self._retire_hero()
         elif reason is not None:
             self._start(frame, dealer, reason, complete=reason != "first_hand_seen")
             self._shares.clear()

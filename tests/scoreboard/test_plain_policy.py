@@ -468,6 +468,9 @@ def test_facing_an_all_in_three_bet_uses_the_first_row():
     ("Kc7d", "Kh 7c 2d", "A", "两对"),
     ("QcJd", "Qs Tc Qh", "A", "明三条"),                 # v3.3c：公共牌对子 + 你一张（hand_15812）
     ("7c2d", "Kh 7h 7d", "A", "明三条"),                 # 踢脚小也是
+    ("AsJs", "Jh 7s 2s", "A", "顶对踢脚 A加同花听牌"),  # v3.3c：顶对 + 坚果同花听（杜的 A♠J♠）
+    ("QcQd", "Jh Tc 9d", "A", "超对加两头顺听牌"),       # 超对 + 两头顺
+    ("AcKd", "Kh Qc Td", "B", "顶对踢脚 A"),             # 卡顺只有 4 张补牌：还是 B
     ("9c8d", "7h 6c 5d", "A", "顺子"),
     ("Ah2h", "Kh 7h 3h", "A", "同花"),                   # 有同花不降
     ("7c7d", "7h Kc Kd 2h", "A", "葫芦"),
@@ -508,6 +511,7 @@ def test_strong_draws_and_outs():
     ("7c7d", "7h Kh 2h", "B", "A"),                         # 三同花：暗三降到 B
     ("9c8d", "9h 8c 7d 6s", "B", "A"),                      # 四连牌：两对降到 B
     ("QcJd", "Qh Qs 9h 2h", "B", "A"),                      # 三同花：明三条也降到 B
+    ("AsJc", "Js 7s 2s", "B", "A"),                         # 三同花：带大听牌的顶对按 A 降到 B
     ("QcQd", "Jh 9h 2h", "C", "B"),                         # 超对降到 C
     ("AcAd", "Jh Tc 9d 8s", "C", "B"),
     ("Ah2h", "Kh 7h 3h", "A", None),                        # 同花、顺子、葫芦不降
@@ -698,6 +702,17 @@ def test_a_suited_board_with_two_opponents_is_written_on_the_turn():
 def test_facing_a_raise(hand, board, actions, action, rule):
     advice = decide({7: hand}, board, actions, stacks=400)
     assert (advice.action, advice.rule) == (action, rule)
+
+
+@pytest.mark.parametrize("actions, action, rule", [
+    (HU + " 2c 7r30 2r90", "call", "R.A"),                 # 单挑被加注：B 是 R.B 弃
+    (THREE_WAY + " 1c 2c 7r30 1r90 2f", "call", "R.A"),    # 多人下注被加注：B 也是弃
+    (THREE_WAY + " 1r60 2c", "raise", "J3"),               # 多人面对下注：B 只跟
+])
+def test_top_pair_with_a_big_draw_plays_like_a_strong_hand(actions, action, rule):
+    # v3.3c 原文漏写：顶对 + 坚果同花听（9 张补牌）视同 A 档（主人 10-17，杜的 A♠J♠）
+    advice = decide({7: "AsJs"}, "Jh 7s 2s", actions, stacks=400)
+    assert advice.tier == "A" and (advice.action, advice.rule) == (action, rule)
 
 
 @pytest.mark.parametrize("value, hits", [(0.5, ["R.B", "I1"]), (0.2, ["R.B"])])
