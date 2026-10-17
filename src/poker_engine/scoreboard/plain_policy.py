@@ -226,6 +226,8 @@ READINGS = {
     "push_fold": "'有效筹码 ≤ 20 个大盲改推弃'写在表 3 下面：只用于面对再加注",
     "four_bet_size": "表 3 的 4-bet 没写尺寸：按 3 倍再加注额（v3.2 的直接全下不管它，不自动全下）",
     "full_house": "降档只降暗三、明三条、两对和带大听牌的顶对/超对：葫芦以上比同花顺子大，不降",
+    "two_pair": "两对：两张手牌各配上一张公共牌，且公共牌自己的对子不比你小的那对大；公共牌"
+                "对子更大时你小的那对用不上（K♥K♠9♠5♥ 上的 9♣5♦），按一对定档",
     "four_straight": "'四张连牌'按字面：公共牌里有四张点数相连",
     "board_pair": "'公共牌对子 + 你的高牌'：公共牌有对子、你自己没成对，都算 C",
     "board_plays": "河牌五张公共牌自己成顺子、同花、葫芦以上，你的牌用不上：档分不出 → 铁律 5",
@@ -432,6 +434,7 @@ def classify(hole, board):
     top = bv[0]
     board_plays = len(board) == 5 and made in MADE and mine == best(board)
     paired = [v for v in hv if v in bv]
+    board_pairs = {v for v in bv if bv.count(v) >= 2}
     tier, words = None, ""
     if board_plays:
         return Strength("E", made=made, words="公共牌自己成牌", board_plays=True)
@@ -440,7 +443,8 @@ def classify(hole, board):
                             "full_house": "葫芦", "flush": "同花", "straight": "顺子"}[made]
     elif pocket and hv[0] in bv:
         tier, words = "A", "暗三"
-    elif not pocket and hv[0] in bv and hv[1] in bv:
+    elif (not pocket and hv[0] in bv and hv[1] in bv
+          and not any(v > hv[1] for v in board_pairs)):
         tier, words = "A", "两对"
     elif not pocket and any(bv.count(v) >= 2 for v in hv):
         tier, words = "A", "明三条"                  # v3.3c：原文漏写
