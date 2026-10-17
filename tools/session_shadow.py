@@ -43,13 +43,14 @@ never shown to the player.
   such spot where plain decided by that table row is listed, booked as
   above when you put chips in.
 * "From that decision on" is the hand's result as the sheet counts it
-  (``aa_session_report.chips``: from this hand's start to the next one's,
-  each after its blinds and antes), plus what you had put in before the
-  decision (the start's stack less yours at the decision), plus what the
-  table has you post at the start of the next hand (blinds, antes,
-  straddle or bomb post; 0 after a bust). A fold at the decision comes to 0
-  by this count; ``fold_check`` counts the decisions you folded where it did
-  not (a stack read wrong). A dealer's mushroom post is not in it.
+  (``aa_session_report.chips``: each hand pays its own posts, from this
+  hand's start before its posts to the next one's before its own), plus
+  this hand's posts (``aa_session_report.posted``: blinds, antes, straddle,
+  the dealer's mushroom post or a bomb post), plus the start's stack, less
+  yours at the decision: what you had when the hand ended against what you
+  had behind at the decision. A bust comes to minus what you had behind. A
+  fold at the decision comes to 0 by this count; ``fold_check`` counts the
+  decisions you folded where it did not (a stack read wrong).
 * ``plain_fold_shown`` (the minutes' P3 count): after the flop, the times
   plain folds and every opponent still in later shows his cards, and how
   many of those he showed one pair or less of his own on the last board
@@ -74,8 +75,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from poker_engine.desktop.aa_solver_input import (  # noqa: E402
-    hand_facts, table_observation)
 from poker_engine.scoreboard.multiway_bot import weak_hand  # noqa: E402
 from poker_engine.scoreboard import plain_policy  # noqa: E402
 from poker_engine.scoreboard.plain_policy import hands as hand_set  # noqa: E402
@@ -165,23 +164,10 @@ def side(report, free, strategy=None):
             "rule": page.get("rule"), "kind": report.get("kind")}
 
 
-def posts(rows, stakes):
-    """What the table has you put in at the start of the hand of these rows
-    (blinds, antes, straddle, bomb post), from its frames before anyone
-    acted; None when that does not replay."""
-    before = [row for row in rows
-              if not ((row["fields"].get("actions_v1") or {}).get("actions"))]
-    try:
-        observation = table_observation(hand_facts(before or rows[:1], stakes), HERO)
-    except Exception:                   # noqa: BLE001 - a hand that does not replay
-        return None
-    if observation is None:
-        return None
-    return _decimal(observation["contributions"].get(str(HERO)))
-
-
-def from_here(decision, hand, after):
-    """(big blinds you won or lost from the decision on, or None, why not)."""
+def from_here(decision, hand):
+    """(big blinds you won or lost from the decision on, or None, why not).
+    ``hand["posted"]`` is this hand's own posts; unknown counts 0, as the
+    sheet's result counts it (``aa_session_report.chips``)."""
     result = _decimal(hand.get("chips"))
     if result is None:
         return None, "这手没有成绩（录像停在这手、重新买入或这手被拆成两段）"
@@ -190,13 +176,8 @@ def from_here(decision, hand, after):
     big_blind = _decimal(hand.get("big_blind"))
     if start is None or behind is None or not big_blind:
         return None, "你的筹码或大盲没读到"
-    if result == -start:                # busted: nothing to post next hand
-        put = Decimal(0)
-    else:
-        put = after
-        if put is None:
-            return None, "下一手开局交的前注盲注算不出"
-    return round(float((result + start - behind + put) / big_blind), 2), None
+    posted = _decimal(hand.get("posted")) or Decimal(0)
+    return round(float((result + start + posted - behind) / big_blind), 2), None
 
 
 def worth(action, you, here):
@@ -311,23 +292,22 @@ def block(rows, hands, *, code=None, page_version=None):
     ``hand_id``, ``rows``, ``turns`` (each a list of (row, report) pairs as the
     log has them), ``decisions`` (the package's rows for those turns),
     ``stakes``, ``chips`` (the sheet's result), ``start`` (the sheet's
-    starting stack) and ``luck`` (``runout``, ``allin``)."""
+    starting stack), ``posted`` (this hand's posts, ``aa_session_report.posted``)
+    and ``luck`` (``runout``, ``allin``)."""
     position = {id(row): index for index, row in enumerate(rows)}
     replayed = replays(rows) if any(hand["turns"] for hand in hands) else {}
     items = []
-    for number, hand in enumerate(hands):
-        later = hands[number + 1] if number + 1 < len(hands) else None
-        after = None if later is None else posts(later["rows"], later["stakes"])
+    for hand in hands:
         hand = {**hand, "big_blind": hand["stakes"].get("big_blind")}
         booked = False
         for turn, decision in zip(hand["turns"], hand["decisions"]):
-            items.append(decision_item(rows, position, replayed, hand, after, turn,
+            items.append(decision_item(rows, position, replayed, hand, turn,
                                        decision, first=not booked))
             booked = booked or items[-1]["first_divergence"]
     return {"summary": summary(items, code, page_version), "decisions": items}
 
 
-def decision_item(rows, position, replayed, hand, after, turn, decision, *, first):
+def decision_item(rows, position, replayed, hand, turn, decision, *, first):
     free = decision.get("button") == "check" or _decimal(decision.get("to_call")) == 0
     indexes = [position[id(row)] for row, _ in turn]
     shown = side(last_ready([report for _, report in turn]), free)
@@ -336,7 +316,7 @@ def decision_item(rows, position, replayed, hand, after, turn, decision, *, firs
     you = decision.get("you_did")
     if you == "call" and free:
         you = "check"
-    here, why = from_here(decision, hand, after)
+    here, why = from_here(decision, hand)
     again = {"old": old, "plain": plain}.get((shown or {}).get("strategy"))
     item = {"hand_id": hand["hand_id"], "street": decision.get("street"),
             "video_seconds": decision.get("video_seconds"),
@@ -445,5 +425,5 @@ def summary(items, code, page_version):
 
 
 __all__ = ["CONVENTION", "DEEP_ALLIN_BB", "GROUPS", "LOOSENED", "NAMES", "block",
-           "from_here", "group_of", "loosened", "loosenings", "posts", "strategy_of",
+           "from_here", "group_of", "loosened", "loosenings", "strategy_of",
            "worth"]
