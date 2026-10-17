@@ -81,6 +81,31 @@ RECOGNITION_MODULES = (
 )
 
 
+def recognition_threads(cpus=None):
+    """OpenCV's worker threads for recognition, or None to keep its default
+    (one per logical CPU): half of them on a computer with 4 or fewer. On
+    杜's laptop (2 cores, 4 threads) a frame took 135 ms with 2 against 160
+    with 4 (p90 189 against 225; 300 frames of his recording, 2026-10-17),
+    and the window's recorder, solver and browser share those cores.
+    Recognition's other work is numpy's, one thread either way. Larger
+    computers were not measured and keep the default."""
+    cpus = os.cpu_count() if cpus is None else cpus
+    if not cpus or cpus > 4:
+        return None
+    return max(1, cpus // 2)
+
+
+def limit_recognition_threads(cpus=None, set_threads=None):
+    """Apply ``recognition_threads`` to this process; returns it."""
+    threads = recognition_threads(cpus)
+    if threads is not None:
+        if set_threads is None:
+            import cv2
+            set_threads = cv2.setNumThreads
+        set_threads(threads)
+    return threads
+
+
 def default_state():
     """Installed builds keep one data folder across updates. A source checkout
     with a data folder set ($POKERSENSE_DATA_ROOT, e.g. a second Windows seat,
@@ -209,6 +234,7 @@ def package_report(args):
         "empirical_strategy": "NOT_ASSESSED",
         "recognition_bundle": "INSTALLED" if args.bundle_sha256 else "NOT_INSTALLED",
         "update_configured": bool(app_update.configured_url(args.update_url)),
+        "recognition_threads": recognition_threads(),
     }
 
 
@@ -411,6 +437,7 @@ def open_listener(preferred, *, wait=0.0):
 def serve(args):
     import uvicorn
 
+    limit_recognition_threads()
     app = create_app(args)
     if not args.no_update_check:
         announce_update(app.state.updater)
