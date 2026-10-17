@@ -7,6 +7,7 @@
 
 import json
 from pathlib import Path
+import re
 
 import pytest
 
@@ -1041,3 +1042,21 @@ def test_scoreboard_plays_plain_and_counts_the_rules():
     report = run_scoreboard(PROFILE, ["plain"], deals=2, base_seed=1, pool=("nit",))
     counts = report["decision_counts"]["plain"]
     assert sum(value for key, value in counts.items() if key.startswith("rule:")) > 0
+
+
+# -- 翻转条件和建议用同一个底池、同一个门槛（夜间代码检查 10-17） -------------------------
+
+def test_draw_flip_counts_the_mushroom_pool():
+    # 小盲 6h5h 同花听面对 12，蘑菇池 40：所需胜率把蘑菇池算进底池，翻转条件也要算
+    advice = decide({0: "6h5h"}, "Kh 9h 2c", "3c 4f 5f 6f 7f 0c 1c 2c 0c 1r12 2f 3f",
+                    stacks=200, mushroom="40")
+    assert (advice.action, advice.rule) == ("call", "F.D")
+    most = float(re.search(r"跟注 ([\d.]+) 以内才跟", advice.flip).group(1))
+    assert most >= 12, advice.flip
+
+
+def test_price_call_flip_uses_the_mushroom_threshold():
+    # 小盲 77 面对开到 36、一人跟，蘑菇池 40：门槛 20% × 200 = 40，翻转条件也写 40
+    advice = decide({0: "7c7d"}, "", "3f 4f 5r36 6c 7f", stacks=200, mushroom="40")
+    assert (advice.action, advice.rule) == ("call", "T2.price")
+    assert "跟注超过 40 就弃" in advice.flip, advice.flip
