@@ -218,3 +218,79 @@ def test_log_counts_how_your_turn_and_river_solves_ended():
 def test_computer_describes_itself():
     about = tool.computer()
     assert about["logical_cpus"] and about["numpy"] and about["opencv"]
+
+
+def installed(state, digest="ab" * 32):
+    """A data folder with a recognition bundle made current, as the window's
+    updater leaves it."""
+    folder = state / "recognition" / digest
+    folder.mkdir(parents=True)
+    (folder / "profile.json").write_text("{}", encoding="utf-8")
+    (state / "recognition" / "current.json").write_text(
+        json.dumps({"manifest_sha256": digest}), encoding="utf-8")
+    return folder / "profile.json"
+
+
+def test_the_window_data_folders_this_checkout_uses(tmp_path):
+    from poker_engine import __version__
+    data, local = tmp_path / "data", tmp_path / "local"
+    assert tool.window_states({"POKERSENSE_DATA_ROOT": str(data),
+                               "LOCALAPPDATA": str(local)}) == [
+        data / "aa-live-state", local / "PokerSense-AA" / __version__]
+    assert tool.window_states({"POKERSENSE_DATA_ROOT": " ",
+                               "LOCALAPPDATA": str(local)}) == [
+        local / "PokerSense-AA" / __version__]
+    (state,) = tool.window_states({})
+    assert state.parts[-2:] == ("PokerSense-AA", __version__)
+
+
+def test_the_reader_uses_the_installed_recognition_bundle(tmp_path):
+    from poker_engine import __version__
+    data, local = tmp_path / "data", tmp_path / "local"
+    environ = {"POKERSENSE_DATA_ROOT": str(data), "LOCALAPPDATA": str(local)}
+    # Nothing installed: the development profile.
+    assert tool.choose_profile(environ=environ) == (
+        tool.Path(tool.DEFAULT_PROFILE), None, {"profile": "development"})
+    # A window run without a data folder keeps it per version.
+    profile = installed(local / "PokerSense-AA" / __version__, "cd" * 32)
+    assert tool.choose_profile(environ=environ) == (
+        profile, "cd" * 32, {"profile": "installed", "bundle": "cd" * 6})
+    # The data folder's comes first, as the window started from source uses it.
+    profile = installed(data / "aa-live-state")
+    assert tool.choose_profile(environ=environ) == (
+        profile, "ab" * 32, {"profile": "installed", "bundle": "ab" * 6})
+    # One named on the command line wins; an installed bundle's own profile
+    # is checked against the digest its folder is named for.
+    assert tool.choose_profile(tmp_path / "mine.json", environ) == (
+        tmp_path / "mine.json", None, {"profile": "given"})
+    other = installed(tmp_path / "other", "ef" * 32)
+    assert tool.choose_profile(other, environ) == (
+        other, "ef" * 32, {"profile": "given", "bundle": "ef" * 6})
+
+
+def test_a_broken_install_falls_back_to_the_development_profile(tmp_path):
+    state = tmp_path / "data" / "aa-live-state"
+    installed(state).unlink()           # current.json names a missing bundle
+    environ = {"POKERSENSE_DATA_ROOT": str(tmp_path / "data"),
+               "LOCALAPPDATA": str(tmp_path / "local")}
+    assert tool.choose_profile(environ=environ)[2] == {"profile": "development"}
+
+
+def test_run_says_which_profile_it_read_with(tmp_path, monkeypatch, capsys):
+    from poker_engine.desktop import aa_reader
+    video = recording(tmp_path / "rec")
+    made = []
+
+    class Reader(SlowReader):
+        def __init__(self, path, *, bundle_sha256=None):
+            super().__init__()
+            made.append((path, bundle_sha256))
+
+    profile = installed(tmp_path / "data" / "aa-live-state")
+    monkeypatch.setenv("POKERSENSE_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setattr(aa_reader, "AA8Reader", Reader)
+    assert tool.main(["run", "--video", str(video), "--start", "0",
+                      "--frames", "3", "--timed-only"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["profile"] == "installed" and printed["bundle"] == "ab" * 6
+    assert made == [(profile, "ab" * 32)]
