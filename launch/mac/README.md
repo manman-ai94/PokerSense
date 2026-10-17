@@ -20,7 +20,7 @@
 - `start-aa-replay.command` 默认回放第一手牌的帧（`PokerSense_private/aa8_first_hand_full_v1`）。
   要换别的帧，把那个文件夹路径作为第一个参数传进去，文件夹里要有 `samples.json`。
 - 页面设置保存在 `<数据目录>/aa-live-state`。
-- 关闭终端窗口或按 Ctrl-C 就会停止。
+- 关闭终端窗口、按 Ctrl-C 都和点“停止”一样：录像存好（`recording.json`）、体检单和场次包在后台做完，没传完的录像由后台接着上传（`PokerSense_private/upload/after-close.log`）。
 - 窗口开着时再双击一次（比如装了新版以后），会先关掉之前开着的那个（先停采集卡、存好录像），新窗口用同一个地址，浏览器里记住的设置照样在；旧网页会自己刷新成新版。
 
 识别模型使用的是旧的开发版配置 `configs/reproduction/aa8_candidate_v2/factory.json`，

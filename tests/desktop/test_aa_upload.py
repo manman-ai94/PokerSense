@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import threading
 import time
 
@@ -14,6 +16,7 @@ from fastapi.testclient import TestClient
 from poker_engine.desktop import aa_after_session, aa_server, aa_upload
 
 HEADERS = {"X-AA-Live": "1"}
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeRclone:
@@ -604,3 +607,229 @@ def test_the_window_shows_and_keeps_the_switch(tmp_path):
         assert client.get("/api/upload").json()["available"] is False
         assert client.post("/api/upload", json={"on": True},
                            headers=HEADERS).status_code == 409
+
+
+# -- closing the window (aa_live_entry, aa_after_session.after_close) -------------
+
+class Ended(Exception):
+    """The window's process ended by the system (its black window closed)."""
+
+
+def test_a_window_closed_during_a_slow_upload_leaves_no_half_package(tmp_path):
+    """The video goes up slowly; the window is closed half way through a
+    segment. In the cloud folder: the package and the sheet whole, the
+    segment only as ``.part``, no ``upload.json`` (the pull leaves it alone).
+    The upload that takes over finishes it, ``upload.json`` last."""
+    synced = drive(tmp_path)
+    folder = recording(tmp_path / "recordings", "20261016-210927-live")
+    (folder / "segment_0000.mp4").write_bytes(b"\1" * (3 * aa_upload.CHUNK))
+    (tmp_path / "upload").mkdir()
+    (tmp_path / "upload" / "settings.json").write_text(
+        json.dumps({"machine": "peng"}), encoding="utf-8")
+    there = synced / "peng" / folder.name
+
+    def closed(seconds):
+        if (there / "segment_0000.mp4.part").exists():
+            raise Ended()
+    window = uploader(tmp_path, FakeRclone(tmp_path / "cloud", remotes=()),
+                      cloud=tmp_path / "CloudStorage", sleep=closed)
+    assert window.upload_once() is False
+    assert not (there / aa_upload.MARKER).exists()
+    assert not (there / "segment_0000.mp4").exists()
+    for rel in ("flywheel/package.json", "flywheel/体检单.txt"):
+        assert (there / rel).read_bytes() == (folder / rel).read_bytes()
+    assert "Ended" in (tmp_path / "upload" / "upload.log").read_text(encoding="utf-8")
+
+    after = uploader(tmp_path, FakeRclone(tmp_path / "cloud", remotes=()),
+                     cloud=tmp_path / "CloudStorage", sleep=lambda seconds: None)
+    assert after.upload_once() is True
+    marker = json.loads((there / aa_upload.MARKER).read_text(encoding="utf-8"))
+    assert marker["files"] == aa_upload.manifest(folder)["files"]
+    assert (there / "segment_0000.mp4").read_bytes() == (
+        folder / "segment_0000.mp4").read_bytes()
+    assert not list(there.rglob("*.part"))
+
+
+def test_a_recording_goes_up_only_once_its_package_is_made(tmp_path):
+    """The window was closed as the recording stopped: its package is still
+    being made (``flywheel/building``) when the upload that takes over comes
+    to it. It waits, and the cloud gets the package with the rest."""
+    folder = recording(tmp_path / "recordings", "20261016-210927-live", sheet=False)
+    (folder / "flywheel").mkdir()
+    (folder / aa_upload.BUILDING).write_text("")
+    waited = []
+
+    def sleep(seconds):
+        waited.append(seconds)
+        if len(waited) == 3:            # the package process is done
+            aa_upload.write_json(folder / "flywheel" / "package.json", {"ok": 1})
+            (folder / aa_upload.BUILDING).unlink()
+    rclone = FakeRclone(tmp_path / "cloud")
+    up = uploader(tmp_path, rclone, sleep=sleep)
+    assert up.upload_once() is True
+    assert len(waited) == 3
+    there = tmp_path / "cloud" / "PokerSense 同事数据" / "du" / folder.name
+    assert json.loads((there / "flywheel" / "package.json").read_text()) == {"ok": 1}
+    marker = json.loads((there / aa_upload.MARKER).read_text(encoding="utf-8"))
+    assert marker["files"] == aa_upload.manifest(folder)["files"]
+    assert "flywheel/package.json" in [rel for rel, _ in marker["files"]]
+    assert "flywheel/building" not in [rel for rel, _ in marker["files"]]
+
+
+def test_one_upload_at_a_time_on_a_computer(tmp_path):
+    """The upload after a closed window and a window opened again soon after
+    never send at once (two copies into one folder)."""
+    recording(tmp_path / "recordings", "20261016-210927-live")
+    rclone = FakeRclone(tmp_path / "cloud")
+    first, second = uploader(tmp_path, rclone), uploader(tmp_path, rclone)
+    assert first.lock_file.acquire()
+    try:
+        assert second.upload_once() is False
+        assert rclone.copies() == []
+        clock = [0.0]
+        waited = aa_upload.FileLock(tmp_path / "upload" / aa_upload.LOCK)
+
+        def sleep(seconds):
+            clock[0] += seconds
+        assert waited.acquire(5, sleep=sleep, clock=lambda: clock[0]) is False
+        assert clock[0] >= 5
+    finally:
+        first.lock_file.release()
+    assert second.upload_once() is True
+    assert len(rclone.copies()) == 4
+
+
+def test_the_upload_lock_goes_with_a_process_that_was_ended(tmp_path):
+    lock = tmp_path / "upload" / aa_upload.LOCK
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time\n"
+         "from poker_engine.desktop.aa_upload import FileLock\n"
+         f"held = FileLock({str(lock)!r})\n"
+         "assert held.acquire()\n"
+         "print('held', flush=True)\n"
+         "time.sleep(60)\n"],
+        stdout=subprocess.PIPE, text=True,
+        env=dict(os.environ, PYTHONPATH=os.pathsep.join(
+            [str(ROOT / "src"), str(ROOT)])))
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        assert aa_upload.FileLock(lock).acquire() is False
+    finally:
+        holder.kill()
+        holder.wait(10)
+        holder.stdout.close()
+    mine = aa_upload.FileLock(lock)
+    assert mine.acquire(5) is True
+    mine.release()
+
+
+def test_a_failed_pass_never_ends_the_upload_thread(tmp_path):
+    """Anything going wrong in a pass (here a TypeError) is logged and tried
+    again; the thread goes on."""
+    folder = recording(tmp_path / "recordings", "20261016-210927-live")
+    rclone = FakeRclone(tmp_path / "cloud")
+    up = uploader(tmp_path, rclone, delay=0, retry_waits=(0.05,))
+    real, calls = up.upload_all, []
+
+    def upload_all():
+        calls.append(1)
+        if len(calls) == 1:
+            raise TypeError("unsupported operand type(s) for /: 'NoneType' and 'str'")
+        return real()
+    up.upload_all = upload_all
+    up.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and folder.name not in up._state():
+            time.sleep(0.02)
+        assert up.thread.is_alive()
+    finally:
+        up.stop()
+    assert folder.name in up._state()
+    log = (tmp_path / "upload" / "upload.log").read_text(encoding="utf-8")
+    assert "TypeError" in log
+
+
+def test_a_status_poll_during_an_upload_does_not_kill_the_upload_thread(tmp_path):
+    """The window asks for the upload status while a recording is copied into
+    the synced folder (the owner's Mac, rclone there without its remote): the
+    check made for the answer never reaches the copy half done (nightly code
+    check 2026-10-17)."""
+    synced = drive(tmp_path)
+    folder = recording(tmp_path / "recordings", "20261016-200000-live")
+    (folder / "segment_0000.mp4").write_bytes(b"\0" * 200_000)
+    (tmp_path / "upload").mkdir()
+    (tmp_path / "upload" / "settings.json").write_text(
+        json.dumps({"machine": "peng"}), encoding="utf-8")
+    entered, release = threading.Event(), threading.Event()
+    now = [0.0]
+
+    def run(args, timeout):
+        if threading.current_thread().name == "window-poll":
+            entered.set()
+            release.wait(10)
+        return 0, "gdrive:\n"
+    poller = []
+
+    def sleep(seconds):
+        if not poller:
+            now[0] += 61
+            thread = threading.Thread(target=up.status, name="window-poll")
+            poller.append(thread)
+            thread.start()
+            entered.wait(10)
+    up = aa_upload.Uploader(tmp_path / "recordings", base=tmp_path / "upload",
+                            run=run, which=lambda name: "/opt/homebrew/bin/rclone",
+                            places=[], delay=0, cloud=tmp_path / "CloudStorage",
+                            sleep=sleep, clock=lambda: now[0])
+    up.start()
+    marker = synced / "peng" / folder.name / aa_upload.MARKER
+    try:
+        deadline = time.monotonic() + 10
+        while (time.monotonic() < deadline and not marker.exists()
+               and up.thread.is_alive()):
+            time.sleep(0.05)
+        alive = up.thread.is_alive()
+    finally:
+        release.set()
+        up.stop()
+        for thread in poller:
+            thread.join(5)
+    assert marker.exists(), "the recording never got its upload.json"
+    assert alive, "the upload thread died"
+
+
+def test_a_closing_window_ends_the_rclone_it_started():
+    sleeper = [sys.executable, "-c", "import time; time.sleep(60)"]
+    answer = []
+    thread = threading.Thread(target=lambda: answer.append(
+        aa_upload.run_process(sleeper, 60)))
+    thread.start()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not aa_upload._RUNNING:
+        time.sleep(0.02)
+    aa_upload.end_processes()
+    thread.join(10)
+    assert not thread.is_alive()
+    assert answer and answer[0][0] != 0
+    assert not aa_upload._RUNNING
+    assert aa_upload.run_process([sys.executable, "-c", "print('ok')"], 30) == (
+        0, "ok\n")
+
+
+def test_the_upload_after_a_close_is_one_pass_waiting_for_the_lock(
+        tmp_path, monkeypatch):
+    made = []
+
+    class One:
+        def __init__(self, root, base=None, delay=None):
+            made.append((root, base, delay))
+
+        def upload_once(self, wait=0.0):
+            made.append(wait)
+            return True
+    monkeypatch.setattr(aa_upload, "Uploader", One)
+    assert aa_upload.main(["--root", str(tmp_path / "r"),
+                           "--base", str(tmp_path / "u")]) == 0
+    assert made == [(tmp_path / "r", tmp_path / "u", 0), aa_upload.LOCK_WAIT]
