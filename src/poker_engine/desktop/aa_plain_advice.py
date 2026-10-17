@@ -20,9 +20,10 @@
   投入的，还是没有就不算他（有效筹码按最深的已读对手）；蘑菇池没读到按 0；暴击按“翻前
   没人动、开局底池能被人数整除”认；庄位按这手开局锁定，读不到按盲注和抓头的位置推
   （只读到其中一个也行）；翻牌开始时的底池按手锁存。真正缺了没法算的只有四样：你的手牌、
-  要跟的金额、底池、你的筹码（还有庄位）。
+  要跟的金额、底池（翻后）、你的筹码（还有庄位）。翻前的底池不读屏幕（AA 翻前显示
+  0，注还摆在各人面前），按结构算：前注 × 人数 + 小盲 + 大盲 + 抓头 + 各座已投入的。
 - **就绪条件**：按钮出现、要跟的金额连续 3 帧一样、两张手牌连续两帧读成一样、公共牌
-  张数和街道对得上、还在局的对手连续 2 帧一样、底池和你的筹码读到了；这手的手牌或
+  张数和街道对得上、还在局的对手连续 2 帧一样、底池（翻后）和你的筹码读到了；这手的手牌或
   公共牌读出过两种就不就绪（``card_conflict``，宁可铁律 5 也不按其中一种算）。就绪前
   显示“读画面中”；等了 2 秒还没就绪，按铁律 5（弃，能过牌就过牌）并写明缺什么。翻前
   轮到盲位且没人加注时铁律 5 不适用（v3.2）：读到了牌就照表，牌没读到就过牌或补齐。
@@ -491,7 +492,7 @@ def table_observation(state, fields, stakes):
         missing.append("seat")
     if to_call is None:
         missing.append("price")
-    if pot is None:
+    if pot is None and street != "preflop":       # 翻前底池按结构算，不读屏幕
         missing.append("pot")
     if stack is None:
         missing.append("stack")
@@ -554,6 +555,10 @@ def table_observation(state, fields, stakes):
         put = (bomb if bomb is not None else ante) + builder.bets.get(seat, Decimal(0))
         put += sum(bets.get(seat, Decimal(0)) for bets in final.values())
         contributions[seat] = put
+    if street == "preflop":
+        # AA 翻前屏幕上的底池是 0（注还摆在各人面前）：按结构算，前注 × 人数 + 小盲
+        # + 大盲 + 抓头 + 各座这条街已投入的，都在 contributions 里（主人 2026-10-17）。
+        pot = sum(contributions.values(), Decimal(0))
     stacks = _stacks(state, seats, builder.rows, folded, defaults)
     stacks[HERO] = stack
     my_bet = builder.bets.get(HERO, Decimal(0))
@@ -809,7 +814,7 @@ class AAPlainAdvice:
             missing.append("board")
         if state.live_frames < SEATS_FRAMES:
             missing.append("opponents")
-        if state.pot is None:
+        if state.pot is None and street != "preflop":   # 翻前底池按结构算
             missing.append("pot")
         if state.stack_read(HERO) is None:
             missing.append("stack")
