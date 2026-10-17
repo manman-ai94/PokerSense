@@ -13,7 +13,10 @@ labels. Agreement on development checkpoints is not independent acceptance.
 ``--strategy plain`` gives the advice by the one page of 《一页纸打法》
 (the window's switch), worked out on the frame thread with no solver: run
 the same recording with ``--advice`` and with ``--advice --strategy plain``
-to see what each does to the frame rate.
+to see what each does to the frame rate. ``--advice`` alone is still the
+older advice (``classic``), though the window's default is ``plain`` since
+2026-10-17: the release check compares the installed version and the new
+one with it, like with like.
 """
 
 from __future__ import annotations
@@ -268,7 +271,7 @@ def main(argv=None):
     parser.add_argument("--gold", type=Path)
     parser.add_argument("--advice", action="store_true",
                         help="work out solver advice on your turn (needs TexasSolver)")
-    parser.add_argument("--strategy", choices=STRATEGIES, default=STRATEGIES[0],
+    parser.add_argument("--strategy", choices=STRATEGIES, default="classic",
                         help="with --advice: the window's switch (plain: no solver)")
     args = parser.parse_args(argv)
 

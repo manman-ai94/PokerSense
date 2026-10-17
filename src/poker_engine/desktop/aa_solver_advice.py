@@ -147,12 +147,14 @@ any other hand after the flop; the report's ``bomb_pot`` is each player's
 post. The advice comes from a model of how people play and is for study
 only; nothing here acts on the client.
 
-With the window's switch on ``plain`` (``strategy``; the default is still
-``classic``, all of the above) every frame goes to ``aa_plain_advice``
-instead: the one-page rules of 《一页纸打法 v3.3b》 (``scoreboard.plain_policy``)
-from the frame's fields and a state kept per hand, worked out once per
-decision on the frame's own thread. No replay, no solver, no range rule, no
-rough rule, no background worker; nothing of the above runs.
+With the window's switch on ``plain`` (``strategy``; the window's default
+since peng's nod on 2026-10-17; ``classic`` is all of the above, still one
+click away and what tools replaying the older advice get) every frame goes
+to ``aa_plain_advice`` instead: the one-page rules of 《一页纸打法 v3.3b》
+(``scoreboard.plain_policy``) from the frame's fields and a state kept per
+hand, worked out once per decision on the frame's own thread. No replay, no
+solver, no range rule, no rough rule, no background worker; nothing of the
+above runs.
 """
 
 from __future__ import annotations
@@ -254,7 +256,7 @@ BOARD_CARDS = {"preflop": 0, "flop": 3, "turn": 4, "river": 5}
 POSTFLOP = ("flop", "turn", "river")
 IN_HAND = ("active", "all_in")
 VALUE_SHARE = 0.5               # a solver bet or raise at this share is for value
-STRATEGIES = ("classic", "plain")   # the window's switch: classic until plain passes
+STRATEGIES = ("plain", "classic")   # the window's switch, default first (plain: 10-17)
 
 
 def _switch_quickly():
@@ -703,6 +705,8 @@ class AASolverAdvice:
                  strategy="classic"):
         if strategy not in STRATEGIES:
             raise ValueError(f"strategy must be one of {STRATEGIES}")
+        # The window passes its switch; without one (the tools that replay
+        # the older advice) classic.
         self.strategy = strategy
         self._plain = AAPlainAdvice(clock=clock)
         self._bot = bot
