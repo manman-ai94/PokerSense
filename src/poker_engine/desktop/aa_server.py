@@ -119,18 +119,24 @@ def ui_root():
 
 
 def load_strategy(path):
-    """The advice switch kept in ``path``; ``classic`` when there is none."""
+    """The advice switch kept in ``path``; the default (``STRATEGIES[0]``)
+    when there is none. A choice saved while another default stood (one
+    with no ``default`` was saved while ``classic`` was) gives way to the
+    new default once: switching the default switches every window."""
     if path is None:
         return STRATEGIES[0]
     try:
-        value = json.loads(Path(path).read_text(encoding="utf-8")).get("strategy")
+        saved = json.loads(Path(path).read_text(encoding="utf-8"))
+        value, default = saved.get("strategy"), saved.get("default", "classic")
     except (OSError, ValueError, AttributeError):
+        return STRATEGIES[0]
+    if default != STRATEGIES[0]:
         return STRATEGIES[0]
     return value if value in STRATEGIES else STRATEGIES[0]
 
 
 def save_strategy(path, strategy):
-    aa_upload.write_json(path, {"strategy": strategy})
+    aa_upload.write_json(path, {"strategy": strategy, "default": STRATEGIES[0]})
 
 
 def create_app(profile_path, *, replay_pool=None, replay_first=None,
@@ -151,7 +157,7 @@ def create_app(profile_path, *, replay_pool=None, replay_first=None,
         uploader = aa_upload.Uploader(recordings_root)
     # The cameras macOS lists, for the window to say whether the card is there.
     cameras = (camera_list or CameraList()) if allow_capture else None
-    # The advice switch (classic / plain), kept in ``strategy_path`` when given.
+    # The advice switch (plain / classic), kept in ``strategy_path`` when given.
     advice = AASolverAdvice(strategy=load_strategy(strategy_path))
     service = session or AARecognitionSession(
         source_factory(profile_path, replay_pool=replay_pool,
