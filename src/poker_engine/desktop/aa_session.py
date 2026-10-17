@@ -450,7 +450,8 @@ def frame_summary(payload):
         "stacks": {slot: (value or {}).get("value") for slot, value in (
             payload.get("stacks") or {}).items()},
         "hero_controls": {key: controls.get(key)
-                          for key in ("visible", "button", "call_amount", "reason")},
+                          for key in ("visible", "button", "call_amount",
+                                      "raw_call_amount", "reason")},
         "table_math": payload.get("table_math_v1"),
         "mushroom_pool": (payload.get("mushroom_pool_v1") or {}).get("value"),
         # Betting history as read so far: the count and the latest actions
